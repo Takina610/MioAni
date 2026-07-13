@@ -1,0 +1,38 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# 工具缓存隐藏目录
+.agents
+.codex
+.playwright-cli
+.superpowers
+.trellis
+
+# 构建、依赖、输出目录
+node_modules
+dist
+dist-ssr
+output
+*.local
+
+# 环境与文档
+.env.example
+*.md
+docs
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
