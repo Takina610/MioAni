@@ -575,7 +575,8 @@ h1, h2, h3, p { letter-spacing: 0; }
     --hero-pad-top: 78px;
     --hero-pad-bottom: 118px;
     --fore-poster-w: min(240px, 64vw);
-    --hero-copy-stage-h: 440px;
+    /* Taller copy slot so kicker+title+summary+meta+actions fit; still fixed + clipped */
+    --hero-copy-stage-h: 500px;
     align-content: start;
     min-height: calc(
       var(--hero-pad-top)
@@ -599,8 +600,28 @@ h1, h2, h3, p { letter-spacing: 0; }
   .hero-fore-copy {
     align-self: start;
     height: var(--hero-copy-stage-h);
+    overflow: hidden;
   }
-  .hero-fore-copy h1 { font-size: clamp(40px,11vw,54px); max-width: none; }
+  /* Tighten mobile title footprint; long titles stay in the copy slot */
+  .hero-fore-copy h1 {
+    font-size: clamp(34px, 9.5vw, 48px);
+    max-width: none;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+  }
+  .hero-summary {
+    -webkit-line-clamp: 3;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .hero-copy-window--kicker { margin-bottom: 12px; }
+  .hero-copy-window--rank { margin-bottom: 10px; }
+  .hero-copy-window--original { margin-top: 10px; }
+  .hero-copy-window--summary { margin-top: 16px; }
+  .hero-copy-window--meta { margin-top: 16px; }
+  .hero-copy-window--actions { margin: 20px -4px -4px; }
   .hero-fore-poster {
     width: var(--fore-poster-w);
     justify-self: center;
