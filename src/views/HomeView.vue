@@ -143,15 +143,14 @@ function hideBridgeLayers() {
       zIndex: index === 0 ? 2 : 5,
       x: 0,
       y: 0,
-      scaleX: 1,
-      scaleY: 1,
+      scale: 1,
       clearProps: 'transform,transformOrigin',
     })
   })
 
   images.forEach((image) => {
     if (!image) return
-    gsap.set(image, { clearProps: 'opacity,visibility,filter' })
+    gsap.set(image, { clearProps: 'opacity,visibility,filter,transform,transformOrigin' })
     image.removeAttribute('src')
   })
 }
@@ -368,6 +367,8 @@ async function goTo(index: number) {
   const bridgeImg = bridgeImgRef.value
   const focusBridge = focusBridgeRef.value
   const focusBridgeImg = focusBridgeImgRef.value
+  const nextLayer = nextLayerRef.value
+  const nextImg = nextImgRef.value
   const outgoingCopy = foreCopyRef.value
   if (!hero || !poster || !fore || !bridge || !bridgeImg || !focusBridge || !focusBridgeImg || !outgoingCopy) {
     copyIndex.value = next
@@ -395,7 +396,22 @@ async function goTo(index: number) {
   const heroBox = hero.getBoundingClientRect()
   const posterBox = poster.getBoundingClientRect()
   const copyBox = outgoingCopy.getBoundingClientRect()
-  const from = { left: 0, top: 0, width: heroBox.width, height: heroBox.height }
+  const nextLayerBox = nextLayer?.getBoundingClientRect()
+  const nextImgBox = nextImg?.getBoundingClientRect()
+  const bridgeImageStartScale = nextLayerBox && nextImgBox && nextLayerBox.width > 0
+    ? nextImgBox.width / nextLayerBox.width
+    : 1
+  // 与 .hero-depth-next 对齐：inset -72px + 同向 scroll parallax，避免 bridge 出现时先跳一帧。
+  const depthBleed = 72
+  const scrollProgress = Number.parseFloat(
+    hero.style.getPropertyValue('--hero-scroll-progress') || '0',
+  ) || 0
+  const from = {
+    left: 0,
+    top: -depthBleed + scrollProgress * depthBleed,
+    width: heroBox.width,
+    height: heroBox.height + depthBleed,
+  }
   const to = {
     left: posterBox.left - heroBox.left,
     top: posterBox.top - heroBox.top,
@@ -417,48 +433,37 @@ async function goTo(index: number) {
   // 两层 Bridge 使用相同图片和几何轨迹：Depth 保持后景质感，Focus 在后半程聚焦接管。
   bridgeImg.src = posterUrl
   focusBridgeImg.src = posterUrl
-  const fromCx = from.left + from.width / 2
-  const fromCy = from.top + from.height / 2
-  const toCx = to.left + to.width / 2
-  const toCy = to.top + to.height / 2
-  const startScaleX = from.width / to.width
-  const startScaleY = from.height / to.height
-  const startX = fromCx - toCx
-  const startY = fromCy - toCy
-  const bridgeLayout = {
-    left: to.left,
-    top: to.top,
-    width: to.width,
-    height: to.height,
+  const bridgeStart = {
+    left: from.left,
+    top: from.top,
+    width: from.width,
+    height: from.height,
     borderRadius: 0,
     boxShadow: 'none',
     overflow: 'hidden',
-    transformOrigin: '50% 50%',
-    x: startX,
-    y: startY,
-    scaleX: startScaleX,
-    scaleY: startScaleY,
+    x: 0,
+    y: 0,
+    scale: 1,
   }
   gsap.set(bridge, {
-    ...bridgeLayout,
+    ...bridgeStart,
     autoAlpha: 1,
     zIndex: 2,
   })
   gsap.set(focusBridge, {
-    ...bridgeLayout,
+    ...bridgeStart,
     autoAlpha: 0,
     zIndex: 5,
   })
-  gsap.set(bridgeImg, {
+  gsap.set([bridgeImg, focusBridgeImg], {
     autoAlpha: 1,
-    filter: 'blur(3px) saturate(.95) brightness(.78)',
-  })
-  gsap.set(focusBridgeImg, {
-    autoAlpha: 1,
+    scale: bridgeImageStartScale,
+    transformOrigin: '50% 50%',
     filter: 'blur(3px) saturate(.95) brightness(.78)',
   })
 
-  if (nextLayerRef.value) gsap.set(nextLayerRef.value, { autoAlpha: 0 })
+  // 先铺好与后景同几何的 bridge，再藏 next layer，避免“先跳再收束”。
+  if (nextLayer) gsap.set(nextLayer, { autoAlpha: 0 })
 
   const nextSwapTl = prepareNextLayer(upcoming)
   const ambientTl = crossfadeAmbient(ambientUrl)
@@ -479,21 +484,26 @@ async function goTo(index: number) {
     ease: 'power2.in',
   }, 0.42)
 
-  const bridgeMotion = {
-    x: 0,
-    y: 0,
-    scaleX: 1,
-    scaleY: 1,
+  const bridgeDestination = {
+    left: to.left,
+    top: to.top,
+    width: to.width,
+    height: to.height,
     borderRadius: 12,
     duration: 1.0,
   }
 
   leave.to(bridge, {
-    ...bridgeMotion,
+    ...bridgeDestination,
     boxShadow: '0 40px 110px rgba(0,0,0,0.55)',
   }, 0)
 
-  leave.to(focusBridge, bridgeMotion, 0)
+  leave.to(focusBridge, bridgeDestination, 0)
+  leave.to([bridgeImg, focusBridgeImg], {
+    scale: 1,
+    duration: 1.0,
+    ease: 'power2.inOut',
+  }, 0)
   leave.to(focusBridge, {
     autoAlpha: 1,
     duration: 0.45,
