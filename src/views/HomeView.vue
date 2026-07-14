@@ -141,6 +141,11 @@ function hideBridgeLayers() {
       borderRadius: 0,
       boxShadow: 'none',
       zIndex: index === 0 ? 2 : 5,
+      x: 0,
+      y: 0,
+      scaleX: 1,
+      scaleY: 1,
+      clearProps: 'transform,transformOrigin',
     })
   })
 
@@ -412,27 +417,37 @@ async function goTo(index: number) {
   // 两层 Bridge 使用相同图片和几何轨迹：Depth 保持后景质感，Focus 在后半程聚焦接管。
   bridgeImg.src = posterUrl
   focusBridgeImg.src = posterUrl
-  gsap.set(bridge, {
-    autoAlpha: 1,
-    left: from.left,
-    top: from.top,
-    width: from.width,
-    height: from.height,
+  const fromCx = from.left + from.width / 2
+  const fromCy = from.top + from.height / 2
+  const toCx = to.left + to.width / 2
+  const toCy = to.top + to.height / 2
+  const startScaleX = from.width / to.width
+  const startScaleY = from.height / to.height
+  const startX = fromCx - toCx
+  const startY = fromCy - toCy
+  const bridgeLayout = {
+    left: to.left,
+    top: to.top,
+    width: to.width,
+    height: to.height,
     borderRadius: 0,
     boxShadow: 'none',
-    zIndex: 2,
     overflow: 'hidden',
+    transformOrigin: '50% 50%',
+    x: startX,
+    y: startY,
+    scaleX: startScaleX,
+    scaleY: startScaleY,
+  }
+  gsap.set(bridge, {
+    ...bridgeLayout,
+    autoAlpha: 1,
+    zIndex: 2,
   })
   gsap.set(focusBridge, {
+    ...bridgeLayout,
     autoAlpha: 0,
-    left: from.left,
-    top: from.top,
-    width: from.width,
-    height: from.height,
-    borderRadius: 0,
-    boxShadow: 'none',
     zIndex: 5,
-    overflow: 'hidden',
   })
   gsap.set(bridgeImg, {
     autoAlpha: 1,
@@ -464,21 +479,21 @@ async function goTo(index: number) {
     ease: 'power2.in',
   }, 0.42)
 
-  const bridgeDestination = {
-    left: to.left,
-    top: to.top,
-    width: to.width,
-    height: to.height,
+  const bridgeMotion = {
+    x: 0,
+    y: 0,
+    scaleX: 1,
+    scaleY: 1,
     borderRadius: 12,
     duration: 1.0,
   }
 
   leave.to(bridge, {
-    ...bridgeDestination,
+    ...bridgeMotion,
     boxShadow: '0 40px 110px rgba(0,0,0,0.55)',
   }, 0)
 
-  leave.to(focusBridge, bridgeDestination, 0)
+  leave.to(focusBridge, bridgeMotion, 0)
   leave.to(focusBridge, {
     autoAlpha: 1,
     duration: 0.45,
