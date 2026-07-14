@@ -412,12 +412,17 @@ async function goTo(index: number) {
   const leave = gsap.timeline({ defaults: { ease: 'power2.inOut' } })
 
   leave.to(poster, {
-    xPercent: -18,
-    x: -30,
-    scale: 0.84,
-    autoAlpha: 0,
-    duration: 0.48,
+    xPercent: -48,
+    x: -60,
+    scale: 0.28,
+    duration: 0.78,
+    ease: 'power2.inOut',
   }, 0)
+  leave.to(poster, {
+    autoAlpha: 0,
+    duration: 0.36,
+    ease: 'power2.in',
+  }, 0.42)
 
   const bridgeDestination = {
     left: to.left,
