@@ -13,6 +13,7 @@ const catalog = useCatalogStore()
 const library = useLibraryStore()
 const activeTab = ref<'hot' | 'all'>('hot')
 const activeIndex = ref(0)
+const copyIndex = ref(0)
 const isAnimating = ref(false)
 const isAutoplayPaused = ref(false)
 const pendingIndex = ref<number | null>(null)
@@ -28,7 +29,6 @@ const bridgeImgRef = ref<HTMLImageElement | null>(null)
 const focusBridgeRef = ref<HTMLElement | null>(null)
 const focusBridgeImgRef = ref<HTMLImageElement | null>(null)
 const foreCopyRef = ref<HTMLElement | null>(null)
-const incomingCopyRef = ref<HTMLElement | null>(null)
 const ambientARef = ref<HTMLElement | null>(null)
 const ambientBRef = ref<HTMLElement | null>(null)
 const ambientActive = ref<'a' | 'b'>('a')
@@ -37,11 +37,8 @@ let wasPlayingBeforeHidden = false
 
 const slides = computed(() => catalog.seasonal.slice(0, 8))
 const feature = computed(() => slides.value[activeIndex.value] || catalog.featured)
+const copyFeature = computed(() => slides.value[copyIndex.value] || catalog.featured)
 const visualIndex = computed(() => pendingIndex.value ?? activeIndex.value)
-const incomingFeature = computed(() => {
-  if (pendingIndex.value === null) return null
-  return slides.value[pendingIndex.value] || null
-})
 const nextFeature = computed(() => {
   const list = slides.value
   if (list.length < 2) return null
@@ -128,51 +125,69 @@ function hideBridgeLayers() {
   })
 }
 
-function collectCopyRevealTargets(copy: HTMLElement | null | undefined) {
+function collectCopyRevealTargets(copy = foreCopyRef.value) {
   if (!copy) return []
   return Array.from(copy.querySelectorAll<HTMLElement>('[data-hero-reveal]'))
 }
 
-function prepareCopyReveal(copy: HTMLElement) {
+function resetCopyRevealTargets(copy = foreCopyRef.value) {
+  if (!copy) return
   const targets = collectCopyRevealTargets(copy)
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-  gsap.set(copy, { autoAlpha: 1 })
   if (targets.length) {
     gsap.set(targets, {
-      autoAlpha: 0,
-      yPercent: reducedMotion ? 0 : 50,
-      scale: reducedMotion ? 1 : 0.82,
-      clipPath: reducedMotion ? 'none' : 'inset(100% 0% 0% 0%)',
-      transformOrigin: 'left bottom',
+      clearProps: 'opacity,visibility,transform,transformOrigin',
     })
   }
 }
 
-function createCopyRevealTimeline(copy: HTMLElement) {
-  const targets = collectCopyRevealTargets(copy)
-  const reveal = gsap.timeline()
+async function playPersistentCopySwitch(copy: HTMLElement, next: number) {
+  const outgoing = collectCopyRevealTargets(copy)
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-  if (!targets.length) return reveal
-
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    return reveal.set(targets, {
-      autoAlpha: 1,
-      yPercent: 0,
-      scale: 1,
-      clipPath: 'none',
+  if (!reducedMotion && outgoing.length) {
+    const exit = gsap.timeline()
+    exit.to(outgoing, {
+      autoAlpha: 0,
+      yPercent: -38,
+      scale: 0.98,
+      duration: 0.16,
+      stagger: 0.01,
+      ease: 'power2.in',
     }, 0)
+    await play(exit)
+  } else if (outgoing.length) {
+    gsap.set(outgoing, { autoAlpha: 0 })
   }
 
-  return reveal.to(targets, {
+  copyIndex.value = next
+  await nextTick()
+
+  const incoming = collectCopyRevealTargets(copy)
+  if (!incoming.length) return
+
+  if (reducedMotion) {
+    resetCopyRevealTargets(copy)
+    return
+  }
+
+  gsap.set(incoming, {
+    autoAlpha: 0,
+    yPercent: 55,
+    scale: 0.92,
+    transformOrigin: 'left bottom',
+  })
+
+  const enter = gsap.timeline()
+  enter.to(incoming, {
     autoAlpha: 1,
     yPercent: 0,
     scale: 1,
-    clipPath: 'inset(0% 0% 0% 0%)',
     duration: 0.42,
     stagger: 0.045,
     ease: 'power3.out',
   }, 0)
+  await play(enter)
+  resetCopyRevealTargets(copy)
 }
 
 function progressFillAt(index: number) {
@@ -323,16 +338,17 @@ async function goTo(index: number) {
   const focusBridge = focusBridgeRef.value
   const focusBridgeImg = focusBridgeImgRef.value
   const outgoingCopy = foreCopyRef.value
-  const incomingCopy = incomingCopyRef.value
-  if (!hero || !poster || !fore || !bridge || !bridgeImg || !focusBridge || !focusBridgeImg || !outgoingCopy || !incomingCopy) {
+  if (!hero || !poster || !fore || !bridge || !bridgeImg || !focusBridge || !focusBridgeImg || !outgoingCopy) {
+    copyIndex.value = next
     activeIndex.value = next
     await nextTick()
+    resetCopyRevealTargets(outgoingCopy)
+    if (poster) gsap.set(poster, { clearProps: 'opacity,visibility,transform' })
+    if (fore) gsap.set(fore, { clearProps: 'opacity,visibility,transform,zIndex' })
     hideBridgeLayers()
     await finishHeroTransition()
     return
   }
-
-  prepareCopyReveal(incomingCopy)
 
   const posterUrl = target.image
   const ambientUrl = mediaOf(target)
@@ -390,25 +406,17 @@ async function goTo(index: number) {
 
   if (nextLayerRef.value) gsap.set(nextLayerRef.value, { autoAlpha: 0 })
 
-  gsap.set(fore, { zIndex: 12, transformOrigin: '8% 50%' })
-
   const nextSwapTl = prepareNextLayer(upcoming)
   const ambientTl = crossfadeAmbient(ambientUrl)
 
   const leave = gsap.timeline({ defaults: { ease: 'power2.inOut' } })
 
-  leave.to(fore, {
-    xPercent: -58,
-    x: -60,
-    scale: 0.22,
+  leave.to(poster, {
+    xPercent: -18,
+    x: -30,
+    scale: 0.84,
     autoAlpha: 0,
-    duration: 1.0,
-  }, 0)
-
-  leave.to(outgoingCopy, {
-    autoAlpha: 0,
-    duration: 0.24,
-    ease: 'power2.out',
+    duration: 0.48,
   }, 0)
 
   const bridgeDestination = {
@@ -443,11 +451,12 @@ async function goTo(index: number) {
     leave.add(nextSwapTl as gsap.core.Timeline, nextSwapOffset)
   }
   if (ambientTl) leave.add(ambientTl as gsap.core.Timeline, 0)
-  leave.add(createCopyRevealTimeline(incomingCopy), 0.28)
 
-  await play(leave)
+  const bridgePromise = play(leave)
+  const copyPromise = playPersistentCopySwitch(outgoingCopy, next)
+  await Promise.all([bridgePromise, copyPromise])
 
-  // Handoff：静态正式 Copy 与海报先接管，再卸载已完成 Reveal 的 Incoming Copy。
+  // Handoff 只更新正式海报与轮播语义；持久 Copy 已在同一批节点中完成切换。
   activeIndex.value = next
   await nextTick()
 
@@ -459,21 +468,11 @@ async function goTo(index: number) {
   const newFore = foreRef.value
   const newPoster = posterRef.value
 
-  if (newFore) {
-    gsap.set(newFore, {
-      xPercent: 0,
-      x: 0,
-      scale: 1,
-      autoAlpha: 1,
-      zIndex: 3,
-    })
-  }
-  if (newPoster) gsap.set(newPoster, { autoAlpha: 1 })
-  if (foreCopyRef.value) gsap.set(foreCopyRef.value, { clearProps: 'opacity,visibility' })
+  if (newPoster) gsap.set(newPoster, { clearProps: 'opacity,visibility,transform' })
+  if (newFore) gsap.set(newFore, { clearProps: 'opacity,visibility,transform,zIndex' })
+  resetCopyRevealTargets()
 
   hideBridgeLayers()
-
-  if (newFore) gsap.set(newFore, { clearProps: 'transform' })
   await finishHeroTransition()
 }
 
@@ -508,6 +507,7 @@ function initNextLayer() {
 watch(slides, (list) => {
   if (!list.length) return
   if (activeIndex.value >= list.length) activeIndex.value = 0
+  if (copyIndex.value >= list.length) copyIndex.value = activeIndex.value
   // 数据到达后初始化后景（onMounted 时数据可能还没回来）
   nextTick(() => {
     initAmbient()
@@ -598,45 +598,52 @@ onUnmounted(() => {
 
         <div class="hero-stage">
           <article ref="foreRef" class="hero-fore">
-            <div ref="foreCopyRef" class="hero-fore-copy">
-              <p><PhSparkle :size="16" weight="fill" /> REAL-TIME ANIME INDEX</p>
-              <span class="hero-rank">NO. {{ String(activeIndex + 1).padStart(2, '0') }} / {{ feature.source }}</span>
-              <h1>{{ feature.title }}</h1>
-              <h2 v-if="feature.originalTitle && feature.originalTitle !== feature.title">{{ feature.originalTitle }}</h2>
-              <p class="hero-summary">{{ feature.summary || '这一季，别错过真正想看的故事。' }}</p>
-              <div class="hero-meta">
-                <small v-if="feature.score">SCORE {{ feature.score.toFixed(1) }}</small>
-                <small v-if="feature.year">{{ feature.year }}</small>
-                <small v-if="feature.season">{{ feature.season }}</small>
-                <small v-if="feature.episodes">{{ feature.episodes }} EP</small>
+            <div
+              v-if="copyFeature"
+              ref="foreCopyRef"
+              class="hero-fore-copy"
+              :inert="isAnimating"
+              :aria-hidden="isAnimating ? 'true' : undefined"
+            >
+              <div class="hero-copy-window hero-copy-window--kicker">
+                <p class="hero-kicker hero-copy-line" data-hero-reveal><PhSparkle :size="16" weight="fill" /> REAL-TIME ANIME INDEX</p>
               </div>
-              <div class="hero-actions">
-                <RouterLink to="/discover">探索本季动画<PhArrowRight :size="18" /></RouterLink>
+              <div class="hero-copy-window hero-copy-window--rank">
+                <span class="hero-rank hero-copy-line" data-hero-reveal>NO. {{ String(copyIndex + 1).padStart(2, '0') }} / {{ copyFeature.source }}</span>
+              </div>
+              <div class="hero-copy-window hero-copy-window--title">
+                <h1 class="hero-copy-line" data-hero-reveal>{{ copyFeature.title }}</h1>
+              </div>
+              <div
+                class="hero-copy-window hero-copy-window--original"
+                :class="{ 'hero-copy-window--empty': !copyFeature.originalTitle || copyFeature.originalTitle === copyFeature.title }"
+              >
+                <h2
+                  v-show="copyFeature.originalTitle && copyFeature.originalTitle !== copyFeature.title"
+                  class="hero-copy-line"
+                  data-hero-reveal
+                >{{ copyFeature.originalTitle }}</h2>
+              </div>
+              <div class="hero-copy-window hero-copy-window--summary">
+                <p class="hero-summary hero-copy-line" data-hero-reveal>{{ copyFeature.summary || '这一季，别错过真正想看的故事。' }}</p>
+              </div>
+              <div class="hero-copy-window hero-copy-window--meta">
+                <div class="hero-meta hero-copy-line" data-hero-reveal>
+                  <small v-if="copyFeature.score">SCORE {{ copyFeature.score.toFixed(1) }}</small>
+                  <small v-if="copyFeature.year">{{ copyFeature.year }}</small>
+                  <small v-if="copyFeature.season">{{ copyFeature.season }}</small>
+                  <small v-if="copyFeature.episodes">{{ copyFeature.episodes }} EP</small>
+                </div>
+              </div>
+              <div class="hero-copy-window hero-copy-window--actions">
+                <div class="hero-actions hero-copy-line" data-hero-reveal>
+                  <RouterLink to="/discover">探索本季动画<PhArrowRight :size="18" /></RouterLink>
+                </div>
               </div>
             </div>
             <div ref="posterRef" class="hero-fore-poster">
               <img ref="posterImgRef" :src="feature.image" :alt="`${feature.title} 海报`" />
             </div>
-          </article>
-
-          <article v-if="incomingFeature" class="hero-fore hero-incoming-fore" aria-hidden="true">
-            <div ref="incomingCopyRef" class="hero-fore-copy hero-incoming-copy">
-              <p data-hero-reveal><PhSparkle :size="16" weight="fill" /> REAL-TIME ANIME INDEX</p>
-              <span class="hero-rank" data-hero-reveal>NO. {{ String((pendingIndex ?? 0) + 1).padStart(2, '0') }} / {{ incomingFeature.source }}</span>
-              <h1 data-hero-reveal>{{ incomingFeature.title }}</h1>
-              <h2 v-if="incomingFeature.originalTitle && incomingFeature.originalTitle !== incomingFeature.title" data-hero-reveal>{{ incomingFeature.originalTitle }}</h2>
-              <p class="hero-summary" data-hero-reveal>{{ incomingFeature.summary || '这一季，别错过真正想看的故事。' }}</p>
-              <div class="hero-meta" data-hero-reveal>
-                <small v-if="incomingFeature.score">SCORE {{ incomingFeature.score.toFixed(1) }}</small>
-                <small v-if="incomingFeature.year">{{ incomingFeature.year }}</small>
-                <small v-if="incomingFeature.season">{{ incomingFeature.season }}</small>
-                <small v-if="incomingFeature.episodes">{{ incomingFeature.episodes }} EP</small>
-              </div>
-              <div class="hero-actions" data-hero-reveal>
-                <span class="hero-incoming-action">探索本季动画<PhArrowRight :size="18" /></span>
-              </div>
-            </div>
-            <div class="hero-incoming-poster-slot" aria-hidden="true"></div>
           </article>
         </div>
 
