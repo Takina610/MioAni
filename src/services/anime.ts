@@ -35,12 +35,12 @@ function mapAniList(media: any, entry?: any): Anime {
     banner: media.bannerImage || undefined, score: media.averageScore ? media.averageScore / 10 : entry?.score || 0,
     year: media.seasonYear || 0, season: media.season || '', episodes: media.episodes || 0,
     watched: entry?.progress || 0, status: statusMap[entry?.status] ?? 'planned',
-    tags: media.genres?.slice(0, 3) || [], summary: cleanText(media.description),
+    tags: media.genres?.slice(0, 3) || [], summary: '',
     nextEpisode: formatAiring(media.nextAiringEpisode?.timeUntilAiring), popularity: media.popularity || 0,
   }
 }
 
-const mediaFields = `id title { romaji native english } coverImage { extraLarge } bannerImage averageScore popularity seasonYear season episodes genres description(asHtml: false) nextAiringEpisode { episode timeUntilAiring }`
+const mediaFields = `id title { romaji native english } coverImage { extraLarge } bannerImage averageScore popularity seasonYear season episodes genres nextAiringEpisode { episode timeUntilAiring }`
 
 function currentSeason() {
   const month = new Date().getMonth() + 1
