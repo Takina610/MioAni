@@ -686,21 +686,6 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <section class="horizontal-stage">
-        <div class="horizontal-sticky">
-          <div class="rail-heading"><span>SCROLL TO EXPLORE</span><h2>本季热度<br />正在发生</h2><p>纵向滚动，穿过当前季度最受关注的动画。</p></div>
-          <div class="horizontal-viewport">
-            <div class="horizontal-track">
-              <article v-for="(anime, index) in hotAnime.slice(0, 8)" :key="anime.id" class="rail-card">
-                <img :src="anime.image" :alt="`${anime.title} 海报`" />
-                <div><span>{{ String(index + 1).padStart(2, '0') }}</span><h3>{{ anime.title }}</h3><p>{{ anime.originalTitle }}</p></div>
-              </article>
-            </div>
-          </div>
-          <div class="rail-progress" aria-hidden="true"><span></span></div>
-        </div>
-      </section>
-
       <section v-if="library.watching.length" class="content-section continue-section reveal-section">
         <div class="section-heading"><div><span>YOUR QUEUE</span><h2>继续观看</h2></div><RouterLink to="/library">打开追番库<PhArrowRight :size="16" /></RouterLink></div>
         <div class="progress-list"><ProgressRow v-for="anime in library.watching.slice(0, 3)" :key="anime.id" :anime="anime" /></div>
