@@ -69,11 +69,13 @@ h1, h2, h3, p { letter-spacing: 0; }
 
 .hero-depth {
   position: absolute;
-  inset: -80px 0;
+  inset: -180px 0 0;
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  transform: translate3d(0, calc(var(--hero-scroll-progress) * 80px), 0);
+  transform: translate3d(0, calc(var(--hero-scroll-progress) * 180px), 0)
+    scale(calc(1.03 - var(--hero-scroll-progress) * .03));
+  transform-origin: center center;
   will-change: transform;
 }
 .hero-depth-current,
@@ -96,7 +98,7 @@ h1, h2, h3, p { letter-spacing: 0; }
 /* 静态后景：竖图 cover，桌面居中裁切 */
 .hero-depth-next {
   position: absolute;
-  inset: -40px 0;
+  inset: -72px 0 0;
   z-index: 2;
   overflow: hidden;
   border-radius: 0;
@@ -104,7 +106,7 @@ h1, h2, h3, p { letter-spacing: 0; }
   filter: blur(3px) saturate(.95) brightness(.78);
   box-shadow: none;
   pointer-events: none;
-  transform: translate3d(0, calc(var(--hero-scroll-progress) * 36px), 0);
+  transform: translate3d(0, calc(var(--hero-scroll-progress) * 72px), 0);
   will-change: transform, opacity;
 }
 .hero-depth-next-img {
@@ -165,25 +167,25 @@ h1, h2, h3, p { letter-spacing: 0; }
 
 .hero-bg-veil {
   position: absolute;
-  inset: -40px 0;
+  inset: -72px 0 0;
   z-index: 3;
   pointer-events: none;
   background:
     linear-gradient(90deg, rgba(11,13,12,.78) 0%, rgba(11,13,12,.42) 26%, rgba(11,13,12,.08) 54%, rgba(11,13,12,.28) 100%),
     linear-gradient(180deg, rgba(11,13,12,.28) 0%, transparent 36%, rgba(11,13,12,.62) 100%);
-  transform: translate3d(0, calc(var(--hero-scroll-progress) * 36px), 0);
+  transform: translate3d(0, calc(var(--hero-scroll-progress) * 72px), 0);
   will-change: transform;
 }
 .hero-grid-lines {
   position: absolute;
-  inset: -40px 0;
+  inset: -72px 0 0;
   z-index: 4;
   opacity: .16;
   pointer-events: none;
   background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg,var(--line) 1px,transparent 1px);
   background-size: 72px 72px;
   mask-image: linear-gradient(to bottom,#000,transparent 88%);
-  transform: translate3d(0, calc(var(--hero-scroll-progress) * 36px), 0);
+  transform: translate3d(0, calc(var(--hero-scroll-progress) * 72px), 0);
   will-change: transform;
 }
 
@@ -205,7 +207,7 @@ h1, h2, h3, p { letter-spacing: 0; }
   display: grid;
   align-items: center;
   min-height: min(680px, calc(100dvh - 200px));
-  transform: translate3d(0, calc(var(--hero-scroll-progress) * -64px), 0);
+  transform: translate3d(0, calc(var(--hero-scroll-progress) * -140px), 0);
   will-change: transform;
 }
 

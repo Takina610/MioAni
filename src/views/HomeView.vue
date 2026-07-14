@@ -70,8 +70,9 @@ function updateHeroParallax() {
   }
 
   const rect = hero.getBoundingClientRect()
-  const progress = rect.height > 0
-    ? Math.max(0, Math.min(1, -rect.top / rect.height))
+  const activeDistance = rect.height * 0.75
+  const progress = activeDistance > 0
+    ? Math.max(0, Math.min(1, window.scrollY / activeDistance))
     : 0
   hero.style.setProperty('--hero-scroll-progress', progress.toFixed(4))
 }
