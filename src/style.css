@@ -57,6 +57,7 @@ h1, h2, h3, p { letter-spacing: 0; }
   --hero-pad-top: 64px;
   --hero-pad-bottom: 80px;
   --fore-poster-w: min(420px, 38vw);
+  --hero-scroll-progress: 0;
   position: relative;
   min-height: min(900px, calc(100dvh - 72px));
   display: grid;
@@ -68,10 +69,12 @@ h1, h2, h3, p { letter-spacing: 0; }
 
 .hero-depth {
   position: absolute;
-  inset: 0;
+  inset: -80px 0;
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
+  transform: translate3d(0, calc(var(--hero-scroll-progress) * 80px), 0);
+  will-change: transform;
 }
 .hero-depth-current,
 .hero-ambient {
@@ -93,7 +96,7 @@ h1, h2, h3, p { letter-spacing: 0; }
 /* 静态后景：竖图 cover，桌面居中裁切 */
 .hero-depth-next {
   position: absolute;
-  inset: 0;
+  inset: -40px 0;
   z-index: 2;
   overflow: hidden;
   border-radius: 0;
@@ -101,6 +104,8 @@ h1, h2, h3, p { letter-spacing: 0; }
   filter: blur(3px) saturate(.95) brightness(.78);
   box-shadow: none;
   pointer-events: none;
+  transform: translate3d(0, calc(var(--hero-scroll-progress) * 36px), 0);
+  will-change: transform, opacity;
 }
 .hero-depth-next-img {
   display: block;
@@ -160,22 +165,26 @@ h1, h2, h3, p { letter-spacing: 0; }
 
 .hero-bg-veil {
   position: absolute;
-  inset: 0;
+  inset: -40px 0;
   z-index: 3;
   pointer-events: none;
   background:
     linear-gradient(90deg, rgba(11,13,12,.78) 0%, rgba(11,13,12,.42) 26%, rgba(11,13,12,.08) 54%, rgba(11,13,12,.28) 100%),
     linear-gradient(180deg, rgba(11,13,12,.28) 0%, transparent 36%, rgba(11,13,12,.62) 100%);
+  transform: translate3d(0, calc(var(--hero-scroll-progress) * 36px), 0);
+  will-change: transform;
 }
 .hero-grid-lines {
   position: absolute;
-  inset: 0;
+  inset: -40px 0;
   z-index: 4;
   opacity: .16;
   pointer-events: none;
   background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg,var(--line) 1px,transparent 1px);
   background-size: 72px 72px;
   mask-image: linear-gradient(to bottom,#000,transparent 88%);
+  transform: translate3d(0, calc(var(--hero-scroll-progress) * 36px), 0);
+  will-change: transform;
 }
 
 .hero-status {
@@ -196,6 +205,8 @@ h1, h2, h3, p { letter-spacing: 0; }
   display: grid;
   align-items: center;
   min-height: min(680px, calc(100dvh - 200px));
+  transform: translate3d(0, calc(var(--hero-scroll-progress) * -64px), 0);
+  will-change: transform;
 }
 
 .hero-fore {
@@ -639,6 +650,11 @@ h1, h2, h3, p { letter-spacing: 0; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  .hero-depth,
+  .hero-depth-next,
+  .hero-bg-veil,
+  .hero-grid-lines,
+  .hero-stage { transform: translate3d(0,0,0) !important; }
 }
 
 @media (prefers-reduced-transparency: reduce) {
