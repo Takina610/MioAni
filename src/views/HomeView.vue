@@ -17,6 +17,7 @@ const copyIndex = ref(0)
 const isAnimating = ref(false)
 const isAutoplayPaused = ref(false)
 const pendingIndex = ref<number | null>(null)
+const POSTER_EXIT_SCALE = 0.28
 
 const heroRef = ref<HTMLElement | null>(null)
 const foreRef = ref<HTMLElement | null>(null)
@@ -386,6 +387,7 @@ async function goTo(index: number) {
 
   const heroBox = hero.getBoundingClientRect()
   const posterBox = poster.getBoundingClientRect()
+  const copyBox = outgoingCopy.getBoundingClientRect()
   const from = { left: 0, top: 0, width: heroBox.width, height: heroBox.height }
   const to = {
     left: posterBox.left - heroBox.left,
@@ -393,6 +395,15 @@ async function goTo(index: number) {
     width: posterBox.width,
     height: posterBox.height,
   }
+  const scaledPosterInset = posterBox.width * (1 - POSTER_EXIT_SCALE) / 2
+  const isStackedLayout = window.innerWidth <= 760
+  const exitGap = isStackedLayout
+    ? Math.max(16, Math.min(20, heroBox.width * 0.05))
+    : Math.max(16, Math.min(24, heroBox.width * 0.016))
+  const desiredPosterLeft = isStackedLayout
+    ? heroBox.left + exitGap
+    : copyBox.right + exitGap
+  const posterExitX = desiredPosterLeft - posterBox.left - scaledPosterInset
 
   // 两层 Bridge 使用相同图片和几何轨迹：Depth 保持后景质感，Focus 在后半程聚焦接管。
   bridgeImg.src = posterUrl
@@ -436,9 +447,9 @@ async function goTo(index: number) {
   const leave = gsap.timeline({ defaults: { ease: 'power2.inOut' } })
 
   leave.to(poster, {
-    xPercent: -48,
-    x: -60,
-    scale: 0.28,
+    xPercent: 0,
+    x: posterExitX,
+    scale: POSTER_EXIT_SCALE,
     duration: 0.78,
     ease: 'power2.inOut',
   }, 0)
