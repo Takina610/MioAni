@@ -369,7 +369,7 @@ async function goTo(index: number) {
     activeIndex.value = next
     await nextTick()
     resetCopyRevealTargets(outgoingCopy)
-    if (poster) gsap.set(poster, { clearProps: 'opacity,visibility,transform' })
+    if (poster) gsap.set(poster, { clearProps: 'opacity,visibility,transform,transformOrigin' })
     if (fore) gsap.set(fore, { clearProps: 'opacity,visibility,transform,zIndex' })
     hideBridgeLayers()
     await finishHeroTransition()
@@ -386,6 +386,7 @@ async function goTo(index: number) {
     upcoming ? loadImage(mediaOf(upcoming)) : Promise.resolve(),
   ])
 
+  gsap.set(poster, { clearProps: 'opacity,visibility,transform,transformOrigin' })
   const heroBox = hero.getBoundingClientRect()
   const posterBox = poster.getBoundingClientRect()
   const copyBox = outgoingCopy.getBoundingClientRect()
@@ -401,10 +402,12 @@ async function goTo(index: number) {
   const exitGap = isStackedLayout
     ? Math.max(16, Math.min(20, heroBox.width * 0.05))
     : Math.max(16, Math.min(24, heroBox.width * 0.016))
-  const desiredPosterLeft = isStackedLayout
+  const desiredPosterEdge = isStackedLayout
     ? heroBox.left + exitGap
-    : copyBox.right + exitGap
-  const posterExitX = desiredPosterLeft - posterBox.left - scaledPosterInset
+    : copyBox.left - exitGap
+  const posterExitX = isStackedLayout
+    ? desiredPosterEdge - posterBox.left - scaledPosterInset
+    : desiredPosterEdge - posterBox.right + scaledPosterInset
 
   // 两层 Bridge 使用相同图片和几何轨迹：Depth 保持后景质感，Focus 在后半程聚焦接管。
   bridgeImg.src = posterUrl
@@ -451,6 +454,7 @@ async function goTo(index: number) {
     xPercent: 0,
     x: posterExitX,
     scale: POSTER_EXIT_SCALE,
+    transformOrigin: '50% 50%',
     duration: 0.78,
     ease: 'power2.inOut',
   }, 0)
@@ -509,7 +513,7 @@ async function goTo(index: number) {
   const newFore = foreRef.value
   const newPoster = posterRef.value
 
-  if (newPoster) gsap.set(newPoster, { clearProps: 'opacity,visibility,transform' })
+  if (newPoster) gsap.set(newPoster, { clearProps: 'opacity,visibility,transform,transformOrigin' })
   if (newFore) gsap.set(newFore, { clearProps: 'opacity,visibility,transform,zIndex' })
   resetCopyRevealTargets()
 
