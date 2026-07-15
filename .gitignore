@@ -13,6 +13,7 @@ lerna-debug.log*
 .playwright-cli
 .superpowers
 .trellis
+.opencode
 
 # 构建、依赖、输出目录
 node_modules

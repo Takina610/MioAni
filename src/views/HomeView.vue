@@ -8,6 +8,36 @@ import ProgressRow from '../components/ProgressRow.vue'
 import { useCatalogStore } from '../stores/catalog'
 import { useLibraryStore } from '../stores/library'
 import type { Anime } from '../types/anime'
+import brandMark from '../assets/MioAni1.png'
+import brandLogo from '../assets/MioAni2.png'
+import mangaPanelHokusaiArchers from '../assets/manga-intro/panel-hokusai-archers.jpg'
+import mangaPanelHokusaiManga from '../assets/manga-intro/panel-hokusai-manga-04.jpg'
+import mangaPanelTokyoKenbutsu from '../assets/manga-intro/panel-tokyo-kenbutsu.jpg'
+
+type IntroVariant = 'signal' | 'manga'
+
+const INTRO_VARIANTS: readonly IntroVariant[] = ['signal', 'manga']
+const INTRO_COPY: Record<IntroVariant, readonly string[]> = {
+  signal: ['BOOTING VISUAL CORE', 'CONNECTING BANGUMI / ANILIST', 'INDEXING CURRENT SEASON', 'SIGNAL LOCKED'],
+  manga: ['INKING FRAME 01', 'CUTTING IMPACT PANELS', 'SYNCING KEY FRAMES', 'READY / IMPACT'],
+}
+const INTRO_WAIT_COPY = [
+  'VERIFYING REMOTE CATALOG',
+  'DECODING SEASON ARTWORK',
+  'SYNCING BANGUMI / ANILIST',
+  'STABILIZING VISUAL CHANNEL',
+] as const
+const INTRO_WAIT_PROGRESS_LIMIT = 98.4
+const INTRO_WAIT_STATUS_INTERVAL = 2200
+const SIGNAL_SHARD_ENTRY_X = [-82, 66, -26] as const
+const SIGNAL_SHARD_ENTRY_Y = [18, -36, 56] as const
+const SIGNAL_SHARD_ENTRY_ROTATION = [-12, 9, -4] as const
+// Public-domain manga artwork downloaded from Wikimedia Commons so the intro never waits on the catalog API.
+const MANGA_INTRO_PANELS = [
+  { src: mangaPanelHokusaiManga, label: 'HOKUSAI / YUREI' },
+  { src: mangaPanelTokyoKenbutsu, label: 'KITAZAWA / TOKYO KENBUTSU' },
+  { src: mangaPanelHokusaiArchers, label: 'HOKUSAI / KYUJUTSU' },
+] as const
 
 const catalog = useCatalogStore()
 const library = useLibraryStore()
@@ -18,6 +48,23 @@ const isAnimating = ref(false)
 const isAutoplayPaused = ref(false)
 const pendingIndex = ref<number | null>(null)
 const POSTER_EXIT_SCALE = 0.28
+const IMAGE_READY_TIMEOUT = 8000
+
+const introVisible = ref(true)
+const introVariant = ref<IntroVariant>('signal')
+const introStatus = ref(INTRO_COPY.signal[0])
+const introEntryDone = ref(false)
+const introIsFinishing = ref(false)
+const introWaiting = ref(false)
+const introRootRef = ref<HTMLElement | null>(null)
+const introProgressBarRef = ref<HTMLElement | null>(null)
+const introPercentRef = ref<HTMLOutputElement | null>(null)
+let introTimeline: gsap.core.Timeline | null = null
+let introContext: gsap.Context | null = null
+let introWaitingTween: gsap.core.Tween | null = null
+let introWaitingStatusTimer: number | null = null
+let introWaitingStatusIndex = 0
+let introGeneration = 0
 
 const heroRef = ref<HTMLElement | null>(null)
 const foreRef = ref<HTMLElement | null>(null)
@@ -53,6 +100,338 @@ const quarter = computed(() => {
   const date = new Date()
   return `${date.getFullYear()} Q${Math.floor(date.getMonth() / 3) + 1}`
 })
+
+function chooseRandomIntroVariant(): IntroVariant {
+  return Math.random() < 0.5 ? 'signal' : 'manga'
+}
+
+function setIntroDocumentState(active: boolean) {
+  document.body.classList.toggle('intro-active', active)
+  const shell = document.querySelector<HTMLElement>('.app-shell')
+  if (shell) shell.inert = active
+}
+
+function focusIntroVariantControl() {
+  introRootRef.value
+    ?.querySelector<HTMLButtonElement>('.intro-variant-switch button.active')
+    ?.focus({ preventScroll: true })
+}
+
+function restoreIntroTriggerFocus() {
+  document
+    .querySelector<HTMLButtonElement>('.intro-lab button.active')
+    ?.focus({ preventScroll: true })
+}
+
+function updateIntroProgress(value: number) {
+  const progress = Math.max(0, Math.min(100, value))
+  if (introProgressBarRef.value) {
+    introProgressBarRef.value.dataset.progress = String(progress)
+    gsap.set(introProgressBarRef.value, { scaleX: progress / 100 })
+  }
+  if (introPercentRef.value) {
+    introPercentRef.value.value = `${Math.round(progress).toString().padStart(3, '0')}%`
+  }
+}
+
+function addIntroProgressTween(
+  timeline: gsap.core.Timeline,
+  target: number,
+  position: number | string,
+  duration: number,
+) {
+  const progress = {
+    value: Number(introProgressBarRef.value?.dataset.progress || 0),
+  }
+  timeline.to(progress, {
+    value: target,
+    duration,
+    ease: 'power2.out',
+    onUpdate: () => updateIntroProgress(progress.value),
+  }, position)
+}
+
+function setIntroStatus(step: number) {
+  introStatus.value = INTRO_COPY[introVariant.value][step] || INTRO_COPY[introVariant.value][0]
+}
+
+function stopIntroWaitingState() {
+  introWaiting.value = false
+  introWaitingTween?.kill()
+  introWaitingTween = null
+  if (introWaitingStatusTimer !== null) {
+    window.clearInterval(introWaitingStatusTimer)
+    introWaitingStatusTimer = null
+  }
+  introWaitingStatusIndex = 0
+}
+
+function scheduleIntroWaitingProgress(generation: number) {
+  if (
+    generation !== introGeneration
+    || !introWaiting.value
+    || catalog.loaded
+    || introIsFinishing.value
+  ) return
+
+  const current = Number(introProgressBarRef.value?.dataset.progress || 84)
+  const remaining = Math.max(0, INTRO_WAIT_PROGRESS_LIMIT - current)
+  const target = Math.min(
+    INTRO_WAIT_PROGRESS_LIMIT,
+    current + Math.max(0.08, remaining * 0.18),
+  )
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    updateIntroProgress(target)
+    introWaitingTween = gsap.delayedCall(1.4, () => scheduleIntroWaitingProgress(generation))
+    return
+  }
+
+  const progress = { value: current }
+  introWaitingTween = gsap.to(progress, {
+    value: target,
+    duration: 1.2,
+    delay: 0.18,
+    ease: 'sine.inOut',
+    onUpdate: () => updateIntroProgress(progress.value),
+    onComplete: () => {
+      introWaitingTween = null
+      scheduleIntroWaitingProgress(generation)
+    },
+  })
+}
+
+function startIntroWaitingState(generation: number) {
+  if (
+    generation !== introGeneration
+    || introWaiting.value
+    || catalog.loaded
+    || introIsFinishing.value
+  ) return
+
+  introWaiting.value = true
+  introWaitingStatusIndex = 0
+  const rotateStatus = () => {
+    if (generation !== introGeneration || !introWaiting.value || catalog.loaded) return
+    introStatus.value = INTRO_WAIT_COPY[introWaitingStatusIndex % INTRO_WAIT_COPY.length]
+    introWaitingStatusIndex += 1
+  }
+  rotateStatus()
+  introWaitingStatusTimer = window.setInterval(rotateStatus, INTRO_WAIT_STATUS_INTERVAL)
+  scheduleIntroWaitingProgress(generation)
+}
+
+function createSignalEntryTimeline(generation: number) {
+  const timeline = gsap.timeline({
+    defaults: { ease: 'power3.out' },
+    onComplete: () => markIntroEntryDone(generation),
+  })
+  timeline
+    .fromTo('.signal-grid', { autoAlpha: 0, scale: 1.12 }, { autoAlpha: 0.72, scale: 1, duration: 1.1 }, 0)
+    .fromTo('.signal-axis', { scaleX: 0 }, { scaleX: 1, duration: 0.72, stagger: 0.09 }, 0.08)
+    .fromTo('.signal-orbit', { autoAlpha: 0, scale: 0.45, rotate: -110 }, { autoAlpha: 1, scale: 1, rotate: 0, duration: 1.15, stagger: 0.08 }, 0.18)
+    .fromTo('.signal-shard', {
+      autoAlpha: 0,
+      xPercent: (index) => SIGNAL_SHARD_ENTRY_X[index] ?? 0,
+      yPercent: (index) => SIGNAL_SHARD_ENTRY_Y[index] ?? 0,
+      rotate: (index) => SIGNAL_SHARD_ENTRY_ROTATION[index] ?? 0,
+      filter: 'blur(14px) brightness(2)',
+    }, {
+      autoAlpha: 1,
+      xPercent: 0,
+      yPercent: 0,
+      rotate: 0,
+      filter: 'blur(0px) brightness(1)',
+      duration: 0.9,
+      stagger: 0.08,
+    }, 0.48)
+    .fromTo('.signal-lock', { scale: 1.7, autoAlpha: 0 }, { scale: 1, autoAlpha: 1, duration: 0.46 }, 1.12)
+    .fromTo('.intro-signal .intro-scene-copy > *', { y: 24, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.62, stagger: 0.08 }, 1.08)
+    .fromTo('.signal-scan', { yPercent: -120, autoAlpha: 0 }, { yPercent: 140, autoAlpha: 0.9, duration: 1.35, ease: 'power1.inOut' }, 0.34)
+    .call(() => setIntroStatus(1), [], 0.82)
+    .call(() => setIntroStatus(2), [], 1.72)
+  addIntroProgressTween(timeline, 84, 0.14, 2.65)
+  return timeline
+}
+
+function createMangaEntryTimeline(generation: number) {
+  const timeline = gsap.timeline({
+    defaults: { ease: 'expo.out' },
+    onComplete: () => markIntroEntryDone(generation),
+  })
+  timeline
+    .fromTo('.manga-speedlines', { autoAlpha: 0, scale: 1.4 }, { autoAlpha: 0.72, scale: 1, duration: 0.52 }, 0)
+    .fromTo('.manga-panel', {
+      autoAlpha: 0,
+      xPercent: (index) => [-120, 0, 120][index] || 0,
+      yPercent: (index) => [18, -100, 24][index] || 0,
+      rotate: (index) => [-8, 4, 7][index] || 0,
+      scale: 1.12,
+    }, {
+      autoAlpha: 1,
+      xPercent: 0,
+      yPercent: 0,
+      rotate: 0,
+      scale: 1,
+      duration: 0.72,
+      stagger: 0.09,
+    }, 0.18)
+    .fromTo('.manga-impact-word span', { xPercent: -120, skewX: -18 }, { xPercent: 0, skewX: 0, duration: 0.55 }, 0.68)
+    .fromTo('.manga-impact-word strong', { xPercent: 120, skewX: 18 }, { xPercent: 0, skewX: 0, duration: 0.55 }, 0.72)
+    .fromTo('.manga-slash', { scaleX: 0, autoAlpha: 0 }, { scaleX: 1, autoAlpha: 1, duration: 0.48 }, 1.08)
+    .fromTo('.intro-manga .intro-scene-copy', { y: 22, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.5 }, 1.26)
+    .call(() => setIntroStatus(1), [], 0.66)
+    .call(() => setIntroStatus(2), [], 1.52)
+  addIntroProgressTween(timeline, 84, 0.08, 2.45)
+  return timeline
+}
+
+function createIntroEntryTimeline(variant: IntroVariant, generation: number) {
+  if (variant === 'manga') return createMangaEntryTimeline(generation)
+  return createSignalEntryTimeline(generation)
+}
+
+function createIntroFinishTimeline(variant: IntroVariant, generation: number) {
+  const root = introRootRef.value
+  const timeline = gsap.timeline({
+    defaults: { ease: 'power3.inOut' },
+    onComplete: () => {
+      if (generation !== introGeneration) return
+      introVisible.value = false
+      introIsFinishing.value = false
+      setIntroDocumentState(false)
+      void nextTick(restoreIntroTriggerFocus)
+    },
+  })
+  setIntroStatus(3)
+  addIntroProgressTween(timeline, 100, 0, 0.42)
+
+  if (variant === 'signal') {
+    timeline
+      .to('.intro-signal .intro-scene-copy > *', {
+        y: 24,
+        autoAlpha: 0,
+        duration: 0.38,
+        stagger: { each: 0.06, from: 'end' },
+      }, 0.04)
+      .to('.signal-scan', {
+        yPercent: -120,
+        autoAlpha: 0,
+        duration: 0.65,
+        ease: 'power1.inOut',
+      }, 0.18)
+      .to('.signal-lock', { scale: 1.7, autoAlpha: 0, duration: 0.32 }, 0.28)
+      .to('.signal-shard', {
+        autoAlpha: 0,
+        xPercent: (index) => SIGNAL_SHARD_ENTRY_X[index] ?? 0,
+        yPercent: (index) => SIGNAL_SHARD_ENTRY_Y[index] ?? 0,
+        rotate: (index) => SIGNAL_SHARD_ENTRY_ROTATION[index] ?? 0,
+        filter: 'blur(14px) brightness(2)',
+        duration: 0.62,
+        stagger: { each: 0.08, from: 'end' },
+      }, 0.42)
+      .to('.signal-orbit', {
+        autoAlpha: 0,
+        scale: 0.45,
+        rotate: -110,
+        duration: 0.72,
+        stagger: { each: 0.08, from: 'end' },
+      }, 0.46)
+      .to('.signal-axis', {
+        scaleX: 0,
+        duration: 0.52,
+        stagger: { each: 0.09, from: 'end' },
+      }, 0.86)
+      .to('.signal-grid', { autoAlpha: 0, scale: 1.12, duration: 0.58 }, 0.96)
+      .to('.intro-hud, .intro-telemetry', { autoAlpha: 0, duration: 0.32 }, 1.02)
+      .to(root, { autoAlpha: 0, duration: 0.18 }, 1.48)
+  } else {
+    timeline
+      .to('.manga-panel', {
+        xPercent: (index) => [-145, 0, 145][index] || 0,
+        yPercent: (index) => [25, -150, 28][index] || 0,
+        rotate: (index) => [-10, 5, 10][index] || 0,
+        duration: 0.66,
+        stagger: 0.035,
+      }, 0.32)
+      .to('.manga-impact-word span', { xPercent: -130, duration: 0.48 }, 0.38)
+      .to('.manga-impact-word strong', { xPercent: 130, duration: 0.48 }, 0.38)
+      .to('.manga-slash', {
+        filter: 'brightness(1.65)',
+        boxShadow: '0 0 90px rgba(184,240,95,.72)',
+        duration: 0.1,
+        yoyo: true,
+        repeat: 1,
+      }, 0.62)
+      .to(root, { autoAlpha: 0, scale: 1.04, duration: 0.34 }, 0.78)
+  }
+  return timeline
+}
+
+function markIntroEntryDone(generation: number) {
+  if (generation !== introGeneration) return
+  introEntryDone.value = true
+  if (!catalog.loaded) startIntroWaitingState(generation)
+  void maybeFinishIntro(generation)
+}
+
+async function maybeFinishIntro(generation: number) {
+  if (
+    generation !== introGeneration
+    || !introVisible.value
+    || !introEntryDone.value
+    || !catalog.loaded
+    || introIsFinishing.value
+  ) return
+
+  introIsFinishing.value = true
+  stopIntroWaitingState()
+  await nextTick()
+  if (generation !== introGeneration || !introRootRef.value) return
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    setIntroStatus(3)
+    updateIntroProgress(100)
+    introVisible.value = false
+    introIsFinishing.value = false
+    setIntroDocumentState(false)
+    await nextTick()
+    restoreIntroTriggerFocus()
+    return
+  }
+
+  introTimeline = createIntroFinishTimeline(introVariant.value, generation)
+}
+
+async function playIntroVariant(variant: IntroVariant) {
+  const generation = ++introGeneration
+  stopIntroWaitingState()
+  introTimeline?.kill()
+  introContext?.revert()
+  introContext = null
+  introTimeline = null
+  introVariant.value = variant
+  introStatus.value = INTRO_COPY[variant][0]
+  introEntryDone.value = false
+  introIsFinishing.value = false
+  introVisible.value = true
+  setIntroDocumentState(true)
+
+  await nextTick()
+  if (generation !== introGeneration || !introRootRef.value) return
+  updateIntroProgress(0)
+  focusIntroVariantControl()
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    updateIntroProgress(84)
+    markIntroEntryDone(generation)
+    return
+  }
+
+  introContext = gsap.context(() => {
+    introTimeline = createIntroEntryTimeline(variant, generation)
+  }, introRootRef.value)
+}
 
 function mediaOf(anime: Anime | null | undefined) {
   if (!anime) return ''
@@ -94,36 +473,42 @@ function play(tl: gsap.core.Timeline) {
   })
 }
 
-function loadImage(src: string) {
-  return new Promise<void>((resolve) => {
-    if (!src) {
-      resolve()
-      return
-    }
-    const img = new Image()
-    const done = () => resolve()
-    img.onload = done
-    img.onerror = done
-    img.src = src
-    if (img.complete) resolve()
-  })
+async function loadImage(src: string, timeout = IMAGE_READY_TIMEOUT) {
+  if (!src) return false
+  const img = new Image()
+  img.decoding = 'async'
+  const ready = waitImg(img, timeout)
+  img.src = src
+  return ready
 }
 
 async function waitImg(el: HTMLImageElement | null | undefined, timeout = 800) {
-  if (!el) return
-  if (el.complete && el.naturalWidth > 0) return
-  await Promise.race([
-    new Promise<void>((resolve) => {
-      const done = () => {
-        el.removeEventListener('load', done)
-        el.removeEventListener('error', done)
-        resolve()
-      }
-      el.addEventListener('load', done)
-      el.addEventListener('error', done)
-    }),
-    wait(timeout),
-  ])
+  if (!el) return false
+  if (!el.complete || el.naturalWidth <= 0) {
+    await Promise.race([
+      new Promise<void>((resolve) => {
+        const done = () => {
+          el.removeEventListener('load', done)
+          el.removeEventListener('error', done)
+          resolve()
+        }
+        el.addEventListener('load', done)
+        el.addEventListener('error', done)
+      }),
+      wait(timeout),
+    ])
+  }
+
+  if (!el.complete || el.naturalWidth <= 0) return false
+  if (typeof el.decode === 'function') {
+    const decoded = await Promise.race([
+      el.decode().then(() => true).catch(() => el.naturalWidth > 0),
+      wait(timeout).then(() => false),
+    ])
+    if (!decoded) return false
+  }
+
+  return el.complete && el.naturalWidth > 0
 }
 
 function hideBridgeLayers() {
@@ -301,12 +686,11 @@ function handleVisibilityChange() {
   }
 }
 
-function crossfadeAmbient(url: string): gsap.core.Timeline {
+function crossfadeAmbient(url: string, ready: boolean): gsap.core.Timeline {
   const a = ambientARef.value
   const b = ambientBRef.value
-  if (!a || !b || !url) return gsap.timeline()
+  if (!a || !b || !url || !ready) return gsap.timeline()
 
-  void loadImage(url)
   const showB = ambientActive.value === 'a'
   const incoming = showB ? b : a
   const outgoing = showB ? a : b
@@ -325,7 +709,7 @@ function crossfadeAmbient(url: string): gsap.core.Timeline {
 }
 
 /** 预换 Next Layer 为新的 Upcoming；返回可并入 Leave 的时间轴（同步，不 await） */
-function prepareNextLayer(nextAnime: Anime | null): gsap.core.Timeline | null {
+function prepareNextLayer(nextAnime: Anime | null, ready: boolean): gsap.core.Timeline | null {
   const layer = nextLayerRef.value
   const img = nextImgRef.value
   if (!layer || !img) return null
@@ -335,7 +719,10 @@ function prepareNextLayer(nextAnime: Anime | null): gsap.core.Timeline | null {
   }
 
   const url = mediaOf(nextAnime)
-  void loadImage(url)
+  if (!ready) {
+    gsap.set(layer, { autoAlpha: 0 })
+    return null
+  }
   img.src = url
 
   gsap.set(layer, { autoAlpha: 0 })
@@ -386,11 +773,15 @@ async function goTo(index: number) {
   const ambientUrl = mediaOf(target)
   const upcoming = slides.value[(next + 1) % slides.value.length] || null
 
-  void Promise.all([
+  const [posterReady, ambientReady, upcomingReady] = await Promise.all([
     loadImage(posterUrl),
     loadImage(ambientUrl),
-    upcoming ? loadImage(mediaOf(upcoming)) : Promise.resolve(),
+    upcoming ? loadImage(mediaOf(upcoming)) : Promise.resolve(false),
   ])
+  if (!posterReady) {
+    await finishHeroTransition()
+    return
+  }
 
   gsap.set(poster, { clearProps: 'opacity,visibility,transform,transformOrigin' })
   const heroBox = hero.getBoundingClientRect()
@@ -433,6 +824,15 @@ async function goTo(index: number) {
   // 两层 Bridge 使用相同图片和几何轨迹：Depth 保持后景质感，Focus 在后半程聚焦接管。
   bridgeImg.src = posterUrl
   focusBridgeImg.src = posterUrl
+  const bridgeImagesReady = await Promise.all([
+    waitImg(bridgeImg, IMAGE_READY_TIMEOUT),
+    waitImg(focusBridgeImg, IMAGE_READY_TIMEOUT),
+  ])
+  if (bridgeImagesReady.some((ready) => !ready)) {
+    hideBridgeLayers()
+    await finishHeroTransition()
+    return
+  }
   const bridgeStart = {
     left: from.left,
     top: from.top,
@@ -465,8 +865,8 @@ async function goTo(index: number) {
   // 先铺好与后景同几何的 bridge，再藏 next layer，避免“先跳再收束”。
   if (nextLayer) gsap.set(nextLayer, { autoAlpha: 0 })
 
-  const nextSwapTl = prepareNextLayer(upcoming)
-  const ambientTl = crossfadeAmbient(ambientUrl)
+  const nextSwapTl = prepareNextLayer(upcoming, upcomingReady)
+  const ambientTl = crossfadeAmbient(ambientUrl, ambientReady)
 
   const leave = gsap.timeline({ defaults: { ease: 'power2.inOut' } })
 
@@ -534,6 +934,7 @@ async function goTo(index: number) {
   if (posterImg && posterImg.src !== posterUrl && !posterImg.src.endsWith(posterUrl)) {
     posterImg.src = posterUrl
   }
+  await waitImg(posterImg, IMAGE_READY_TIMEOUT)
 
   const newFore = foreRef.value
   const newPoster = posterRef.value
@@ -567,10 +968,9 @@ function initNextLayer() {
   if (!layer || !img || !anime) return
   const url = mediaOf(anime)
   img.src = url
-  // 不阻塞：有缓存立刻显示；加载完再确保可见
-  gsap.set(layer, { autoAlpha: 1, clearProps: 'filter' })
-  void waitImg(img, 1200).then(() => {
-    gsap.set(layer, { autoAlpha: 1 })
+  gsap.set(layer, { autoAlpha: 0, clearProps: 'filter' })
+  void waitImg(img, IMAGE_READY_TIMEOUT).then((ready) => {
+    gsap.set(layer, { autoAlpha: ready ? 1 : 0 })
   })
 }
 
@@ -596,8 +996,19 @@ watch(feature, (f) => {
   })
 })
 
+watch(() => catalog.loaded, (loaded) => {
+  if (loaded) void maybeFinishIntro(introGeneration)
+})
+
 onMounted(() => {
+  const shouldPlayIntro = !catalog.loaded
+  const randomIntroVariant = chooseRandomIntroVariant()
   catalog.load()
+  if (shouldPlayIntro) {
+    void playIntroVariant(randomIntroVariant)
+  } else {
+    introVisible.value = false
+  }
   hideBridgeLayers()
   reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
   reducedMotionQuery.addEventListener('change', scheduleHeroParallax)
@@ -616,6 +1027,13 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  introGeneration += 1
+  stopIntroWaitingState()
+  introTimeline?.kill()
+  introContext?.revert()
+  introTimeline = null
+  introContext = null
+  setIntroDocumentState(false)
   stopAutoplayProgress(true)
   window.removeEventListener('scroll', scheduleHeroParallax)
   window.removeEventListener('resize', scheduleHeroParallax)
@@ -631,7 +1049,98 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="page home-page">
+  <div class="home-view-root">
+    <Teleport to="body">
+      <section
+      v-if="introVisible"
+      ref="introRootRef"
+      class="intro-overlay"
+      :class="[`intro-${introVariant}`, { 'intro-is-waiting': introWaiting }]"
+      role="dialog"
+      aria-modal="true"
+      aria-label="MioAni 开屏动画效果预览"
+    >
+      <header class="intro-hud">
+        <div class="intro-node-label">
+          <span>MIO / VISUAL NODE</span>
+          <small>{{ quarter }}</small>
+        </div>
+        <div class="intro-variant-switch" role="group" aria-label="切换开屏动画效果">
+          <button
+            v-for="variant in INTRO_VARIANTS"
+            :key="variant"
+            type="button"
+            :class="{ active: introVariant === variant }"
+            :aria-pressed="introVariant === variant"
+            @click="playIntroVariant(variant)"
+          >
+            <b>{{ variant === 'signal' ? 'A' : 'B' }}</b>
+            <span>{{ variant === 'signal' ? '信号' : '漫画' }}</span>
+          </button>
+        </div>
+      </header>
+
+      <div v-if="introVariant === 'signal'" class="intro-scene intro-signal" aria-hidden="true">
+        <div class="signal-grid"></div>
+        <div class="signal-scan"></div>
+        <div class="signal-axis signal-axis--horizontal"></div>
+        <div class="signal-axis signal-axis--vertical"></div>
+        <div class="signal-core">
+          <span class="signal-orbit signal-orbit--outer"></span>
+          <span class="signal-orbit signal-orbit--inner"></span>
+          <span class="signal-orbit signal-orbit--dash"></span>
+          <div class="signal-shards">
+            <img v-for="index in 3" :key="index" :src="brandMark" :class="`signal-shard signal-shard--${index}`" alt="" />
+          </div>
+          <span class="signal-lock"></span>
+        </div>
+        <div class="intro-scene-copy">
+          <p>SEASONAL DATABASE / LIVE</p>
+          <img :src="brandLogo" alt="" />
+          <strong>FOLLOW YOUR SEASON</strong>
+        </div>
+      </div>
+
+      <div v-else class="intro-scene intro-manga" aria-hidden="true">
+        <div class="manga-speedlines"></div>
+        <div class="manga-panel-grid">
+          <article v-for="(item, index) in MANGA_INTRO_PANELS" :key="item.src" :class="`manga-panel manga-panel--${index + 1}`">
+            <img :src="item.src" alt="" decoding="sync" fetchpriority="high" />
+            <span>{{ item.label }}</span>
+          </article>
+        </div>
+        <div class="manga-impact-word"><span>MIO</span><strong>ANI</strong></div>
+        <div class="manga-slash"></div>
+        <div class="intro-scene-copy">
+          <p>SEASON CUT / IMPACT SYNC</p>
+          <strong>每一帧，都在等待开场。</strong>
+        </div>
+      </div>
+
+      <footer class="intro-telemetry" aria-live="polite">
+        <div>
+          <span>{{ introStatus }}</span>
+          <small>{{ catalog.loaded ? 'DATA CHANNEL READY' : 'AWAITING REMOTE CATALOG' }}</small>
+        </div>
+        <div class="intro-progress" aria-hidden="true"><i ref="introProgressBarRef"></i></div>
+        <output ref="introPercentRef">000%</output>
+      </footer>
+      </section>
+    </Teleport>
+
+    <div class="page home-page">
+    <aside v-if="!introVisible" class="intro-lab" aria-label="开屏动画效果实验室">
+      <span>OPENING FX</span>
+      <button
+        v-for="variant in INTRO_VARIANTS"
+        :key="variant"
+        type="button"
+        :class="{ active: introVariant === variant }"
+        :aria-label="`播放方案 ${variant === 'signal' ? 'A 信号启动' : 'B 漫画冲击'}`"
+        @click="playIntroVariant(variant)"
+      >{{ variant === 'signal' ? 'A' : 'B' }}</button>
+    </aside>
+
     <section v-if="catalog.loading && !feature" class="home-loading" aria-label="正在加载真实番剧数据">
       <div class="loading-copy"><span></span><i></i><i></i><i></i></div><div class="loading-poster"></div>
     </section>
@@ -788,5 +1297,6 @@ onUnmounted(() => {
         <div><PhPlay :size="20" weight="fill" /><span>BUILD YOUR OWN QUEUE</span></div><h2>不跟着热度走。<br />只留下你想看的。</h2><RouterLink to="/library">进入我的追番库<PhArrowRight :size="18" /></RouterLink>
       </section>
     </template>
+    </div>
   </div>
 </template>
