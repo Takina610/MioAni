@@ -49,45 +49,24 @@ function setRevealOriginFromRect(rect: { top: number; left: number; width: numbe
 }
 
 /** Soft radial wipe from click point (no harsh hard-edge circle). */
-const FLY_EASE = 'cubic-bezier(.22,1,.36,1)'
-const FLY_IN_MS = 720
-const FLY_OUT_MS = 640
-const REVEAL_IN = `opacity ${FLY_IN_MS}ms ${FLY_EASE}, transform ${FLY_IN_MS}ms ${FLY_EASE}`
-const REVEAL_OUT = `opacity ${FLY_OUT_MS}ms ${FLY_EASE}, transform ${FLY_OUT_MS}ms ${FLY_EASE}`
-const FLY_IN = `top ${FLY_IN_MS}ms ${FLY_EASE}, left ${FLY_IN_MS}ms ${FLY_EASE}, width ${FLY_IN_MS}ms ${FLY_EASE}, height ${FLY_IN_MS}ms ${FLY_EASE}, border-radius ${FLY_IN_MS}ms ${FLY_EASE}, opacity .35s ease`
-const FLY_OUT = `top ${FLY_OUT_MS}ms ${FLY_EASE}, left ${FLY_OUT_MS}ms ${FLY_EASE}, width ${FLY_OUT_MS}ms ${FLY_EASE}, height ${FLY_OUT_MS}ms ${FLY_EASE}, border-radius ${FLY_OUT_MS}ms ${FLY_EASE}, opacity .3s ease`
-
 function applySurfaceReveal(open: boolean, withTransition: boolean) {
   const el = surfaceRef.value
   if (!el) return
   const { x, y } = revealOrigin.value
   el.style.setProperty('--reveal-x', `${x}%`)
   el.style.setProperty('--reveal-y', `${y}%`)
-  el.style.transition = withTransition ? (open ? REVEAL_IN : REVEAL_OUT) : 'none'
-  // Soft mask + scale (no harsh circle edge)
-  el.style.webkitMaskImage = open
-    ? `radial-gradient(circle at ${x}% ${y}%, #000 0%, #000 72%, transparent 100%)`
-    : `radial-gradient(circle at ${x}% ${y}%, #000 0%, transparent 0%)`
-  el.style.maskImage = el.style.webkitMaskImage
+  el.style.transition = withTransition
+    ? 'opacity .42s cubic-bezier(.22,1,.36,1), transform .5s cubic-bezier(.22,1,.36,1), clip-path .55s cubic-bezier(.22,1,.36,1)'
+    : 'none'
   if (open) {
     el.style.opacity = '1'
     el.style.transform = 'scale(1)'
+    el.style.clipPath = `circle(160% at ${x}% ${y}%)`
   } else {
     el.style.opacity = '0'
-    el.style.transform = 'scale(.97)'
+    el.style.transform = 'scale(.985)'
+    el.style.clipPath = `circle(0% at ${x}% ${y}%)`
   }
-}
-
-/** Measure real slot after surface is laid out full-size (may be invisible). */
-function measureSlotRect() {
-  const slot = posterSlotRef.value
-  if (slot) {
-    const r = slot.getBoundingClientRect()
-    if (r.width > 8 && r.height > 8) {
-      return { top: r.top, left: r.left, width: r.width, height: r.height }
-    }
-  }
-  return getTargetPosterRect()
 }
 
 const display = computed(() => store.detail || store.seed)
@@ -196,34 +175,33 @@ async function runExpand() {
     return
   }
 
-  // 1) Place flyer at card origin (no transition)
-  const start = origin || getTargetPosterRect()
+  // Lock destination once from viewport math (no mid-animation remeasure).
+  const target = getTargetPosterRect()
+  const start = origin || target
   setFlyerRect(start, 12, null)
   flyer.style.opacity = origin ? '1' : '0'
   flyer.style.visibility = 'visible'
   flush(flyer)
   if (surfaceRef.value) flush(surfaceRef.value)
 
-  // 2) Wait two frames so surface layout (invisible) is ready, measure REAL slot once.
+  // Double rAF: paint start, then open surface + fly poster in one continuous motion.
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       if (closing) return
-      const target = measureSlotRect()
-      // 3) Animate surface open + flyer to measured slot (single continuous flight)
       applySurfaceReveal(true, true)
-      setFlyerRect(target, 14, FLY_IN)
+      const ease = 'top .52s cubic-bezier(.22,1,.36,1), left .52s cubic-bezier(.22,1,.36,1), width .52s cubic-bezier(.22,1,.36,1), height .52s cubic-bezier(.22,1,.36,1), border-radius .52s cubic-bezier(.22,1,.36,1), opacity .28s ease'
+      setFlyerRect(target, 14, ease)
       flyer.style.opacity = '1'
       store.phase = 'open'
 
       if (animTimer) clearTimeout(animTimer)
       animTimer = setTimeout(() => {
         if (closing) return
-        // Handoff only — never remeasure after flight (avoids bounce)
         settled.value = true
         contentReady.value = true
         flyer.style.visibility = 'hidden'
         flyer.style.transition = 'none'
-      }, FLY_IN_MS)
+      }, 520)
     })
   })
 }
@@ -238,12 +216,12 @@ async function closeOverlay() {
   const origin = store.originRect
   setRevealOriginFromRect(origin)
 
-  // Measure current in-flow poster before hiding it.
-  const from = measureSlotRect()
+  // Capture start from stable target (same math as expand), not a shifting layout.
+  const from = getTargetPosterRect()
   settled.value = false
   await nextTick()
 
-  // Keep surface fully open one frame, then reverse to click origin.
+  // Keep surface open one frame, then reverse reveal to click origin.
   applySurfaceReveal(true, false)
   if (surfaceRef.value) flush(surfaceRef.value)
 
@@ -256,10 +234,11 @@ async function closeOverlay() {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         applySurfaceReveal(false, true)
+        const ease = 'top .46s cubic-bezier(.22,1,.36,1), left .46s cubic-bezier(.22,1,.36,1), width .46s cubic-bezier(.22,1,.36,1), height .46s cubic-bezier(.22,1,.36,1), border-radius .46s cubic-bezier(.22,1,.36,1), opacity .24s ease'
         if (origin) {
-          setFlyerRect(origin, 12, FLY_OUT)
+          setFlyerRect(origin, 12, ease)
         } else {
-          flyer.style.transition = 'opacity .35s ease'
+          flyer.style.transition = 'opacity .3s ease'
           flyer.style.opacity = '0'
         }
       })
@@ -282,7 +261,7 @@ async function closeOverlay() {
     if (shouldNavigate && router.currentRoute.value.name === 'anime-detail') {
       await router.push(back)
     }
-  }, FLY_OUT_MS + 40)
+  }, 480)
 }
 
 watch(
