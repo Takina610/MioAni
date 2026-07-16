@@ -4,15 +4,14 @@ import { RouterLink } from 'vue-router'
 import gsap from 'gsap'
 import { PhArrowRight, PhPause, PhPlay, PhSparkle, PhWarningCircle } from '@phosphor-icons/vue'
 import AnimeCard from '../components/AnimeCard.vue'
-import ProgressRow from '../components/ProgressRow.vue'
 import { useCatalogStore } from '../stores/catalog'
 import { useLibraryStore } from '../stores/library'
 import type { Anime } from '../types/anime'
 import brandMark from '../assets/MioAni1.png'
 import brandLogo from '../assets/MioAni2.png'
-import mangaPanelHokusaiArchers from '../assets/manga-intro/panel-hokusai-archers.jpg'
-import mangaPanelHokusaiManga from '../assets/manga-intro/panel-hokusai-manga-04.jpg'
-import mangaPanelTokyoKenbutsu from '../assets/manga-intro/panel-tokyo-kenbutsu.jpg'
+import mangaPanelAnimePortrait from '../assets/manga-intro/panel-anime-portrait.png'
+import mangaPanelAnimeBeach from '../assets/manga-intro/panel-anime-beach.jpg'
+import mangaPanelMangaFigure from '../assets/manga-intro/panel-manga-figure.jpg'
 
 type IntroVariant = 'signal' | 'manga'
 
@@ -32,16 +31,20 @@ const INTRO_WAIT_STATUS_INTERVAL = 2200
 const SIGNAL_SHARD_ENTRY_X = [-82, 66, -26] as const
 const SIGNAL_SHARD_ENTRY_Y = [18, -36, 56] as const
 const SIGNAL_SHARD_ENTRY_ROTATION = [-12, 9, -4] as const
-// Public-domain manga artwork downloaded from Wikimedia Commons so the intro never waits on the catalog API.
+// Free anime/manga-style panels from Wikimedia Commons (CC BY-SA) so the intro never waits on the catalog API.
 const MANGA_INTRO_PANELS = [
-  { src: mangaPanelHokusaiManga, label: 'HOKUSAI / YUREI' },
-  { src: mangaPanelTokyoKenbutsu, label: 'KITAZAWA / TOKYO KENBUTSU' },
-  { src: mangaPanelHokusaiArchers, label: 'HOKUSAI / KYUJUTSU' },
+  { src: mangaPanelAnimePortrait, label: 'ANIME / PORTRAIT' },
+  { src: mangaPanelAnimeBeach, label: 'ANIME / SUMMER FRAME' },
+  { src: mangaPanelMangaFigure, label: 'MANGA / FIGURE' },
+] as const
+const INTRO_CRITICAL_ASSETS = [
+  brandLogo,
+  brandMark,
+  ...MANGA_INTRO_PANELS.map((item) => item.src),
 ] as const
 
 const catalog = useCatalogStore()
 const library = useLibraryStore()
-const activeTab = ref<'hot' | 'all'>('hot')
 const activeIndex = ref(0)
 const copyIndex = ref(0)
 const isAnimating = ref(false)
@@ -49,6 +52,8 @@ const isAutoplayPaused = ref(false)
 const pendingIndex = ref<number | null>(null)
 const POSTER_EXIT_SCALE = 0.28
 const IMAGE_READY_TIMEOUT = 8000
+const INTRO_ASSET_TIMEOUT = 4500
+let introAssetsPromise: Promise<boolean[]> | null = null
 
 const introVisible = ref(true)
 const introVariant = ref<IntroVariant>('signal')
@@ -94,8 +99,7 @@ const nextFeature = computed(() => {
   if (list.length < 2) return null
   return list[(activeIndex.value + 1) % list.length]
 })
-const hotAnime = computed(() => catalog.seasonal.slice(0, 10))
-const directory = computed(() => activeTab.value === 'hot' ? hotAnime.value : catalog.seasonal)
+const hotAnime = computed(() => catalog.seasonal.slice(0, 12))
 const quarter = computed(() => {
   const date = new Date()
   return `${date.getFullYear()} Q${Math.floor(date.getMonth() / 3) + 1}`
@@ -417,6 +421,10 @@ async function playIntroVariant(variant: IntroVariant) {
   introVisible.value = true
   setIntroDocumentState(true)
 
+  // Prefetch critical bitmaps before animating so deploy/CDN latency doesn't show empty panels.
+  await waitIntroAssets(variant)
+  if (generation !== introGeneration) return
+
   await nextTick()
   if (generation !== introGeneration || !introRootRef.value) return
   updateIntroProgress(0)
@@ -480,6 +488,27 @@ async function loadImage(src: string, timeout = IMAGE_READY_TIMEOUT) {
   const ready = waitImg(img, timeout)
   img.src = src
   return ready
+}
+
+/** Warm cache for intro assets as early as possible (call once). */
+function preloadIntroAssets() {
+  if (!introAssetsPromise) {
+    introAssetsPromise = Promise.all(
+      INTRO_CRITICAL_ASSETS.map((src) => loadImage(src, INTRO_ASSET_TIMEOUT)),
+    )
+  }
+  return introAssetsPromise
+}
+
+async function waitIntroAssets(variant: IntroVariant) {
+  // Always warm all intro assets; manga waits harder so panels don't pop in mid-animation.
+  const results = await preloadIntroAssets()
+  if (variant !== 'manga') return
+  // If still missing, give one more short pass for the three panels.
+  await Promise.all(
+    MANGA_INTRO_PANELS.map((item) => loadImage(item.src, 1800)),
+  )
+  void results
 }
 
 async function waitImg(el: HTMLImageElement | null | undefined, timeout = 800) {
@@ -1001,6 +1030,9 @@ watch(() => catalog.loaded, (loaded) => {
 })
 
 onMounted(() => {
+  document.body.classList.add('home-page-active')
+  // Kick off asset warm-up immediately, in parallel with catalog fetch.
+  void preloadIntroAssets()
   const shouldPlayIntro = !catalog.loaded
   const randomIntroVariant = chooseRandomIntroVariant()
   catalog.load()
@@ -1034,6 +1066,7 @@ onUnmounted(() => {
   introTimeline = null
   introContext = null
   setIntroDocumentState(false)
+  document.body.classList.remove('home-page-active')
   stopAutoplayProgress(true)
   window.removeEventListener('scroll', scheduleHeroParallax)
   window.removeEventListener('resize', scheduleHeroParallax)
@@ -1105,7 +1138,13 @@ onUnmounted(() => {
         <div class="manga-speedlines"></div>
         <div class="manga-panel-grid">
           <article v-for="(item, index) in MANGA_INTRO_PANELS" :key="item.src" :class="`manga-panel manga-panel--${index + 1}`">
-            <img :src="item.src" alt="" decoding="sync" fetchpriority="high" />
+            <img
+              :src="item.src"
+              alt=""
+              decoding="async"
+              fetchpriority="high"
+              loading="eager"
+            />
             <span>{{ item.label }}</span>
           </article>
         </div>
@@ -1275,26 +1314,49 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <section v-if="library.watching.length" class="content-section continue-section reveal-section">
-        <div class="section-heading"><div><span>YOUR QUEUE</span><h2>继续观看</h2></div><RouterLink to="/library">打开追番库<PhArrowRight :size="16" /></RouterLink></div>
-        <div class="progress-list"><ProgressRow v-for="anime in library.watching.slice(0, 3)" :key="anime.id" :anime="anime" /></div>
-      </section>
-
       <section class="season-directory reveal-section">
-        <div class="directory-head">
-          <div><span>SEASON DIRECTORY</span><h2>这一季的全部动画</h2><p>优先使用 Bangumi 当前季度放送目录，接口不可用时自动展示 AniList 同季度数据。</p></div>
-          <div class="directory-tabs" role="tablist" aria-label="季度动画筛选">
-            <button type="button" :class="{ active: activeTab === 'hot' }" @click="activeTab = 'hot'">热门 <sup>{{ hotAnime.length }}</sup></button>
-            <button type="button" :class="{ active: activeTab === 'all' }" @click="activeTab = 'all'">全部新番 <sup>{{ catalog.seasonal.length }}</sup></button>
+        <div class="directory-head directory-head--solo">
+          <div>
+            <span>SEASON HOT</span>
+            <h2>这一季的热门动画</h2>
           </div>
+          <p class="directory-count">{{ hotAnime.length }} 部精选</p>
         </div>
         <TransitionGroup name="list" tag="div" class="catalog-grid directory-grid">
-          <AnimeCard v-for="(anime, index) in directory" :key="anime.id" :anime="anime" :index="index + 1" />
+          <AnimeCard v-for="(anime, index) in hotAnime" :key="anime.id" :anime="anime" :index="index + 1" />
         </TransitionGroup>
       </section>
 
       <section class="closing-band reveal-section">
-        <div><PhPlay :size="20" weight="fill" /><span>BUILD YOUR OWN QUEUE</span></div><h2>不跟着热度走。<br />只留下你想看的。</h2><RouterLink to="/library">进入我的追番库<PhArrowRight :size="18" /></RouterLink>
+        <div class="closing-band__bg" aria-hidden="true">
+          <span class="closing-band__orb closing-band__orb--a" />
+          <span class="closing-band__orb closing-band__orb--b" />
+          <span class="closing-band__grid" />
+          <span class="closing-band__beam" />
+        </div>
+        <div class="closing-band__content">
+          <div class="closing-band__kicker">
+            <PhSparkle :size="18" weight="fill" />
+            <span>BUILD YOUR OWN QUEUE</span>
+          </div>
+          <h2>不跟着热度走。<br />只留下你想看的。</h2>
+          <p class="closing-band__desc">把想追的动画收进自己的队列，按你的节奏继续下一集。</p>
+          <div class="closing-band__actions">
+            <RouterLink class="closing-band__primary" to="/library">
+              进入我的追番库
+              <PhArrowRight :size="18" />
+            </RouterLink>
+            <RouterLink class="closing-band__ghost" to="/discover">
+              去发现更多
+              <PhArrowRight :size="16" />
+            </RouterLink>
+          </div>
+          <div class="closing-band__stats" aria-hidden="true">
+            <div><strong>{{ hotAnime.length }}</strong><span>本季热门</span></div>
+            <div><strong>{{ library.items.length || '—' }}</strong><span>我的收藏</span></div>
+            <div><strong>{{ quarter }}</strong><span>当前季度</span></div>
+          </div>
+        </div>
       </section>
     </template>
     </div>

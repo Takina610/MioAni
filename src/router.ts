@@ -9,6 +9,12 @@ export const router = createRouter({
     { path: '/', name: 'home', component: HomeView },
     { path: '/discover', name: 'discover', component: DiscoverView },
     { path: '/library', name: 'library', component: LibraryView },
+    // Overlay route: keeps list under the expanded card detail.
+    {
+      path: '/anime/:id',
+      name: 'anime-detail',
+      component: { template: '<div class="anime-detail-route" aria-hidden="true"></div>' },
+    },
   ],
   scrollBehavior: () => ({ top: 0 }),
 })
