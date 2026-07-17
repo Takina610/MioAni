@@ -9,13 +9,19 @@ import {
 } from '@phosphor-icons/vue'
 import AnimeCard from '../components/AnimeCard.vue'
 import {
+  formatOptionsForSource,
+  languageOptionsForSource,
   SEASON_OPTIONS,
   SORT_OPTIONS,
   STATUS_OPTIONS,
   buildYearOptions,
 } from '../constants/discover'
 import { useDiscoverStore } from '../stores/discover'
-import type { AirStatus, DiscoverSeason, DiscoverSort } from '../types/discover'
+import type {
+  AirStatus,
+  DiscoverSeason,
+  DiscoverSort,
+} from '../types/discover'
 
 type DropdownKey = 'genre' | 'year' | 'season' | 'status' | 'sort'
 
@@ -24,12 +30,14 @@ const draftKeyword = ref('')
 const scoreMinDraft = ref(store.filters.scoreMin)
 const scoreMaxDraft = ref(store.filters.scoreMax)
 const scoreActiveThumb = ref<'min' | 'max'>('max')
+const scoreRailRef = ref<HTMLElement | null>(null)
 const yearOptions = buildYearOptions()
 const sentinel = ref<HTMLElement | null>(null)
 const openDropdown = ref<DropdownKey | null>(null)
 let observer: IntersectionObserver | null = null
 let scoreTimer: ReturnType<typeof setTimeout> | null = null
 let genreTimer: ReturnType<typeof setTimeout> | null = null
+let chipTimer: ReturnType<typeof setTimeout> | null = null
 
 const countLabel = computed(() => {
   if (store.total != null) return `${store.items.length} / ${store.total} 条`
@@ -57,6 +65,10 @@ const genreSourceHint = computed(() => {
   if (store.genresSource === 'anilist') return 'AniList genres'
   return '类型'
 })
+
+/** Format / language chips follow the sticky source (Bangumi default before first load). */
+const formatOptions = computed(() => formatOptionsForSource(store.activeSource))
+const languageOptions = computed(() => languageOptionsForSource(store.activeSource))
 
 const yearLabel = computed(() =>
   store.filters.year == null ? '全部年份' : String(store.filters.year),
@@ -88,13 +100,14 @@ function submitSearch() {
   } else if (!next && store.filters.sort === 'match') {
     store.setFilters({ sort: 'heat' })
   }
-  void store.resetAndLoad()
+  // Keyword change may re-resolve primary source (CN → BGM, EN → AL).
+  void store.resetAndLoad({ clearSource: true })
 }
 
 function clearKeyword() {
   draftKeyword.value = ''
   store.clearKeyword()
-  void store.resetAndLoad()
+  void store.resetAndLoad({ clearSource: true })
 }
 
 function scheduleGenreReload() {
@@ -182,6 +195,70 @@ function commitScoreRange() {
   }, 80)
 }
 
+/** Click rail → jump nearer thumb to that score (and commit). */
+function onScoreRailPointerDown(event: PointerEvent) {
+  const rail = scoreRailRef.value
+  if (!rail) return
+  // Ignore when interacting with a thumb (pointer-events on thumb only).
+  const target = event.target as HTMLElement | null
+  if (target?.classList.contains('dual-range__input')) return
+
+  const rect = rail.getBoundingClientRect()
+  if (rect.width <= 0) return
+  const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
+  const raw = clampScore(ratio * 10)
+  const distMin = Math.abs(raw - scoreMinDraft.value)
+  const distMax = Math.abs(raw - scoreMaxDraft.value)
+  if (distMin <= distMax) {
+    scoreActiveThumb.value = 'min'
+    scoreMinDraft.value = Math.min(raw, scoreMaxDraft.value)
+  } else {
+    scoreActiveThumb.value = 'max'
+    scoreMaxDraft.value = Math.max(raw, scoreMinDraft.value)
+  }
+  commitScoreRange()
+}
+
+function scheduleChipReload() {
+  if (chipTimer) clearTimeout(chipTimer)
+  chipTimer = setTimeout(() => {
+    void store.resetAndLoad()
+  }, 180)
+}
+
+/** Format is single-select (source-native value); click active chip again to clear. */
+function pickFormat(value: string) {
+  const next = store.filters.format === value ? null : value
+  store.setFilters({ format: next })
+  scheduleChipReload()
+}
+
+/** Language/region is single-select; click active chip again to clear. */
+function pickLanguage(value: string) {
+  const next = store.filters.language === value ? null : value
+  store.setFilters({ language: next })
+  scheduleChipReload()
+}
+
+// Drop format/language selections that don't exist on the new source.
+watch(
+  () => store.activeSource,
+  (source) => {
+    if (!source) return
+    const formats = new Set(formatOptionsForSource(source).map((o) => o.value))
+    const langs = new Set(languageOptionsForSource(source).map((o) => o.value))
+    const nextFormat = store.filters.format && formats.has(store.filters.format)
+      ? store.filters.format
+      : null
+    const nextLang = store.filters.language && langs.has(store.filters.language)
+      ? store.filters.language
+      : null
+    if (nextFormat !== store.filters.format || nextLang !== store.filters.language) {
+      store.setFilters({ format: nextFormat, language: nextLang })
+    }
+  },
+)
+
 function setupObserver() {
   observer?.disconnect()
   if (!sentinel.value) return
@@ -234,6 +311,7 @@ onUnmounted(() => {
   observer?.disconnect()
   if (scoreTimer) clearTimeout(scoreTimer)
   if (genreTimer) clearTimeout(genreTimer)
+  if (chipTimer) clearTimeout(chipTimer)
   document.removeEventListener('pointerdown', onDocPointerDown)
   document.removeEventListener('keydown', onKeydown)
 })
@@ -479,12 +557,14 @@ watch(sentinel, () => setupObserver())
           <div class="filter-field score-field">
             <span class="filter-label">
               评分
-              <em>{{ scoreMinDraft.toFixed(1) }} – {{ scoreMaxDraft.toFixed(1) }}</em>
+              <em class="score-range-value">{{ scoreMinDraft.toFixed(1) }} – {{ scoreMaxDraft.toFixed(1) }}</em>
             </span>
             <div
+              ref="scoreRailRef"
               class="dual-range"
               role="group"
               :aria-label="`评分区间 ${scoreMinDraft} 到 ${scoreMaxDraft}`"
+              @pointerdown="onScoreRailPointerDown"
             >
               <div class="dual-range__rail">
                 <div class="dual-range__fill" :style="scoreFillStyle" />
@@ -501,7 +581,7 @@ watch(sentinel, () => setupObserver())
                 :aria-valuemin="0"
                 :aria-valuemax="10"
                 :aria-valuenow="scoreMinDraft"
-                @pointerdown="onScorePointerDown('min')"
+                @pointerdown.stop="onScorePointerDown('min')"
                 @input="onScoreMinInput"
                 @change="commitScoreRange"
                 @pointerup="commitScoreRange"
@@ -519,12 +599,53 @@ watch(sentinel, () => setupObserver())
                 :aria-valuemin="0"
                 :aria-valuemax="10"
                 :aria-valuenow="scoreMaxDraft"
-                @pointerdown="onScorePointerDown('max')"
+                @pointerdown.stop="onScorePointerDown('max')"
                 @input="onScoreMaxInput"
                 @change="commitScoreRange"
                 @pointerup="commitScoreRange"
                 @touchend="commitScoreRange"
               />
+            </div>
+          </div>
+        </div>
+
+        <div class="filter-chip-rows" aria-label="类型与语言">
+          <div class="filter-chip-row">
+            <span class="filter-chip-row__label">类型</span>
+            <div class="filter-chip-row__chips" role="radiogroup" aria-label="作品类型">
+              <button
+                v-for="opt in formatOptions"
+                :key="opt.id"
+                type="button"
+                class="genre-chip"
+                role="radio"
+                :aria-checked="store.filters.format === opt.value"
+                :class="{ active: store.filters.format === opt.value }"
+                @click="pickFormat(opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div class="filter-chip-row">
+            <span class="filter-chip-row__label">{{ store.activeSource === 'anilist' ? '地区' : '语言' }}</span>
+            <div
+              class="filter-chip-row__chips"
+              role="radiogroup"
+              :aria-label="store.activeSource === 'anilist' ? '地区' : '语言'"
+            >
+              <button
+                v-for="opt in languageOptions"
+                :key="opt.id"
+                type="button"
+                class="genre-chip"
+                role="radio"
+                :aria-checked="store.filters.language === opt.value"
+                :class="{ active: store.filters.language === opt.value }"
+                @click="pickLanguage(opt.value)"
+              >
+                {{ opt.label }}
+              </button>
             </div>
           </div>
         </div>

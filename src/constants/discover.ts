@@ -1,9 +1,12 @@
 import type {
   AirStatus,
   DiscoverFilters,
+  DiscoverFormatOption,
   DiscoverGenreOption,
+  DiscoverLanguageOption,
   DiscoverSeason,
   DiscoverSort,
+  DiscoverSource,
 } from '../types/discover'
 
 export const BANGUMI_TIMEOUT_MS = 6000
@@ -17,6 +20,55 @@ export const DEFAULT_DISCOVER_FILTERS: DiscoverFilters = {
   scoreMin: 0,
   scoreMax: 10,
   sort: 'heat',
+  format: null,
+  language: null,
+}
+
+/** Bangumi: platform / common tags used as format filter (sent as `tag`) */
+export const BANGUMI_FORMAT_OPTIONS: DiscoverFormatOption[] = [
+  { id: 'bgm-tv', label: 'TV', value: 'TV', source: 'bangumi' },
+  { id: 'bgm-web', label: 'WEB', value: 'WEB', source: 'bangumi' },
+  { id: 'bgm-movie', label: '剧场版', value: '剧场版', source: 'bangumi' },
+  { id: 'bgm-ova', label: 'OVA', value: 'OVA', source: 'bangumi' },
+  { id: 'bgm-oad', label: 'OAD', value: 'OAD', source: 'bangumi' },
+]
+
+/** AniList: MediaFormat enum values */
+export const ANILIST_FORMAT_OPTIONS: DiscoverFormatOption[] = [
+  { id: 'al-tv', label: 'TV', value: 'TV', source: 'anilist' },
+  { id: 'al-tv-short', label: 'TV Short', value: 'TV_SHORT', source: 'anilist' },
+  { id: 'al-movie', label: 'Movie', value: 'MOVIE', source: 'anilist' },
+  { id: 'al-special', label: 'Special', value: 'SPECIAL', source: 'anilist' },
+  { id: 'al-ova', label: 'OVA', value: 'OVA', source: 'anilist' },
+  { id: 'al-ona', label: 'ONA', value: 'ONA', source: 'anilist' },
+  { id: 'al-music', label: 'Music', value: 'MUSIC', source: 'anilist' },
+]
+
+/** Bangumi: soft language chips (client heuristic / tag) */
+export const BANGUMI_LANGUAGE_OPTIONS: DiscoverLanguageOption[] = [
+  { id: 'bgm-ja', label: '日语', value: 'ja', source: 'bangumi' },
+  { id: 'bgm-zh', label: '国语', value: 'zh', source: 'bangumi' },
+  { id: 'bgm-en', label: '英语', value: 'en', source: 'bangumi' },
+  { id: 'bgm-ko', label: '韩语', value: 'ko', source: 'bangumi' },
+  { id: 'bgm-other', label: '其他', value: 'other', source: 'bangumi' },
+]
+
+/** AniList: countryOfOrigin ISO codes */
+export const ANILIST_LANGUAGE_OPTIONS: DiscoverLanguageOption[] = [
+  { id: 'al-jp', label: '日本', value: 'JP', source: 'anilist' },
+  { id: 'al-cn', label: '中国大陆', value: 'CN', source: 'anilist' },
+  { id: 'al-tw', label: '中国台湾', value: 'TW', source: 'anilist' },
+  { id: 'al-hk', label: '中国香港', value: 'HK', source: 'anilist' },
+  { id: 'al-kr', label: '韩国', value: 'KR', source: 'anilist' },
+  { id: 'al-us', label: '美国', value: 'US', source: 'anilist' },
+]
+
+export function formatOptionsForSource(source: DiscoverSource | null): DiscoverFormatOption[] {
+  return source === 'anilist' ? ANILIST_FORMAT_OPTIONS : BANGUMI_FORMAT_OPTIONS
+}
+
+export function languageOptionsForSource(source: DiscoverSource | null): DiscoverLanguageOption[] {
+  return source === 'anilist' ? ANILIST_LANGUAGE_OPTIONS : BANGUMI_LANGUAGE_OPTIONS
 }
 
 /**
@@ -77,5 +129,7 @@ export function filterKey(keyword: string, filters: DiscoverFilters): string {
     scoreMin: filters.scoreMin,
     scoreMax: filters.scoreMax,
     sort: filters.sort,
+    format: filters.format ?? null,
+    language: filters.language ?? null,
   })
 }

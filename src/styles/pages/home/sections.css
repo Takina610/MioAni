@@ -1,4 +1,4 @@
-.content-section, .season-directory { width: min(1520px,100%); margin: 0 auto; padding: 110px clamp(24px,5vw,84px) 130px; }
+.content-section, .season-directory { width: min(1520px,100%); margin: 0 auto; padding: 50px clamp(24px,5vw,84px) 130px; }
 .section-heading, .directory-head { display: flex; align-items: end; justify-content: space-between; gap: 36px; margin-bottom: 46px; }
 .section-heading span, .directory-head > div > span, .library-identity > span, .results-title span, .modal-heading > span { display: block; margin-bottom: 10px; color: var(--accent); font: 600 var(--type-micro)/1 monospace; }
 .section-heading h2, .directory-head h2 { margin: 0; font-size: var(--type-section-title); line-height: 1; }

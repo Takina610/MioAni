@@ -77,14 +77,10 @@ export const useDiscoverStore = defineStore('discover', () => {
 
   async function fetchPage(nextPage: number, append: boolean, seq: number) {
     const keyAtStart = currentKey()
-    // Sticky source only for subsequent pages of the same filter key.
-    // Reset/page-1 always re-resolves Bangumi → AniList (no stale hint).
-    const sourceHint = append && stickyKey.value === keyAtStart
-      ? (activeSource.value ?? undefined)
-      : undefined
+    // Once a source is chosen, keep it for filters + pagination (no BGM↔AL flip).
+    const sourceHint = activeSource.value ?? undefined
 
     if (!append) {
-      activeSource.value = null
       stickyKey.value = keyAtStart
     }
 
@@ -135,12 +131,16 @@ export const useDiscoverStore = defineStore('discover', () => {
     }
   }
 
-  async function resetAndLoad() {
+  async function resetAndLoad(opts?: { clearSource?: boolean }) {
     const seq = ++requestSeq
     page.value = 0
     hasMore.value = true
     items.value = []
-    activeSource.value = null
+    // Keep sticky source across type/language/score filters.
+    // Only clear when keyword search explicitly re-resolves (clearSource).
+    if (opts?.clearSource) {
+      activeSource.value = null
+    }
     stickyKey.value = currentKey()
     loadingMore.value = false
     error.value = ''

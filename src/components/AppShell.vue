@@ -201,15 +201,30 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <main id="main-content">
-      <!-- Visited list pages stay mounted (v-show) so detail open/close never destroys filters, results, or scroll. -->
-      <div v-show="activeList === 'home'" class="list-layer" data-list="home">
+    <main id="main-content" class="list-stage">
+      <!-- Visited list pages stay mounted; CSS opacity crossfade on switch. -->
+      <div
+        class="list-layer"
+        data-list="home"
+        :class="{ 'is-active': activeList === 'home' }"
+        :aria-hidden="activeList !== 'home'"
+      >
         <HomeView v-if="mountedLists.home" />
       </div>
-      <div v-show="activeList === 'discover'" class="list-layer" data-list="discover">
+      <div
+        class="list-layer"
+        data-list="discover"
+        :class="{ 'is-active': activeList === 'discover' }"
+        :aria-hidden="activeList !== 'discover'"
+      >
         <DiscoverView v-if="mountedLists.discover" />
       </div>
-      <div v-show="activeList === 'library'" class="list-layer" data-list="library">
+      <div
+        class="list-layer"
+        data-list="library"
+        :class="{ 'is-active': activeList === 'library' }"
+        :aria-hidden="activeList !== 'library'"
+      >
         <LibraryView v-if="mountedLists.library" />
       </div>
     </main>

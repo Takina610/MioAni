@@ -1,9 +1,9 @@
 /* Discover filters */
 .filter-bar {
   display: grid;
-  gap: 18px;
-  margin-bottom: 36px;
-  padding: 18px 18px 16px;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 14px 16px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background:
@@ -16,15 +16,20 @@
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
-  color: var(--muted);
-  font: 600 var(--type-micro)/1 monospace;
-  letter-spacing: .04em;
+  color: rgba(242, 245, 241, .78);
+  font: 600 12px/1 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  letter-spacing: .06em;
   text-transform: uppercase;
 }
 .filter-label em {
   color: var(--accent);
   font-style: normal;
   font-variant-numeric: tabular-nums;
+}
+.filter-label em.score-range-value {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .02em;
 }
 .filter-genres { min-width: 0; }
 .genre-chips {
@@ -33,20 +38,21 @@
   gap: 8px;
 }
 .genre-chip {
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(228, 237, 230, .18);
   border-radius: 999px;
-  background: rgba(11,13,12,.35);
-  color: var(--muted);
-  font-size: var(--type-small);
+  background: rgba(11,13,12,.45);
+  color: rgba(242, 245, 241, .82);
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   transition: border-color .2s ease, background .2s ease, color .2s ease;
 }
-.genre-chip:hover { border-color: rgba(184,240,95,.35); color: var(--ink); }
+.genre-chip:hover { border-color: rgba(184,240,95,.4); color: var(--ink); }
 .genre-chip.active {
-  border-color: rgba(184,240,95,.55);
-  background: rgba(184,240,95,.12);
+  border-color: rgba(184,240,95,.65);
+  background: rgba(184,240,95,.16);
   color: var(--accent);
 }
 .filter-row {
@@ -63,6 +69,10 @@
 .filter-dropdown {
   position: relative;
   min-width: 0;
+  z-index: 1;
+}
+.filter-dropdown.open {
+  z-index: 40;
 }
 .filter-dropdown__trigger {
   display: flex;
@@ -107,7 +117,7 @@
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  z-index: 20;
+  z-index: 50;
   width: max(100%, min(220px, 70vw));
   max-width: min(280px, calc(100vw - 40px));
   max-height: min(260px, 42vh);
@@ -288,6 +298,7 @@
   display: grid;
   align-items: center;
   padding: 0 2px;
+  cursor: pointer;
 }
 .dual-range__rail {
   position: absolute;
@@ -298,6 +309,38 @@
   background: rgba(228,237,230,.12);
   pointer-events: none;
   overflow: hidden;
+}
+
+/* Format / language chip rows (under main filter row) */
+.filter-chip-rows {
+  position: relative;
+  z-index: 0;
+  display: grid;
+  gap: 14px;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(228, 237, 230, .1);
+  /* Keep room so open dropdowns don't sit on chips */
+  isolation: isolate;
+}
+.filter-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+.filter-chip-row__label {
+  flex: 0 0 auto;
+  min-width: 2.75em;
+  color: rgba(242, 245, 241, .88);
+  font: 600 14px/1.2 'Noto Sans SC', sans-serif;
+  letter-spacing: .02em;
+}
+.filter-chip-row__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
 }
 .dual-range__fill {
   position: absolute;

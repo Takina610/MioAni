@@ -3,9 +3,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  width: min(560px, 100%);
-  min-height: 52px;
-  margin-top: 6px;
+  width: 100%;
+  margin-top: 2px;
   padding: 6px 8px 6px 14px;
   border: 1px solid var(--line);
   border-radius: 999px;
