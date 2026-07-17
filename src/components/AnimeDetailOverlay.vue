@@ -9,6 +9,7 @@ import {
   PhHash,
   PhArrowLeft,
   PhClock,
+  PhCaretDown,
 } from '@phosphor-icons/vue'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
 import { useLibraryStore } from '../stores/library'
@@ -47,6 +48,8 @@ const visibleByTab = ref<Record<ExtraSection, number>>({
 })
 const loadingMoreExtra = ref(false)
 const extraSentinelRef = ref<HTMLElement | null>(null)
+/** Mobile: meta board collapsed so tabs content stays above the fold. */
+const metaExpanded = ref(false)
 let extraObserver: IntersectionObserver | null = null
 let extraLoadTimer: ReturnType<typeof setTimeout> | null = null
 /**
@@ -182,10 +185,31 @@ function flush(el: HTMLElement) {
 }
 
 /**
- * Transform-only flight (GPU): place flyer at TARGET size/pos, invert to origin via matrix.
- * Avoids top/left layout thrash that caused vertical bounce.
+ * Shared-element flyer: park at origin (card rect) first so the poster never
+ * disappears before flight starts, then animate to target geometry.
  */
-function placeFlyerAtTarget(target: { top: number; left: number; width: number; height: number }, radius: number) {
+function placeFlyerAtOrigin(
+  origin: { top: number; left: number; width: number; height: number },
+  radius = 12,
+) {
+  const el = flyerRef.value
+  if (!el) return
+  el.style.transition = 'none'
+  el.style.top = `${origin.top}px`
+  el.style.left = `${origin.left}px`
+  el.style.width = `${origin.width}px`
+  el.style.height = `${origin.height}px`
+  el.style.borderRadius = `${radius}px`
+  el.style.transformOrigin = 'top left'
+  el.style.transform = 'none'
+  el.style.opacity = '1'
+  el.style.visibility = 'visible'
+}
+
+function placeFlyerAtTarget(
+  target: { top: number; left: number; width: number; height: number },
+  radius: number,
+) {
   const el = flyerRef.value
   if (!el) return
   el.style.transition = 'none'
@@ -198,28 +222,50 @@ function placeFlyerAtTarget(target: { top: number; left: number; width: number; 
   el.style.transform = 'none'
 }
 
-function invertFlyerToOrigin(
+function playFlyerToTarget(
   origin: { top: number; left: number; width: number; height: number },
   target: { top: number; left: number; width: number; height: number },
+  durationMs: number,
 ) {
   const el = flyerRef.value
   if (!el) return
-  const sx = origin.width / target.width
-  const sy = origin.height / target.height
-  const dx = origin.left - target.left
-  const dy = origin.top - target.top
+  // Flyer is already parked at origin; invert matrix then play to identity at target.
+  const sx = target.width / Math.max(origin.width, 0.001)
+  const sy = target.height / Math.max(origin.height, 0.001)
+  const dx = target.left - origin.left
+  const dy = target.top - origin.top
   el.style.transition = 'none'
-  el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`
-  el.style.borderRadius = `${12 / Math.max(sx, 0.001)}px`
-}
-
-function playFlyerToIdentity(durationMs: number) {
-  const el = flyerRef.value
-  if (!el) return
-  el.style.transition = `transform ${durationMs}ms cubic-bezier(.22,1,.36,1), border-radius ${durationMs}ms cubic-bezier(.22,1,.36,1), opacity ${Math.round(durationMs * 0.45)}ms ease`
+  el.style.top = `${origin.top}px`
+  el.style.left = `${origin.left}px`
+  el.style.width = `${origin.width}px`
+  el.style.height = `${origin.height}px`
+  el.style.borderRadius = '12px'
+  el.style.transformOrigin = 'top left'
   el.style.transform = 'none'
-  el.style.borderRadius = '14px'
   el.style.opacity = '1'
+  el.style.visibility = 'visible'
+  flush(el)
+  // Next frame: animate to target via transform scale+translate (GPU).
+  requestAnimationFrame(() => {
+    el.style.transition = [
+      `transform ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
+      `border-radius ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
+      `width ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
+      `height ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
+      `top ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
+      `left ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
+    ].join(', ')
+    el.style.top = `${target.top}px`
+    el.style.left = `${target.left}px`
+    el.style.width = `${target.width}px`
+    el.style.height = `${target.height}px`
+    el.style.borderRadius = '14px'
+    el.style.transform = 'none'
+    void sx
+    void sy
+    void dx
+    void dy
+  })
 }
 
 function playFlyerToOrigin(
@@ -229,18 +275,36 @@ function playFlyerToOrigin(
 ) {
   const el = flyerRef.value
   if (!el) return
-  const sx = origin.width / target.width
-  const sy = origin.height / target.height
-  const dx = origin.left - target.left
-  const dy = origin.top - target.top
-  el.style.transition = `transform ${durationMs}ms cubic-bezier(.22,1,.36,1), border-radius ${durationMs}ms cubic-bezier(.22,1,.36,1), opacity ${Math.round(durationMs * 0.4)}ms ease`
-  el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`
-  el.style.borderRadius = `${12 / Math.max(sx, 0.001)}px`
+  // Start at target (detail poster), animate back to origin (card).
+  el.style.transition = 'none'
+  el.style.top = `${target.top}px`
+  el.style.left = `${target.left}px`
+  el.style.width = `${target.width}px`
+  el.style.height = `${target.height}px`
+  el.style.borderRadius = '14px'
+  el.style.transformOrigin = 'top left'
+  el.style.transform = 'none'
+  el.style.opacity = '1'
+  el.style.visibility = 'visible'
+  flush(el)
+  requestAnimationFrame(() => {
+    el.style.transition = [
+      `top ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
+      `left ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
+      `width ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
+      `height ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
+      `border-radius ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
+    ].join(', ')
+    el.style.top = `${origin.top}px`
+    el.style.left = `${origin.left}px`
+    el.style.width = `${origin.width}px`
+    el.style.height = `${origin.height}px`
+    el.style.borderRadius = '12px'
+  })
 }
 
 /**
- * Same expand as list-card open: circular surface + poster flight from origin.
- * Related push keeps parent layers mounted underneath (visible after reverse).
+ * Card → detail: park flyer ON the card first (no blank), then fly to poster slot.
  */
 async function runExpand() {
   closing = false
@@ -251,7 +315,6 @@ async function runExpand() {
 
   const origin = store.originRect || store.topLayer?.originRect || null
   setRevealOriginFromRect(origin)
-  // Always full open animation (same as card → detail).
   applySurfaceReveal(false, false)
 
   const flyer = flyerRef.value
@@ -269,19 +332,30 @@ async function runExpand() {
     return
   }
 
-  placeFlyerAtTarget(target, 14)
-  if (origin) invertFlyerToOrigin(origin, target)
-  flyer.style.opacity = origin ? '1' : '0'
-  flyer.style.visibility = 'visible'
+  // 1) Cover the source card immediately so hiding the card image is seamless.
+  if (origin) {
+    placeFlyerAtOrigin(origin, 12)
+  } else {
+    placeFlyerAtTarget(target, 14)
+    flyer.style.opacity = '0'
+    flyer.style.visibility = 'visible'
+  }
   flush(flyer)
   if (surfaceRef.value) flush(surfaceRef.value)
+
+  // 2) Only now hide the source card chrome (flyer already covers it).
+  document.documentElement.classList.add('detail-flight-active')
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       if (closing) return
       applySurfaceReveal(true, true)
-      playFlyerToIdentity(FLIGHT_MS)
-      flyer.style.opacity = '1'
+      if (origin) {
+        playFlyerToTarget(origin, target, FLIGHT_MS)
+      } else {
+        flyer.style.transition = `opacity ${FLIGHT_MS}ms ease`
+        flyer.style.opacity = '1'
+      }
       store.phase = 'open'
       contentReady.value = true
 
@@ -289,9 +363,17 @@ async function runExpand() {
       animTimer = setTimeout(() => {
         if (closing) return
         settled.value = true
-        flyer.style.visibility = 'hidden'
-        flyer.style.transition = 'none'
-        flyer.style.transform = 'none'
+        // Cross-fade handoff: show in-flow poster under flyer, then hide flyer.
+        flyer.style.transition = 'opacity .12s ease'
+        flyer.style.opacity = '0'
+        window.setTimeout(() => {
+          if (closing) return
+          flyer.style.visibility = 'hidden'
+          flyer.style.transition = 'none'
+          flyer.style.transform = 'none'
+          flyer.style.opacity = '1'
+          document.documentElement.classList.remove('detail-flight-active')
+        }, 120)
       }, FLIGHT_MS)
     })
   })
@@ -308,21 +390,20 @@ async function popDetailStack(opts: { fromBrowserBack?: boolean } = {}) {
   if (animTimer) clearTimeout(animTimer)
   store.beginStackReturn()
   contentReady.value = false
+  document.documentElement.classList.add('detail-flight-active')
 
   const flyer = flyerRef.value
-  // Reverse flight lands on the same origin that opened this top layer (relation thumb / card).
   const origin = store.resolvePopOrigin()
   if (origin) store.originRect = origin
   setRevealOriginFromRect(origin)
   const target = getTargetPosterRect()
   await nextTick()
 
-  // Snapshot image for flight before layer unmounts.
+  // Cover in-flow poster first, then reverse-fly (no blank handoff).
   if (flyer && origin) {
     placeFlyerAtTarget(target, 14)
     flyer.style.opacity = '1'
     flyer.style.visibility = 'visible'
-    flyer.style.transform = 'none'
     flush(flyer)
   }
   settled.value = false
@@ -332,7 +413,6 @@ async function popDetailStack(opts: { fromBrowserBack?: boolean } = {}) {
   if (flyer && origin) {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        // Same reverse as list close: circle wipe + poster flight.
         applySurfaceReveal(false, true)
         playFlyerToOrigin(origin, target, CLOSE_MS)
       })
@@ -352,10 +432,8 @@ async function popDetailStack(opts: { fromBrowserBack?: boolean } = {}) {
   }
 
   animTimer = setTimeout(async () => {
-    // Drop top layer AFTER reverse flight — parent was always mounted underneath.
     store.applyStackPop()
     await nextTick()
-    // Reset active surface to fully open parent (no remount).
     if (surfaceRef.value) {
       surfaceRef.value.style.transition = 'none'
       surfaceRef.value.style.opacity = '1'
@@ -370,7 +448,6 @@ async function popDetailStack(opts: { fromBrowserBack?: boolean } = {}) {
     settled.value = true
     contentReady.value = true
     tab.value = 'overview'
-    // Parent layer was never unloaded — keep epoch so UI doesn't soft-remount flash.
     lastOverviewId = store.activeId
     resetExtraVisible()
     await nextTick()
@@ -380,6 +457,7 @@ async function popDetailStack(opts: { fromBrowserBack?: boolean } = {}) {
       flyer.style.transform = 'none'
       flyer.style.opacity = '1'
     }
+    document.documentElement.classList.remove('detail-flight-active')
     const id = store.activeId
     if (!opts.fromBrowserBack && id && router.currentRoute.value.name === 'anime-detail') {
       if (router.currentRoute.value.params.id !== id) {
@@ -396,6 +474,7 @@ async function dismissToList() {
   closing = true
   store.beginCollapse()
   contentReady.value = false
+  document.documentElement.classList.add('detail-flight-active')
 
   const flyer = flyerRef.value
   const origin = store.resolveCloseOrigin()
@@ -404,11 +483,11 @@ async function dismissToList() {
   const target = getTargetPosterRect()
   await nextTick()
 
+  // Cover detail poster first so reverse flight never blanks.
   if (flyer && origin) {
     placeFlyerAtTarget(target, 14)
     flyer.style.opacity = '1'
     flyer.style.visibility = 'visible'
-    flyer.style.transform = 'none'
     flush(flyer)
   }
   settled.value = false
@@ -440,12 +519,13 @@ async function dismissToList() {
   animTimer = setTimeout(async () => {
     const back = store.returnPath || '/'
     const shouldNavigate = router.currentRoute.value.name === 'anime-detail'
+    // Flyer is already sitting on the card; reveal card under it then unmount.
+    document.documentElement.classList.remove('detail-flight-active')
     store.finishClose()
     closing = false
     settled.value = false
     contentReady.value = false
     if (shouldNavigate && router.currentRoute.value.name === 'anime-detail') {
-      // Drop related history entries back to list.
       await router.replace(back)
     }
   }, CLOSE_MS + 40)
@@ -495,6 +575,8 @@ function removeFromLibrary() {
 function selectTab(next: DetailTab) {
   if (tab.value === next) return
   tab.value = next
+  // Keep tab body near tabs on mobile — collapse meta when switching away from overview.
+  if (next !== 'overview') metaExpanded.value = false
   if (next !== 'overview') {
     visibleByTab.value[next] = EXTRA_BATCH
     void store.ensureExtras(next)
@@ -503,6 +585,10 @@ function selectTab(next: DetailTab) {
     updateTabIndicator()
     setupExtraObserver()
   })
+}
+
+function toggleMetaExpanded() {
+  metaExpanded.value = !metaExpanded.value
 }
 
 const relationsAll = computed(() => detail.value?.relations || [])
@@ -574,6 +660,7 @@ watch(
   (id, prev) => {
     if (!id || id === prev) return
     tab.value = 'overview'
+    metaExpanded.value = false
     lastOverviewId = ''
     contentEpoch.value = 0
     resetExtraVisible()
@@ -706,6 +793,7 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('keydown', onKeydown)
   window.removeEventListener('resize', onResize)
+  document.documentElement.classList.remove('detail-flight-active')
   if (animTimer) clearTimeout(animTimer)
   if (extraLoadTimer) clearTimeout(extraLoadTimer)
   extraObserver?.disconnect()
@@ -852,7 +940,12 @@ onUnmounted(() => {
                   移出
                 </button>
               </div>
+            </div>
+          </section>
 
+          <div class="detail-content">
+            <!-- Main column: tabs + body (aligned with left meta top) -->
+            <section class="detail-main">
               <div ref="tabsRef" class="detail-tabs sliding-tabs" role="tablist" aria-label="详情分区">
                 <button
                   v-for="item in DETAIL_TABS"
@@ -867,33 +960,6 @@ onUnmounted(() => {
                 </button>
                 <span class="sliding-tabs__indicator" :style="indicatorStyle" aria-hidden="true" />
               </div>
-            </div>
-          </section>
-
-          <div class="detail-content">
-            <Transition name="detail-soft" mode="out-in">
-              <aside
-                :key="`side-${store.activeId}-${contentEpoch}`"
-                class="detail-sidebar"
-              >
-                <div v-if="display.score" class="detail-rank-card">
-                  <PhStar :size="16" weight="fill" />
-                  <div>
-                    <strong>{{ display.score.toFixed(1) }}</strong>
-                    <span>{{ detail?.rank ? `#${detail.rank} Rank` : 'SCORE' }}</span>
-                  </div>
-                </div>
-                <div v-for="fact in sideFacts" :key="fact.label" class="detail-fact">
-                  <span>{{ fact.label }}</span>
-                  <strong>{{ fact.value }}</strong>
-                </div>
-                <div v-if="display.tags?.length" class="detail-side-tags">
-                  <span v-for="tag in display.tags.slice(0, 10)" :key="tag">{{ tag }}</span>
-                </div>
-              </aside>
-            </Transition>
-
-            <section class="detail-main">
               <Transition name="detail-soft" mode="out-in">
                 <div
                   :key="`panel-${store.activeId}-${contentEpoch}-${tab}-${store.loadingExtras ? 'x' : 'd'}-${detail?.relations?.length || 0}-${detail?.characters?.length || 0}-${detail?.staff?.length || 0}`"
@@ -1029,6 +1095,43 @@ onUnmounted(() => {
                 </div>
               </Transition>
             </section>
+
+            <!-- Meta board: always open on desktop; collapsible on mobile. -->
+            <div class="detail-meta" :class="{ 'is-expanded': metaExpanded }">
+              <button
+                type="button"
+                class="detail-meta__toggle"
+                :aria-expanded="metaExpanded"
+                @click="toggleMetaExpanded"
+              >
+                <span>作品资料</span>
+                <em v-if="display.score">{{ display.score.toFixed(1) }}</em>
+                <em v-if="detail?.rank">#{{ detail.rank }}</em>
+                <em v-if="display.year">{{ display.year }}</em>
+                <PhCaretDown class="detail-meta__caret" :size="16" weight="bold" />
+              </button>
+              <div class="detail-meta__panel">
+                <aside
+                  :key="`side-${store.activeId}-${contentEpoch}`"
+                  class="detail-sidebar"
+                >
+                  <div v-if="display.score" class="detail-rank-card">
+                    <PhStar :size="16" weight="fill" />
+                    <div>
+                      <strong>{{ display.score.toFixed(1) }}</strong>
+                      <span>{{ detail?.rank ? `#${detail.rank} Rank` : 'SCORE' }}</span>
+                    </div>
+                  </div>
+                  <div v-for="fact in sideFacts" :key="fact.label" class="detail-fact">
+                    <span>{{ fact.label }}</span>
+                    <strong>{{ fact.value }}</strong>
+                  </div>
+                  <div v-if="display.tags?.length" class="detail-side-tags">
+                    <span v-for="tag in display.tags.slice(0, 10)" :key="tag">{{ tag }}</span>
+                  </div>
+                </aside>
+              </div>
+            </div>
           </div>
         </div>
       </div>

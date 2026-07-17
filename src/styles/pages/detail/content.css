@@ -124,7 +124,7 @@
   color: var(--danger);
 }
 .detail-tabs {
-  margin-top: 22px;
+  margin: 0 0 18px;
   flex-wrap: nowrap;
   overflow-x: auto;
   width: fit-content;
@@ -138,16 +138,34 @@
   padding: 0 12px;
 }
 
+/* Tablet/PC: left meta rail top-aligned with tabs + main body */
 .detail-content {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 22px;
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+  gap: 18px 28px;
   align-items: start;
 }
-/* Dense meta board — fills width on PC, no tall empty right column */
+.detail-meta {
+  min-width: 0;
+  order: 1;
+  /* Match sliding-tabs top padding so score card lines up with tab pill */
+  padding-top: 0;
+}
+.detail-main {
+  min-width: 0;
+  order: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+/* Tablet/PC: no toggle; meta always visible as left rail */
+.detail-meta__toggle {
+  display: none;
+}
+/* Left rail: single column stack of facts */
 .detail-sidebar {
   display: grid;
-  grid-template-columns: minmax(140px, 180px) repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 .detail-rank-card {
@@ -198,7 +216,6 @@
   -webkit-box-orient: vertical;
 }
 .detail-side-tags {
-  grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -211,7 +228,6 @@
   font-size: 11px;
 }
 
-.detail-main { min-width: 0; }
 .detail-block-head span {
   display: block;
   margin-bottom: 8px;

@@ -13,18 +13,18 @@ body.detail-scroll-lock {
   cursor: pointer;
 }
 /*
- * Hide source poster only while flyer is leaving the card (expand phase).
- * On collapse, card image stays visible under the returning flyer — no blank frame.
+ * Only hide source card chrome after flyer is already covering it
+ * (html.detail-flight-active is toggled from JS once flyer is parked).
  */
 .anime-card.is-expanding {
   pointer-events: none;
 }
-.anime-card.is-expanding .poster-wrap img,
-.anime-card.is-expanding .poster-missing,
-.anime-card.is-expanding .poster-action,
-.anime-card.is-expanding .library-chip,
-.anime-card.is-expanding .rank-number,
-.anime-card.is-expanding .card-toast {
+html.detail-flight-active .anime-card.is-expanding .poster-wrap img,
+html.detail-flight-active .anime-card.is-expanding .poster-missing,
+html.detail-flight-active .anime-card.is-expanding .poster-action,
+html.detail-flight-active .anime-card.is-expanding .library-chip,
+html.detail-flight-active .anime-card.is-expanding .rank-number,
+html.detail-flight-active .anime-card.is-expanding .card-toast {
   opacity: 0 !important;
   transition: none !important;
 }
@@ -155,14 +155,14 @@ body.detail-scroll-lock {
   z-index: 1;
 }
 
-/* Shared-element flyer: transform-only flight (GPU), hidden after handoff */
+/* Shared-element flyer: always above surface during flight */
 .detail-flyer {
   position: fixed;
-  z-index: 6;
+  z-index: 90;
   overflow: hidden;
   pointer-events: none;
   box-shadow: 0 18px 48px rgba(0,0,0,.4);
-  will-change: transform, border-radius, opacity;
+  will-change: top, left, width, height, border-radius, opacity;
   transform-origin: top left;
   background: transparent;
   backface-visibility: hidden;

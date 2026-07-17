@@ -66,12 +66,10 @@
   .detail-poster-slot {
     width: 132px;
   }
-  .detail-sidebar {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .detail-rank-card,
-  .detail-side-tags {
-    grid-column: 1 / -1;
+  /* Narrow tablet: slightly tighter left rail */
+  .detail-content {
+    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+    gap: 18px 20px;
   }
 }
 
@@ -92,7 +90,73 @@
   .detail-lead {
     -webkit-line-clamp: 6;
   }
+  /* Mobile: single column — meta above tabs, then tab body */
+  .detail-content {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .detail-meta {
+    order: 1;
+  }
+  .detail-main {
+    order: 2;
+  }
   .detail-sidebar {
     grid-template-columns: 1fr;
+  }
+  .detail-meta__toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 42px;
+    margin: 0;
+    padding: 0 14px;
+    border: 1px solid rgba(228, 237, 230, .12);
+    border-radius: 12px;
+    background: rgba(18, 21, 19, .72);
+    color: var(--ink);
+    font-size: var(--type-small);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .detail-meta__toggle span {
+    margin-right: auto;
+  }
+  .detail-meta__toggle em {
+    color: var(--muted);
+    font: 600 11px/1 monospace;
+    font-style: normal;
+  }
+  .detail-meta__caret {
+    color: var(--muted);
+    transition: transform .32s var(--ease);
+  }
+  .detail-meta.is-expanded .detail-meta__caret {
+    transform: rotate(180deg);
+  }
+  /* Height clip expand/collapse (grid 0fr → 1fr) */
+  .detail-meta__panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows .38s var(--ease);
+  }
+  .detail-meta.is-expanded .detail-meta__panel {
+    grid-template-rows: 1fr;
+  }
+  .detail-meta__panel > .detail-sidebar {
+    min-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition:
+      opacity .28s ease,
+      transform .34s var(--ease),
+      margin-top .38s var(--ease);
+  }
+  .detail-meta.is-expanded .detail-meta__panel > .detail-sidebar {
+    opacity: 1;
+    transform: translateY(0);
+    margin-top: 10px;
   }
 }
