@@ -704,62 +704,19 @@ export async function browseAnime(req: DiscoverPageRequest): Promise<DiscoverPag
   }
 }
 
-export async function fetchAnimeDetail(id: string): Promise<AnimeDetail> {
+export type DetailExtraSection = 'relations' | 'characters' | 'staff'
+
+/** Overview only — no relations / characters / staff. Used for first paint. */
+export async function fetchAnimeDetailOverview(id: string): Promise<AnimeDetail> {
   if (id.startsWith('bgm-')) {
     const rawId = id.slice(4)
-    const [subjectRes, personsRes, relatedRes, charactersRes] = await Promise.allSettled([
-      fetch(`${apiConfig.bangumiBase}/v0/subjects/${encodeURIComponent(rawId)}`, { headers: bangumiHeaders() }),
-      fetch(`${apiConfig.bangumiBase}/v0/subjects/${encodeURIComponent(rawId)}/persons`, { headers: bangumiHeaders() }),
-      fetch(`${apiConfig.bangumiBase}/v0/subjects/${encodeURIComponent(rawId)}/subjects`, { headers: bangumiHeaders() }),
-      fetch(`${apiConfig.bangumiBase}/v0/subjects/${encodeURIComponent(rawId)}/characters`, { headers: bangumiHeaders() }),
-    ])
-
-    if (subjectRes.status !== 'fulfilled' || !subjectRes.value.ok) {
-      throw new Error('无法获取 Bangumi 详情')
-    }
-    const item = await subjectRes.value.json()
+    const response = await fetch(
+      `${apiConfig.bangumiBase}/v0/subjects/${encodeURIComponent(rawId)}`,
+      { headers: bangumiHeaders() },
+    )
+    if (!response.ok) throw new Error('无法获取 Bangumi 详情')
+    const item = await response.json()
     const base = mapBangumi(item)
-
-    let staff: AnimeDetail['staff'] = []
-    if (personsRes.status === 'fulfilled' && personsRes.value.ok) {
-      const persons = await personsRes.value.json()
-      staff = (Array.isArray(persons) ? persons : []).slice(0, 12).map((p: any) => ({
-        name: p.name || p.person?.name || '未知',
-        role: (p.relation || p.career?.[0] || 'Staff') as string,
-        image: (p.images?.medium || p.person?.images?.medium || '').replace('http://', 'https://') || undefined,
-      }))
-    }
-
-    let relations: AnimeDetail['relations'] = []
-    if (relatedRes.status === 'fulfilled' && relatedRes.value.ok) {
-      const related = await relatedRes.value.json()
-      relations = (Array.isArray(related) ? related : [])
-        .filter((r: any) => (r.type ?? r.subject?.type) === 2 || r.subject?.type === 2 || true)
-        .slice(0, 12)
-        .map((r: any) => {
-          const subject = r.subject || r
-          return {
-            id: `bgm-${subject.id}`,
-            title: subject.name_cn || subject.name || '相关作品',
-            type: r.relation || r.relation_type || 'Related',
-            image: (subject.images?.medium || subject.images?.large || '').replace('http://', 'https://') || undefined,
-            format: subject.platform || undefined,
-          }
-        })
-    }
-
-    let characters: AnimeDetail['characters'] = []
-    if (charactersRes.status === 'fulfilled' && charactersRes.value.ok) {
-      const chars = await charactersRes.value.json()
-      characters = (Array.isArray(chars) ? chars : []).slice(0, 16).map((c: any) => ({
-        name: c.name || c.character?.name || '角色',
-        role: c.relation || '角色',
-        image: (c.images?.medium || c.character?.images?.medium || '').replace('http://', 'https://') || undefined,
-        voiceActor: c.actors?.[0]?.name || undefined,
-        voiceActorImage: (c.actors?.[0]?.images?.medium || '').replace('http://', 'https://') || undefined,
-      }))
-    }
-
     return {
       ...base,
       id,
@@ -769,9 +726,6 @@ export async function fetchAnimeDetail(id: string): Promise<AnimeDetail> {
       scoreCount: item.rating?.total || undefined,
       tags: bangumiTagNames(item).slice(0, 12),
       format: item.platform || undefined,
-      relations,
-      characters,
-      staff,
     }
   }
 
@@ -786,33 +740,6 @@ export async function fetchAnimeDetail(id: string): Promise<AnimeDetail> {
           startDate { year month day }
           studios(isMain: true) { nodes { name } }
           averageScore popularity
-          relations {
-            edges {
-              relationType
-              node {
-                id type
-                title { romaji native english }
-                coverImage { large }
-                format status
-              }
-            }
-          }
-          characters(sort: [ROLE, RELEVANCE], perPage: 12) {
-            edges {
-              role
-              node { name { full native } image { large } }
-              voiceActors(language: JAPANESE, sort: [RELEVANCE]) {
-                name { full native }
-                image { large }
-              }
-            }
-          }
-          staff(sort: [RELEVANCE], perPage: 10) {
-            edges {
-              role
-              node { name { full native } image { large } }
-            }
-          }
         }
       }
     `
@@ -823,33 +750,6 @@ export async function fetchAnimeDetail(id: string): Promise<AnimeDetail> {
     const airDate = start?.year
       ? `${start.year}-${String(start.month || 1).padStart(2, '0')}-${String(start.day || 1).padStart(2, '0')}`
       : undefined
-
-    const relations = (media.relations?.edges || [])
-      .filter((edge: any) => edge?.node?.type === 'ANIME')
-      .slice(0, 12)
-      .map((edge: any) => ({
-        id: `anilist-${edge.node.id}`,
-        title: edge.node.title?.native || edge.node.title?.english || edge.node.title?.romaji || 'Related',
-        type: edge.relationType || 'RELATED',
-        image: edge.node.coverImage?.large || undefined,
-        format: edge.node.format || undefined,
-        status: edge.node.status || undefined,
-      }))
-
-    const characters = (media.characters?.edges || []).slice(0, 16).map((edge: any) => ({
-      name: edge.node?.name?.native || edge.node?.name?.full || 'Character',
-      role: edge.role || 'SUPPORTING',
-      image: edge.node?.image?.large || undefined,
-      voiceActor: edge.voiceActors?.[0]?.name?.native || edge.voiceActors?.[0]?.name?.full || undefined,
-      voiceActorImage: edge.voiceActors?.[0]?.image?.large || undefined,
-    }))
-
-    const staff = (media.staff?.edges || []).slice(0, 12).map((edge: any) => ({
-      name: edge.node?.name?.native || edge.node?.name?.full || 'Staff',
-      role: edge.role || 'Staff',
-      image: edge.node?.image?.large || undefined,
-    }))
-
     return {
       ...base,
       id,
@@ -861,13 +761,204 @@ export async function fetchAnimeDetail(id: string): Promise<AnimeDetail> {
       duration: media.duration || undefined,
       tags: media.genres || base.tags,
       scoreCount: media.popularity || undefined,
-      relations,
-      characters,
-      staff,
     }
   }
 
   throw new Error('未知的动画来源')
+}
+
+/** Lazy tab payloads — full lists (UI paginates). */
+export async function fetchAnimeDetailExtras(
+  id: string,
+  sections: DetailExtraSection[],
+): Promise<Pick<AnimeDetail, 'relations' | 'characters' | 'staff'>> {
+  const want = new Set(sections)
+  const out: Pick<AnimeDetail, 'relations' | 'characters' | 'staff'> = {}
+
+  if (id.startsWith('bgm-')) {
+    const rawId = id.slice(4)
+    const jobs: Array<Promise<void>> = []
+
+    if (want.has('staff')) {
+      jobs.push((async () => {
+        const res = await fetch(
+          `${apiConfig.bangumiBase}/v0/subjects/${encodeURIComponent(rawId)}/persons`,
+          { headers: bangumiHeaders() },
+        )
+        if (!res.ok) return
+        const persons = await res.json()
+        out.staff = (Array.isArray(persons) ? persons : []).map((p: any) => ({
+          name: p.name || p.person?.name || '未知',
+          role: (p.relation || p.career?.[0] || 'Staff') as string,
+          image: (p.images?.medium || p.person?.images?.medium || '').replace('http://', 'https://') || undefined,
+        }))
+      })())
+    }
+
+    if (want.has('relations')) {
+      jobs.push((async () => {
+        const res = await fetch(
+          `${apiConfig.bangumiBase}/v0/subjects/${encodeURIComponent(rawId)}/subjects`,
+          { headers: bangumiHeaders() },
+        )
+        if (!res.ok) return
+        const related = await res.json()
+        out.relations = (Array.isArray(related) ? related : []).map((r: any) => {
+          const subject = r.subject || r
+          return {
+            id: `bgm-${subject.id}`,
+            title: subject.name_cn || subject.name || '相关作品',
+            type: r.relation || r.relation_type || 'Related',
+            image: (subject.images?.medium || subject.images?.large || '').replace('http://', 'https://') || undefined,
+            format: subject.platform || undefined,
+          }
+        })
+      })())
+    }
+
+    if (want.has('characters')) {
+      jobs.push((async () => {
+        const res = await fetch(
+          `${apiConfig.bangumiBase}/v0/subjects/${encodeURIComponent(rawId)}/characters`,
+          { headers: bangumiHeaders() },
+        )
+        if (!res.ok) return
+        const chars = await res.json()
+        out.characters = (Array.isArray(chars) ? chars : []).map((c: any) => ({
+          name: c.name || c.character?.name || '角色',
+          role: c.relation || '角色',
+          image: (c.images?.medium || c.character?.images?.medium || '').replace('http://', 'https://') || undefined,
+          voiceActor: c.actors?.[0]?.name || undefined,
+          voiceActorImage: (c.actors?.[0]?.images?.medium || '').replace('http://', 'https://') || undefined,
+        }))
+      })())
+    }
+
+    await Promise.all(jobs)
+    return out
+  }
+
+  if (id.startsWith('anilist-')) {
+    const rawId = Number(id.slice(8))
+
+    if (want.has('relations')) {
+      const query = `
+        query ($id: Int) {
+          Media(id: $id, type: ANIME) {
+            relations {
+              edges {
+                relationType
+                node {
+                  id type
+                  title { romaji native english }
+                  coverImage { large }
+                  format status
+                }
+              }
+            }
+          }
+        }
+      `
+      const data = await aniListRequest(query, { id: rawId })
+      out.relations = (data.Media?.relations?.edges || [])
+        .filter((edge: any) => edge?.node?.type === 'ANIME')
+        .map((edge: any) => ({
+          id: `anilist-${edge.node.id}`,
+          title: edge.node.title?.native || edge.node.title?.english || edge.node.title?.romaji || 'Related',
+          type: edge.relationType || 'RELATED',
+          image: edge.node.coverImage?.large || undefined,
+          format: edge.node.format || undefined,
+          status: edge.node.status || undefined,
+        }))
+    }
+
+    if (want.has('characters')) {
+      const characters: NonNullable<AnimeDetail['characters']> = []
+      let page = 1
+      let hasNext = true
+      while (hasNext) {
+        const query = `
+          query ($id: Int, $page: Int) {
+            Media(id: $id, type: ANIME) {
+              characters(sort: [ROLE, RELEVANCE], page: $page, perPage: 25) {
+                pageInfo { hasNextPage }
+                edges {
+                  role
+                  node { name { full native } image { large } }
+                  voiceActors(language: JAPANESE, sort: [RELEVANCE]) {
+                    name { full native }
+                    image { large }
+                  }
+                }
+              }
+            }
+          }
+        `
+        const data = await aniListRequest(query, { id: rawId, page })
+        const block = data.Media?.characters
+        const edges = block?.edges || []
+        characters.push(...edges.map((edge: any) => ({
+          name: edge.node?.name?.native || edge.node?.name?.full || 'Character',
+          role: edge.role || 'SUPPORTING',
+          image: edge.node?.image?.large || undefined,
+          voiceActor: edge.voiceActors?.[0]?.name?.native || edge.voiceActors?.[0]?.name?.full || undefined,
+          voiceActorImage: edge.voiceActors?.[0]?.image?.large || undefined,
+        })))
+        hasNext = Boolean(block?.pageInfo?.hasNextPage)
+        page += 1
+        if (page > 40) break
+      }
+      out.characters = characters
+    }
+
+    if (want.has('staff')) {
+      const staff: NonNullable<AnimeDetail['staff']> = []
+      let page = 1
+      let hasNext = true
+      while (hasNext) {
+        const query = `
+          query ($id: Int, $page: Int) {
+            Media(id: $id, type: ANIME) {
+              staff(sort: [RELEVANCE], page: $page, perPage: 25) {
+                pageInfo { hasNextPage }
+                edges {
+                  role
+                  node { name { full native } image { large } }
+                }
+              }
+            }
+          }
+        `
+        const data = await aniListRequest(query, { id: rawId, page })
+        const block = data.Media?.staff
+        const edges = block?.edges || []
+        staff.push(...edges.map((edge: any) => ({
+          name: edge.node?.name?.native || edge.node?.name?.full || 'Staff',
+          role: edge.role || 'Staff',
+          image: edge.node?.image?.large || undefined,
+        })))
+        hasNext = Boolean(block?.pageInfo?.hasNextPage)
+        page += 1
+        if (page > 40) break
+      }
+      out.staff = staff
+    }
+
+    return out
+  }
+
+  throw new Error('未知的动画来源')
+}
+
+/** Full detail (overview + all extras). Prefer overview + lazy extras for UI. */
+export async function fetchAnimeDetail(id: string): Promise<AnimeDetail> {
+  const overview = await fetchAnimeDetailOverview(id)
+  try {
+    const extras = await fetchAnimeDetailExtras(id, ['relations', 'characters', 'staff'])
+    return { ...overview, ...extras }
+  } catch {
+    return overview
+  }
 }
 
 export type { DiscoverPageRequest, DiscoverPageResult, DiscoverFilters }

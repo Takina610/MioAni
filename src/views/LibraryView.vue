@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import { PhBooks, PhCheck, PhClock, PhPlay, PhArrowRight } from '@phosphor-icons/vue'
 import AnimeCard from '../components/AnimeCard.vue'
 import { useLibraryStore } from '../stores/library'
 const store = useLibraryStore()
+const route = useRoute()
 type LibraryTab = 'all' | 'watching' | 'completed' | 'planned'
 
 const PAGE_SIZE = 24
@@ -14,8 +15,12 @@ const loadingMore = ref(false)
 const tabsRef = ref<HTMLElement | null>(null)
 const sentinelRef = ref<HTMLElement | null>(null)
 const indicatorStyle = ref({ width: '0px', transform: 'translateX(0px)' })
+/** First paint: no slide transition from 0-width ghost. */
+const indicatorReady = ref(false)
 let observer: IntersectionObserver | null = null
 let loadTimer: ReturnType<typeof setTimeout> | null = null
+let tabsResizeObserver: ResizeObserver | null = null
+let measureRaf = 0
 
 const filtered = computed(() =>
   tab.value === 'all' ? store.items : store.items.filter((item) => item.status === tab.value),
@@ -38,15 +43,50 @@ function tabCount(id: LibraryTab) {
 function updateIndicator() {
   const root = tabsRef.value
   if (!root) return
+  // Hidden under v-show (e.g. detail underlay) — wait until visible.
+  if (root.getClientRects().length === 0) return
   const active = root.querySelector<HTMLElement>('button.active')
   if (!active) {
     indicatorStyle.value = { width: '0px', transform: 'translateX(0px)' }
     return
   }
+  const rootRect = root.getBoundingClientRect()
+  const btnRect = active.getBoundingClientRect()
+  const width = btnRect.width
+  // Position relative to padding box of the tabs container.
+  const left = btnRect.left - rootRect.left - root.clientLeft + root.scrollLeft
+  // Fonts / layout not ready yet.
+  if (width < 8 || rootRect.width < 8) return
   indicatorStyle.value = {
-    width: `${active.offsetWidth}px`,
-    transform: `translateX(${active.offsetLeft}px)`,
+    width: `${width}px`,
+    transform: `translateX(${left}px)`,
   }
+  if (!indicatorReady.value) {
+    // Next frame: enable transitions only after correct geometry is applied.
+    requestAnimationFrame(() => {
+      indicatorReady.value = true
+    })
+  }
+}
+
+function scheduleIndicator() {
+  if (measureRaf) cancelAnimationFrame(measureRaf)
+  measureRaf = requestAnimationFrame(() => {
+    measureRaf = 0
+    updateIndicator()
+  })
+}
+
+async function measureIndicator() {
+  await nextTick()
+  scheduleIndicator()
+  // Fonts can change tab widths after first paint.
+  if (document.fonts?.ready) {
+    void document.fonts.ready.then(() => scheduleIndicator())
+  }
+  // Second pass after layout settles (counts / grid reflow).
+  window.setTimeout(scheduleIndicator, 80)
+  window.setTimeout(scheduleIndicator, 220)
 }
 
 function setTab(next: LibraryTab) {
@@ -84,8 +124,7 @@ function setupObserver() {
 }
 
 watch(tab, async () => {
-  await nextTick()
-  updateIndicator()
+  await measureIndicator()
   setupObserver()
 })
 
@@ -100,24 +139,54 @@ watch(
     if (visibleCount.value > filtered.value.length) {
       visibleCount.value = Math.max(filtered.value.length, PAGE_SIZE)
     }
-    await nextTick()
-    updateIndicator()
+    await measureIndicator()
     setupObserver()
+  },
+)
+
+// Counts change button width — remeasure when any tab count shifts.
+watch(
+  () => [
+    store.items.length,
+    store.watching.length,
+    store.completed.length,
+    store.items.filter((i) => i.status === 'planned').length,
+  ],
+  () => {
+    void measureIndicator()
   },
 )
 
 watch(sentinelRef, () => setupObserver())
 
+// Page stays mounted under shell; remeasure when library becomes the visible list.
+watch(
+  () => route.name,
+  (name) => {
+    if (name === 'library') void measureIndicator()
+  },
+)
+
 onMounted(() => {
-  updateIndicator()
+  void measureIndicator()
   setupObserver()
-  window.addEventListener('resize', updateIndicator)
+  window.addEventListener('resize', scheduleIndicator)
+  if (typeof ResizeObserver !== 'undefined' && tabsRef.value) {
+    tabsResizeObserver = new ResizeObserver(() => scheduleIndicator())
+    tabsResizeObserver.observe(tabsRef.value)
+    for (const btn of tabsRef.value.querySelectorAll('button')) {
+      tabsResizeObserver.observe(btn)
+    }
+  }
 })
 
 onUnmounted(() => {
   observer?.disconnect()
+  tabsResizeObserver?.disconnect()
+  tabsResizeObserver = null
   if (loadTimer) clearTimeout(loadTimer)
-  window.removeEventListener('resize', updateIndicator)
+  if (measureRaf) cancelAnimationFrame(measureRaf)
+  window.removeEventListener('resize', scheduleIndicator)
 })
 </script>
 
@@ -156,7 +225,13 @@ onUnmounted(() => {
 
     <section class="content-section library-content">
       <div class="library-toolbar">
-        <div ref="tabsRef" class="library-tabs" role="tablist" aria-label="追番分类">
+        <div
+          ref="tabsRef"
+          class="library-tabs sliding-tabs"
+          :class="{ 'is-indicator-ready': indicatorReady }"
+          role="tablist"
+          aria-label="追番分类"
+        >
           <button
             v-for="item in tabs"
             :key="item.id"
@@ -169,7 +244,7 @@ onUnmounted(() => {
             {{ item.label }}
             <sup>{{ tabCount(item.id) }}</sup>
           </button>
-          <span class="library-tabs__indicator" :style="indicatorStyle" aria-hidden="true" />
+          <span class="library-tabs__indicator sliding-tabs__indicator" :style="indicatorStyle" aria-hidden="true" />
         </div>
         <span>{{ displayed.length }}{{ hasMore ? ` / ${filtered.length}` : '' }} 部作品</span>
       </div>

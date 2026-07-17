@@ -1,0 +1,42 @@
+.page-enter-active, .page-leave-active { transition: opacity .35s var(--ease), transform .35s var(--ease), filter .35s ease; }
+.page-enter-from { opacity: 0; transform: translateY(18px); filter: blur(8px); }
+.page-leave-to { opacity: 0; transform: translateY(-10px); filter: blur(5px); }
+/* Discover/home infinite list: soft enter only (no absolute leave that breaks grids) */
+.list-enter-active {
+  transition: opacity .35s var(--ease), transform .4s var(--ease);
+}
+.list-enter-from {
+  opacity: 0;
+  transform: translateY(16px) scale(.97);
+}
+.list-leave-active {
+  transition: none;
+}
+.list-leave-to {
+  opacity: 0;
+}
+.list-move {
+  transition: transform .35s var(--ease);
+}
+
+/* Library tab switch: fade only, no absolute positioning, no FLIP thrash */
+.lib-list-enter-active {
+  transition: opacity .28s var(--ease), transform .32s var(--ease);
+}
+.lib-list-leave-active {
+  transition: opacity .16s ease;
+}
+.lib-list-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.lib-list-leave-to {
+  opacity: 0;
+}
+.lib-list-move {
+  transition: none;
+}
+.modal-enter-active, .modal-leave-active { transition: opacity .25s ease; }
+.modal-enter-active .import-modal, .modal-leave-active .import-modal { transition: transform .35s var(--ease), opacity .25s ease; }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
+.modal-enter-from .import-modal, .modal-leave-to .import-modal { opacity: 0; transform: translateY(22px) scale(.97); }

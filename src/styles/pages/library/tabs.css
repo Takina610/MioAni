@@ -1,0 +1,73 @@
+/* Shared pill sliding tab bar (library + detail) */
+.sliding-tabs,
+.library-tabs {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(18, 21, 19, .72);
+  border: 1px solid rgba(228, 237, 230, .08);
+}
+.sliding-tabs button,
+.library-tabs button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--type-body);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: color .22s ease;
+}
+.sliding-tabs button.active,
+.library-tabs button.active {
+  color: var(--accent-ink);
+}
+.sliding-tabs__indicator,
+.library-tabs__indicator {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  bottom: 4px;
+  height: auto;
+  border-radius: 9px;
+  background: var(--accent);
+  box-shadow: 0 8px 22px rgba(184, 240, 95, .22);
+  /* Default: no slide until first measure (library sets .is-indicator-ready) */
+  transition: none;
+  pointer-events: none;
+}
+.sliding-tabs.is-indicator-ready .sliding-tabs__indicator,
+.sliding-tabs.is-indicator-ready .library-tabs__indicator,
+.library-tabs.is-indicator-ready .sliding-tabs__indicator,
+.library-tabs.is-indicator-ready .library-tabs__indicator {
+  transition:
+    transform .32s var(--ease),
+    width .32s var(--ease);
+}
+/* Detail tabs measure on open; keep motion enabled after first paint */
+.detail-tabs .sliding-tabs__indicator {
+  transition:
+    transform .32s var(--ease),
+    width .32s var(--ease);
+}
+.library-tabs sup {
+  margin-left: 6px;
+  color: inherit;
+  opacity: .72;
+  font: 600 var(--type-micro)/1 monospace;
+}
+.library-tabs button:not(.active) sup {
+  color: var(--accent);
+  opacity: 1;
+}

@@ -16,5 +16,11 @@ export const router = createRouter({
       component: { template: '<div class="anime-detail-route" aria-hidden="true"></div>' },
     },
   ],
-  scrollBehavior: () => ({ top: 0 }),
+  scrollBehavior(to, from) {
+    // Detail open/close must not reset the underlay list scroll position.
+    if (to.name === 'anime-detail' || from.name === 'anime-detail') {
+      return false
+    }
+    return { top: 0 }
+  },
 })

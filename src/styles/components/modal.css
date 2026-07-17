@@ -1,0 +1,22 @@
+.modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: rgba(5,7,6,.78); backdrop-filter: blur(12px); }
+.import-modal { position: relative; width: min(620px,100%); padding: 38px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); box-shadow: 0 40px 100px rgba(0,0,0,.45); }
+.modal-close { position: absolute; top: 16px; right: 16px; display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 50%; background: transparent; cursor: pointer; transition: transform .2s ease; }
+.modal-close:hover { transform: rotate(90deg); }
+.modal-heading h2 { margin: 0; font-size: clamp(30px,5vw,44px); }
+.modal-heading p { max-width: 50ch; margin: 12px 0 0; color: var(--muted); font-size: var(--type-body); line-height: 1.65; }
+.source-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin-top: 30px; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--line); }
+.source-tabs button { display: grid; gap: 5px; padding: 16px; border: 0; background: var(--surface); color: var(--muted); text-align: left; cursor: pointer; transition: .2s ease; }
+.source-tabs button.active { background: var(--accent); color: var(--accent-ink); }
+.source-tabs strong { font-size: 12px; }
+.source-tabs span { font-size: var(--type-micro); }
+.import-form { margin-top: 25px; }
+.import-form label { display: block; margin-bottom: 9px; font-size: var(--type-small); }
+.input-action { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.input-action input { min-width: 0; height: 48px; padding: 0 13px; border: 1px solid var(--line); border-radius: 6px; outline: 0; background: var(--bg); color: var(--ink); }
+.input-action input:focus { border-color: var(--accent); }
+.input-action button { display: flex; align-items: center; gap: 7px; padding: 0 17px; border: 0; border-radius: 6px; background: var(--accent); color: var(--accent-ink); font-size: var(--type-small); font-weight: 700; cursor: pointer; }
+.input-action button:disabled { opacity: .55; cursor: wait; }
+.form-message { display: flex; align-items: center; gap: 8px; margin: 15px 0 0; padding: 11px 12px; border-radius: 6px; font-size: var(--type-small); }
+.form-message.error { background: rgba(255,124,110,.12); color: var(--danger); }
+.form-message.success { background: rgba(184,240,95,.12); color: var(--accent); }
+.privacy-note { margin: 18px 0 0; color: var(--muted); font-size: var(--type-micro); }

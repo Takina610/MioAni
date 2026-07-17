@@ -1,0 +1,3 @@
+.app-shell { min-height: 100dvh; }
+/* List pages stay mounted under detail; only one is visible at a time. */
+.list-layer { min-height: calc(100dvh - 72px); }

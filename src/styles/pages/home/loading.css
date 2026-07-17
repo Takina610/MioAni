@@ -1,0 +1,8 @@
+.home-loading { min-height: 650px; display: grid; grid-template-columns: 1fr 340px; gap: 90px; align-items: center; padding: 70px 10vw; }
+.loading-copy span, .loading-copy i, .loading-poster, .skeleton-card > * { display: block; background: linear-gradient(90deg,var(--surface),var(--surface-2),var(--surface)); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+.loading-copy span { width: 100px; height: 10px; }
+.loading-copy i { width: 85%; height: 48px; margin-top: 15px; }
+.loading-copy i:last-child { width: 55%; height: 16px; margin-top: 40px; }
+.loading-poster, .skeleton-card span { aspect-ratio: 2/3; border-radius: var(--radius-md); }
+.skeleton-card i { width: 80%; height: 12px; margin-top: 12px; }
+.skeleton-card i:last-child { width: 45%; height: 8px; margin-top: 7px; }

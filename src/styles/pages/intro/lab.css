@@ -1,0 +1,19 @@
+.intro-lab {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 28;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  background: rgba(11,13,12,.88);
+  box-shadow: 0 16px 50px rgba(0,0,0,.34);
+  backdrop-filter: blur(16px);
+}
+.intro-lab > span { padding: 0 9px; color: var(--muted); font: 700 11px/1 monospace; }
+.intro-lab button { width: 34px; height: 34px; padding: 0; border: 0; background: transparent; color: var(--muted); font: 700 12px/1 'Space Grotesk', sans-serif; cursor: pointer; transition: .2s ease; }
+.intro-lab button:hover { color: var(--ink); background: var(--surface-2); }
+.intro-lab button:active { transform: scale(.95); }
+.intro-lab button.active { background: var(--accent); color: var(--accent-ink); }

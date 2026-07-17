@@ -1,0 +1,260 @@
+/* ── Shared-element anime detail overlay ── */
+body.detail-scroll-lock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
+  overflow: hidden;
+}
+.app-shell.has-detail-overlay {
+  overflow: hidden;
+}
+.anime-card {
+  cursor: pointer;
+}
+/*
+ * Hide source poster only while flyer is leaving the card (expand phase).
+ * On collapse, card image stays visible under the returning flyer — no blank frame.
+ */
+.anime-card.is-expanding {
+  pointer-events: none;
+}
+.anime-card.is-expanding .poster-wrap img,
+.anime-card.is-expanding .poster-missing,
+.anime-card.is-expanding .poster-action,
+.anime-card.is-expanding .library-chip,
+.anime-card.is-expanding .rank-number,
+.anime-card.is-expanding .card-toast {
+  opacity: 0 !important;
+  transition: none !important;
+}
+.detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+}
+.detail-overlay.is-expanding,
+.detail-overlay.is-open,
+.detail-overlay.is-collapsing,
+.detail-overlay.is-returning {
+  pointer-events: auto;
+}
+/* Parent detail layers stay mounted under the active surface */
+.detail-overlay__layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.detail-overlay__layer.is-top {
+  pointer-events: auto;
+}
+.detail-overlay__layer.is-buried {
+  pointer-events: none;
+}
+.detail-overlay__layer.is-buried .detail-surface.is-static {
+  opacity: 1;
+  transform: none;
+  --reveal-r: 150%;
+  -webkit-mask-image: none;
+  mask-image: none;
+  clip-path: none;
+}
+.detail-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(6, 8, 7, .42);
+  backdrop-filter: blur(0px);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity .45s var(--ease), backdrop-filter .45s var(--ease);
+}
+.detail-overlay.is-expanding .detail-scrim,
+.detail-overlay.is-open .detail-scrim,
+.detail-overlay.is-content-ready .detail-scrim {
+  opacity: 1;
+  backdrop-filter: blur(12px) saturate(120%);
+}
+.detail-overlay.is-collapsing .detail-scrim {
+  opacity: 0;
+  backdrop-filter: blur(0px);
+  transition-duration: .38s;
+}
+
+/* Full page surface: soft circular wipe from click origin (JS drives --reveal-r) */
+@property --reveal-r {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+.detail-surface {
+  --reveal-x: 50%;
+  --reveal-y: 42%;
+  --reveal-r: 0%;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  /* Solid fill + soft rim: hard clip reads poorly; feathered mask shows the circle. */
+  background:
+    radial-gradient(
+      circle at var(--reveal-x) var(--reveal-y),
+      rgba(34, 42, 36, .98) 0%,
+      rgba(22, 28, 24, .99) 42%,
+      #101512 72%,
+      #0c100e 100%
+    );
+  opacity: 0;
+  transform: scale(.992);
+  /* Soft-edged circle: transparent outside, accent-tinted feather at the rim */
+  -webkit-mask-image: radial-gradient(
+    circle at var(--reveal-x) var(--reveal-y),
+    #000 0%,
+    #000 calc(var(--reveal-r) * 0.78),
+    rgba(0, 0, 0, .88) calc(var(--reveal-r) * 0.88),
+    rgba(0, 0, 0, .45) calc(var(--reveal-r) * 0.96),
+    transparent calc(var(--reveal-r) * 1.08)
+  );
+  mask-image: radial-gradient(
+    circle at var(--reveal-x) var(--reveal-y),
+    #000 0%,
+    #000 calc(var(--reveal-r) * 0.78),
+    rgba(0, 0, 0, .88) calc(var(--reveal-r) * 0.88),
+    rgba(0, 0, 0, .45) calc(var(--reveal-r) * 0.96),
+    transparent calc(var(--reveal-r) * 1.08)
+  );
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  will-change: opacity, transform, --reveal-r;
+  /* Accent bloom on the expanding rim so the circle is more visible */
+  box-shadow:
+    inset 0 0 0 0 rgba(184, 240, 95, 0),
+    0 0 0 0 rgba(184, 240, 95, 0);
+}
+/* Soft colored halo layer that tracks the same circle (extra readability) */
+.detail-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    circle at var(--reveal-x) var(--reveal-y),
+    rgba(184, 240, 95, .16) 0%,
+    rgba(184, 240, 95, .08) calc(var(--reveal-r) * 0.55),
+    rgba(120, 180, 90, .04) calc(var(--reveal-r) * 0.85),
+    transparent calc(var(--reveal-r) * 1.05)
+  );
+  opacity: .9;
+  mix-blend-mode: screen;
+}
+.detail-surface > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Shared-element flyer: transform-only flight (GPU), hidden after handoff */
+.detail-flyer {
+  position: fixed;
+  z-index: 6;
+  overflow: hidden;
+  pointer-events: none;
+  box-shadow: 0 18px 48px rgba(0,0,0,.4);
+  will-change: transform, border-radius, opacity;
+  transform-origin: top left;
+  background: transparent;
+  backface-visibility: hidden;
+}
+.detail-flyer img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: transparent;
+  pointer-events: none;
+}
+.detail-overlay.is-settled .detail-flyer {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.detail-banner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: min(220px, 28vh);
+  background-size: cover;
+  background-position: center top;
+  filter: saturate(.9);
+  opacity: .5;
+}
+.detail-banner__shade {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: min(260px, 34vh);
+  background:
+    linear-gradient(180deg, rgba(15,19,17,.2), rgba(15,19,17,.88) 72%, #0f1311),
+    radial-gradient(ellipse 50% 60% at 80% 0%, rgba(184,240,95,.1), transparent 60%);
+  pointer-events: none;
+}
+
+.detail-close,
+.detail-back {
+  position: absolute;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 38px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 999px;
+  background: rgba(11,13,12,.55);
+  color: var(--ink);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity .3s ease .18s, transform .3s var(--ease) .18s, background .2s ease;
+}
+.detail-overlay.is-content-ready .detail-close,
+.detail-overlay.is-content-ready .detail-back {
+  opacity: 1;
+  transform: translateY(0);
+}
+.detail-overlay.is-collapsing .detail-close,
+.detail-overlay.is-collapsing .detail-back {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition-delay: 0s;
+}
+.detail-overlay.is-surface-ready .detail-close,
+.detail-overlay.is-surface-ready .detail-back {
+  opacity: 1;
+  transform: translateY(0);
+}
+.detail-close {
+  top: max(14px, env(safe-area-inset-top));
+  right: 14px;
+  width: 38px;
+  padding: 0;
+}
+.detail-back {
+  top: max(14px, env(safe-area-inset-top));
+  left: 14px;
+  padding: 0 12px;
+  font-size: var(--type-small);
+  font-weight: 600;
+}
+.detail-close:hover,
+.detail-back:hover {
+  background: rgba(184,240,95,.16);
+  border-color: rgba(184,240,95,.35);
+  color: var(--accent);
+}
+

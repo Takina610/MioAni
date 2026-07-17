@@ -1,0 +1,92 @@
+/* Discover page atmosphere */
+.discover-page {
+  position: relative;
+  isolation: isolate;
+  overflow: clip;
+}
+.discover-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.discover-bg__orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(8px);
+  opacity: .55;
+}
+.discover-bg__orb--a {
+  top: -120px;
+  left: 8%;
+  width: min(52vw, 520px);
+  height: min(52vw, 520px);
+  background: radial-gradient(circle, rgba(184,240,95,.16) 0%, rgba(184,240,95,0) 68%);
+}
+.discover-bg__orb--b {
+  top: 18%;
+  right: -8%;
+  width: min(48vw, 460px);
+  height: min(48vw, 460px);
+  background: radial-gradient(circle, rgba(95,180,240,.12) 0%, rgba(95,180,240,0) 70%);
+}
+.discover-bg__grid {
+  position: absolute;
+  inset: 0;
+  opacity: .22;
+  background-image:
+    linear-gradient(rgba(228,237,230,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(228,237,230,.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 80% 55% at 50% 0%, #000 20%, transparent 78%);
+}
+.discover-bg__glow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 420px;
+  background:
+    radial-gradient(ellipse 70% 80% at 50% -10%, rgba(184,240,95,.08), transparent 60%),
+    linear-gradient(180deg, rgba(18,21,19,.9), transparent);
+}
+.discover-page > .discover-masthead,
+.discover-page > .content-section {
+  position: relative;
+  z-index: 1;
+}
+
+/* Compact centered masthead */
+.discover-masthead {
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  gap: 0;
+  padding: 40px clamp(20px, 5vw, 72px) 28px;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  text-align: center;
+}
+.discover-masthead__inner {
+  width: min(720px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+}
+.discover-kicker {
+  color: var(--accent);
+  font: 600 var(--type-micro)/1 monospace;
+  letter-spacing: .08em;
+}
+.discover-masthead h1,
+.discover-title {
+  margin: 0;
+  max-width: none;
+  width: 100%;
+  font-size: clamp(22px, 3.2vw, 40px);
+  line-height: 1.2;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+  text-wrap: nowrap;
+}

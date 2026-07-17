@@ -1,0 +1,126 @@
+.relation-grid,
+.character-grid,
+.staff-grid {
+  display: grid;
+  gap: 12px;
+}
+.relation-grid {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+.relation-card {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(228,237,230,.1);
+  border-radius: 12px;
+  background: rgba(18,21,19,.55);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .2s ease, transform .2s var(--ease);
+}
+.relation-card:hover {
+  border-color: rgba(184,240,95,.35);
+  transform: translateY(-2px);
+}
+.relation-card img,
+.relation-card__ph {
+  width: 56px;
+  height: 78px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.relation-card em {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent);
+  font: 700 10px/1 monospace;
+  letter-spacing: .06em;
+  font-style: normal;
+  text-transform: uppercase;
+}
+.relation-card strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.relation-card span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.character-grid,
+.staff-grid {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+/* Rectangular cards like relations; use contain so full-body art is not cropped */
+.character-card,
+.staff-card {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 12px;
+  align-items: center;
+  min-height: 108px;
+  padding: 10px;
+  border: 1px solid rgba(228,237,230,.1);
+  border-radius: 12px;
+  background: rgba(18,21,19,.55);
+}
+.character-card > img,
+.character-card__ph,
+.staff-card > img,
+.staff-card__ph {
+  width: 72px;
+  height: 96px;
+  object-fit: contain;
+  object-position: center top;
+  border-radius: 8px;
+  background: #161a17;
+}
+.character-card__meta,
+.staff-card > div {
+  min-width: 0;
+}
+.character-card__meta strong,
+.staff-card strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.character-card__meta > span,
+.staff-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+.character-card__meta p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  color: rgba(242,245,241,.8);
+  font-size: 11px;
+  min-width: 0;
+}
+.character-card__meta p img {
+  flex-shrink: 0;
+  width: 28px;
+  height: 36px;
+  object-fit: contain;
+  object-position: center top;
+  border-radius: 4px;
+  background: #161a17;
+}
+.character-card__meta p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

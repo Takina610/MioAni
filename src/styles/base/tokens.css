@@ -1,0 +1,26 @@
+:root {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  color: #f2f5f1;
+  background: #0b0d0c;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --bg: #0b0d0c;
+  --surface: #121513;
+  --surface-2: #1a1e1b;
+  --ink: #f2f5f1;
+  --muted: #8f9791;
+  --line: rgba(228, 237, 230, .14);
+  --accent: #b8f05f;
+  --accent-ink: #11170c;
+  --danger: #ff7c6e;
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --ease: cubic-bezier(.16, 1, .3, 1);
+  --type-micro: 11px;
+  --type-small: 12px;
+  --type-body: 14px;
+  --type-card-title: 15px;
+  --type-section-title: clamp(36px, 4.5vw, 60px);
+  --type-page-title: clamp(44px, 5.5vw, 72px);
+  --type-closing-title: clamp(46px, 6vw, 76px);
+}

@@ -26,6 +26,20 @@ const feedback = ref('')
 const flash = ref(false)
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null
 let revealObserver: IntersectionObserver | null = null
+/**
+ * Hide source poster only while flyer is leaving the card.
+ * During collapse the card poster stays visible under the returning flyer
+ * so handoff never flashes a blank frame.
+ */
+/**
+ * Hide list poster only when THIS card is the return target during flight.
+ * Related handoffs keep the original list card hidden until full close.
+ */
+const isActiveExpand = computed(() => {
+  if (!detailOverlay.open || detailOverlay.phase === 'collapsing') return false
+  const returnId = detailOverlay.returnCardId || detailOverlay.activeId
+  return returnId === props.anime.id
+})
 
 const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
   { value: 'watching', label: '在看' },
@@ -139,12 +153,13 @@ onUnmounted(() => {
   <article
     ref="rootRef"
     class="anime-card"
+    :data-anime-id="anime.id"
     :class="{
       'is-menu-open': menuOpen,
       'is-in-library': inLibrary,
       'is-flash': flash,
       'is-revealed': revealed,
-      'is-expanding': detailOverlay.open && detailOverlay.activeId === anime.id,
+      'is-expanding': isActiveExpand,
     }"
     :style="{ '--enter-delay': enterDelay }"
     role="button"

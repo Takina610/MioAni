@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import gsap from 'gsap'
 import { PhArrowRight, PhPause, PhPlay, PhSparkle, PhWarningCircle } from '@phosphor-icons/vue'
 import AnimeCard from '../components/AnimeCard.vue'
@@ -45,6 +45,7 @@ const INTRO_CRITICAL_ASSETS = [
 
 const catalog = useCatalogStore()
 const library = useLibraryStore()
+const route = useRoute()
 const activeIndex = ref(0)
 const copyIndex = ref(0)
 const isAnimating = ref(false)
@@ -1029,8 +1030,16 @@ watch(() => catalog.loaded, (loaded) => {
   if (loaded) void maybeFinishIntro(introGeneration)
 })
 
+// Home stays mounted under detail; only mark body while home route is active.
+watch(
+  () => route.name,
+  (name) => {
+    document.body.classList.toggle('home-page-active', name === 'home')
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
-  document.body.classList.add('home-page-active')
   // Kick off asset warm-up immediately, in parallel with catalog fetch.
   void preloadIntroAssets()
   const shouldPlayIntro = !catalog.loaded

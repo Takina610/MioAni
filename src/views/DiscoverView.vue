@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   PhMagnifyingGlass,
   PhWarningCircle,
@@ -203,14 +203,31 @@ function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') closeDropdown()
 }
 
-onMounted(() => {
+function syncDraftFromStore() {
   draftKeyword.value = store.keyword
   scoreMinDraft.value = store.filters.scoreMin
   scoreMaxDraft.value = store.filters.scoreMax
-  if (!store.items.length && !store.loading) void store.resetAndLoad()
+}
+
+function ensureDiscoverData() {
+  // Only bootstrap once. Returning from detail must keep filters/results/page.
+  if (!store.items.length && !store.loading && !store.error) {
+    void store.resetAndLoad()
+  }
+}
+
+onMounted(() => {
+  syncDraftFromStore()
+  ensureDiscoverData()
   setupObserver()
   document.addEventListener('pointerdown', onDocPointerDown)
   document.addEventListener('keydown', onKeydown)
+})
+
+// If ever wrapped by KeepAlive again, reattach infinite-scroll only.
+onActivated(() => {
+  syncDraftFromStore()
+  setupObserver()
 })
 
 onUnmounted(() => {

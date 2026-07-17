@@ -1,0 +1,205 @@
+.anime-card {
+  min-width: 0;
+  opacity: 0;
+  transform: translateY(22px) scale(.96);
+  transition:
+    opacity .55s var(--ease),
+    transform .55s var(--ease),
+    box-shadow .35s var(--ease);
+  transition-delay: var(--enter-delay, 0ms), var(--enter-delay, 0ms), 0s;
+  will-change: opacity, transform;
+}
+.anime-card.is-revealed {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.anime-card.is-revealed:hover {
+  transform: none;
+}
+.anime-card.is-flash .poster-wrap {
+  box-shadow: 0 0 0 1px rgba(184,240,95,.45), 0 12px 30px rgba(184,240,95,.18);
+}
+.anime-card.is-in-library .poster-wrap {
+  outline: 1px solid rgba(184,240,95,.22);
+  outline-offset: -1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .anime-card {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+.poster-wrap { position: relative; aspect-ratio: 2/3; overflow: hidden; border-radius: var(--radius-md); background: var(--surface-2); }
+.poster-wrap img { width: 100%; height: 100%; object-fit: cover; filter: saturate(.85); transition: transform .5s var(--ease),filter .3s ease; }
+.anime-card:hover .poster-wrap img { transform: scale(1.035); filter: saturate(1.08); }
+.poster-missing, .row-poster-missing { display: grid; place-items: center; height: 100%; color: var(--muted); background: var(--surface-2); font-size: var(--type-micro); }
+.rank-number { position: absolute; left: 8px; bottom: 8px; padding: 6px 7px; border-radius: 5px; background: rgba(11,13,12,.8); color: var(--accent); font: 700 14px/1 monospace; backdrop-filter: blur(8px); }
+.poster-add {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 4;
+}
+.poster-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 35px;
+  height: 35px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(11,13,12,.82);
+  color: var(--ink);
+  opacity: 0;
+  transform: scale(.8);
+  cursor: pointer;
+  transition: .25s var(--ease);
+  backdrop-filter: blur(8px);
+}
+.poster-action__caret {
+  opacity: .75;
+}
+.anime-card:hover .poster-action,
+.anime-card.is-menu-open .poster-action,
+.poster-action:focus-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+.poster-action:hover,
+.anime-card.is-menu-open .poster-action {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.library-chip {
+  position: absolute;
+  left: 9px;
+  top: 9px;
+  z-index: 3;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(184,240,95,.92);
+  color: var(--accent-ink);
+  font: 700 10px/1 'Noto Sans SC', sans-serif;
+  letter-spacing: .04em;
+  box-shadow: 0 6px 16px rgba(0,0,0,.28);
+}
+.status-chip-enter-active,
+.status-chip-leave-active {
+  transition: opacity .25s var(--ease), transform .3s var(--ease);
+}
+.status-chip-enter-from,
+.status-chip-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(.9);
+}
+
+.poster-status-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 6;
+  width: 128px;
+  padding: 8px;
+  border: 1px solid rgba(228,237,230,.14);
+  border-radius: 12px;
+  background: rgba(16,19,17,.96);
+  box-shadow: 0 16px 40px rgba(0,0,0,.42);
+  backdrop-filter: blur(14px);
+  transform-origin: top right;
+}
+.status-menu-enter-active,
+.status-menu-leave-active {
+  transition: opacity .2s var(--ease), transform .24s var(--ease);
+}
+.status-menu-enter-from,
+.status-menu-leave-to {
+  opacity: 0;
+  transform: translateY(-8px) scale(.94);
+}
+
+.card-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  z-index: 7;
+  max-width: calc(100% - 16px);
+  padding: 8px 12px;
+  border: 1px solid rgba(184,240,95,.35);
+  border-radius: 999px;
+  background: rgba(11,13,12,.88);
+  color: var(--accent);
+  font: 700 11px/1.2 'Noto Sans SC', sans-serif;
+  letter-spacing: .02em;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  box-shadow: 0 10px 28px rgba(0,0,0,.35);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+.card-toast-enter-active,
+.card-toast-leave-active {
+  transition: opacity .28s var(--ease), transform .32s var(--ease);
+}
+.card-toast-enter-from,
+.card-toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(10px) scale(.94);
+}
+.poster-status-menu__title {
+  margin: 0 0 6px;
+  padding: 0 6px;
+  color: var(--muted);
+  font: 600 10px/1 monospace;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.poster-status-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--type-small);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.poster-status-menu button:hover {
+  background: rgba(184,240,95,.1);
+  color: var(--accent);
+}
+.poster-status-menu button.active {
+  background: rgba(184,240,95,.14);
+  color: var(--accent);
+}
+.poster-status-menu button svg {
+  color: var(--accent);
+}
+.poster-status-menu__remove {
+  margin-top: 4px;
+  border-top: 1px solid rgba(228,237,230,.1) !important;
+  border-radius: 0 0 8px 8px !important;
+  color: var(--danger) !important;
+}
+.poster-status-menu__remove:hover {
+  background: rgba(255,124,110,.12) !important;
+  color: var(--danger) !important;
+}
+.poster-status-menu__remove svg {
+  color: var(--danger) !important;
+}
+.anime-meta { padding: 12px 2px 0; }
+.anime-meta h3 { overflow: hidden; margin: 0; font-size: var(--type-card-title); line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.anime-meta p { display: flex; align-items: center; gap: 8px; margin: 7px 0 0; color: var(--muted); font: var(--type-micro)/1 monospace; }
+.source-label { color: var(--accent); text-transform: uppercase; }
+.card-score { display: inline-flex; align-items: center; gap: 3px; color: var(--ink); }
+.card-score svg { color: var(--accent); }

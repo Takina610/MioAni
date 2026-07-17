@@ -1,0 +1,356 @@
+.page { min-height: calc(100dvh - 72px); }
+.hero-carousel {
+  --hero-pad-x: clamp(24px, 6.5vw, 110px);
+  --hero-pad-top: 64px;
+  --hero-pad-bottom: 80px;
+  --fore-poster-w: min(420px, 38vw);
+  --hero-scroll-progress: 0;
+  position: relative;
+  min-height: min(900px, calc(100dvh - 72px));
+  display: grid;
+  align-content: center;
+  padding: var(--hero-pad-top) var(--hero-pad-x) var(--hero-pad-bottom);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.hero-depth {
+  position: absolute;
+  inset: -180px 0 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translate3d(0, calc(var(--hero-scroll-progress) * 180px), 0)
+    scale(calc(1.03 - var(--hero-scroll-progress) * .03));
+  transform-origin: center center;
+  will-change: transform;
+}
+.hero-depth-current,
+.hero-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background-position: center center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: .34;
+  transform: scale(1.04);
+  filter: saturate(.75) brightness(.4);
+  will-change: opacity;
+}
+.hero-ambient {
+  opacity: 1;
+}
+
+/* 静态后景：竖图 cover，桌面居中裁切 */
+.hero-depth-next {
+  position: absolute;
+  inset: -72px 0 0;
+  z-index: 2;
+  overflow: hidden;
+  border-radius: 0;
+  opacity: 1;
+  filter: blur(3px) saturate(.95) brightness(.78);
+  box-shadow: none;
+  pointer-events: none;
+  transform: translate3d(0, calc(var(--hero-scroll-progress) * 72px), 0);
+  will-change: transform, opacity;
+}
+.hero-depth-next-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+  transform: scale(1.03);
+  transform-origin: center center;
+}
+.hero-depth-next::after,
+.hero-bridge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(11,13,12,.18) 0%, rgba(11,13,12,.02) 50%, rgba(11,13,12,.1) 100%),
+    linear-gradient(180deg, rgba(11,13,12,.08) 0%, transparent 50%, rgba(11,13,12,.16) 100%);
+}
+/* Depth Bridge 在 Veil 下保持后景质感；Focus Bridge 在 Veil 上渐进接管清晰度。 */
+.hero-bridge {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  overflow: hidden;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  will-change: left, top, width, height, opacity, border-radius;
+}
+.hero-focus-bridge {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+  overflow: hidden;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  will-change: left, top, width, height, opacity, border-radius;
+}
+.hero-bridge-img,
+.hero-focus-bridge-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+  filter: blur(3px) saturate(.95) brightness(.78);
+  will-change: filter;
+}
+
+.hero-bg-veil {
+  position: absolute;
+  inset: -72px 0 0;
+  z-index: 3;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(11,13,12,.78) 0%, rgba(11,13,12,.42) 26%, rgba(11,13,12,.08) 54%, rgba(11,13,12,.28) 100%),
+    linear-gradient(180deg, rgba(11,13,12,.28) 0%, transparent 36%, rgba(11,13,12,.62) 100%);
+  transform: translate3d(0, calc(var(--hero-scroll-progress) * 72px), 0);
+  will-change: transform;
+}
+.hero-grid-lines {
+  position: absolute;
+  inset: -72px 0 0;
+  z-index: 4;
+  opacity: .16;
+  pointer-events: none;
+  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(to bottom,#000,transparent 88%);
+  transform: translate3d(0, calc(var(--hero-scroll-progress) * 72px), 0);
+  will-change: transform;
+}
+
+.hero-status {
+  position: absolute;
+  top: 28px;
+  left: var(--hero-pad-x);
+  right: var(--hero-pad-x);
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font: 12px/1 monospace;
+}
+
+.hero-stage {
+  position: relative;
+  z-index: 6;
+  display: grid;
+  align-items: center;
+  min-height: min(680px, calc(100dvh - 200px));
+  transform: translate3d(0, calc(var(--hero-scroll-progress) * -140px), 0);
+  will-change: transform;
+}
+
+.hero-fore {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: minmax(0,1.05fr) var(--fore-poster-w);
+  align-items: center;
+  gap: clamp(36px,5vw,72px);
+}
+.hero-fore-copy { min-width: 0; }
+.hero-copy-window { overflow: clip; }
+.hero-copy-line {
+  transform: translate3d(0,0,0);
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+.hero-copy-window--kicker { margin-bottom: 18px; }
+.hero-copy-window--rank { margin-bottom: 16px; }
+.hero-copy-window--title {
+  margin: -.08em 0 -.12em;
+  padding: .08em 0 .12em;
+}
+.hero-copy-window--original { margin-top: 16px; }
+.hero-copy-window--original.hero-copy-window--empty { margin-top: 0; }
+.hero-copy-window--summary { margin-top: 26px; }
+.hero-copy-window--meta { margin-top: 26px; }
+.hero-copy-window--actions {
+  margin: 30px -4px -4px;
+  padding: 4px;
+}
+.hero-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--accent);
+  font: 600 13px/1 monospace;
+}
+.hero-rank {
+  display: inline-block;
+  margin: 0;
+  color: var(--muted);
+  font: 13px/1 monospace;
+  letter-spacing: .1em;
+}
+.hero-fore-copy h1 {
+  margin: 0;
+  max-width: 12ch;
+  font-size: clamp(52px,6.6vw,98px);
+  line-height: .98;
+  font-weight: 700;
+  letter-spacing: -2px;
+  text-wrap: balance;
+  text-shadow: 0 12px 40px rgba(0,0,0,.35);
+}
+.hero-fore-copy h2 {
+  margin: 0;
+  max-width: 40ch;
+  color: #d5dcd6;
+  font-size: clamp(18px,1.9vw,24px);
+  font-weight: 500;
+  line-height: 1.4;
+}
+.hero-summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  max-width: 54ch;
+  margin: 0;
+  color: #c0c7c1;
+  font-size: 17px;
+  line-height: 1.75;
+}
+.hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+}
+.hero-meta small {
+  padding: 10px 14px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 999px;
+  background: rgba(11,13,12,.5);
+  color: var(--accent);
+  font: 12px/1 monospace;
+  backdrop-filter: blur(10px);
+}
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  margin: 0;
+}
+.hero-actions > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+  transition: gap .25s var(--ease);
+}
+.hero-actions > a:hover { gap: 18px; }
+
+.hero-fore-poster {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2/3;
+  justify-self: end;
+}
+.hero-fore-poster img {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+  box-shadow: 0 40px 110px rgba(0,0,0,.58);
+}
+.hero-carousel-controls {
+  position: absolute;
+  right: var(--hero-pad-x);
+  bottom: 28px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hero-autoplay-toggle,
+.hero-carousel-indicator {
+  display: grid;
+  place-items: center;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.hero-autoplay-toggle {
+  width: 36px;
+  transition: color .25s ease, background .25s ease;
+}
+.hero-autoplay-toggle:hover {
+  background: rgba(242,245,241,.1);
+  color: var(--accent);
+}
+.hero-carousel-indicators {
+  display: flex;
+  align-items: center;
+}
+.hero-carousel-indicator {
+  position: relative;
+  width: 36px;
+  transition: width .35s var(--ease), opacity .25s ease;
+}
+.hero-carousel-indicator.active {
+  z-index: 1;
+  width: 88px;
+}
+.hero-carousel-track {
+  position: relative;
+  display: block;
+  width: 10px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(242,245,241,.24);
+  pointer-events: none;
+  transition: width .35s var(--ease), background .25s ease;
+}
+.hero-carousel-indicator.active .hero-carousel-track {
+  width: 68px;
+  background: rgba(242,245,241,.34);
+}
+.hero-carousel-indicator:hover:not(:disabled) .hero-carousel-track {
+  background: rgba(242,245,241,.56);
+}
+.hero-carousel-progress {
+  position: absolute;
+  inset: 0;
+  display: block;
+  border-radius: inherit;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  will-change: transform;
+}
+.hero-carousel-indicator:disabled {
+  cursor: wait;
+  opacity: .62;
+}

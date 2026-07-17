@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { PhCompass, PhHouse, PhBooks, PhMagnifyingGlass, PhDownloadSimple, PhList, PhX } from '@phosphor-icons/vue'
+import { PhCompass, PhHouse, PhBooks, PhMagnifyingGlass, PhDownloadSimple } from '@phosphor-icons/vue'
 import ImportModal from './ImportModal.vue'
 import AnimeDetailOverlay from './AnimeDetailOverlay.vue'
 import brandLogo from '../assets/MioAni2.png'
@@ -10,44 +10,109 @@ import HomeView from '../views/HomeView.vue'
 import DiscoverView from '../views/DiscoverView.vue'
 import LibraryView from '../views/LibraryView.vue'
 
+type ListKey = 'home' | 'discover' | 'library'
+
 const importOpen = ref(false)
 const mobileOpen = ref(false)
 const route = useRoute()
 const detailOverlay = useDetailOverlayStore()
 
-/** Keep the last non-detail page mounted so expand/collapse never destroys the list. */
-const activeList = shallowRef<'home' | 'discover' | 'library'>('home')
+/** Last non-detail list page shown under the overlay. */
+const activeList = shallowRef<ListKey>('home')
+/** Once visited, stay mounted forever so open/close detail never destroys list state. */
+const mountedLists = reactive<Record<ListKey, boolean>>({
+  home: false,
+  discover: false,
+  library: false,
+})
+/** Scroll Y frozen when entering detail; restored only after overlay fully closes. */
 const scrollY = ref(0)
+const scrollByList = reactive<Record<ListKey, number>>({
+  home: 0,
+  discover: 0,
+  library: 0,
+})
+/** Soft topbar re-entry when leaving anime detail for a list page. */
+const returningFromDetail = ref(false)
+let returnChromeTimer: ReturnType<typeof setTimeout> | null = null
 
-const listMap = {
-  home: HomeView,
-  discover: DiscoverView,
-  library: LibraryView,
-} as const
+function markReturningFromDetail() {
+  returningFromDetail.value = true
+  if (returnChromeTimer) clearTimeout(returnChromeTimer)
+  returnChromeTimer = setTimeout(() => {
+    returningFromDetail.value = false
+    returnChromeTimer = null
+  }, 560)
+}
 
-function listKeyFromRouteName(name: unknown): 'home' | 'discover' | 'library' {
+function listKeyFromRouteName(name: unknown): ListKey {
   if (name === 'discover') return 'discover'
   if (name === 'library') return 'library'
   return 'home'
+}
+
+function listKeyFromPath(path: string): ListKey {
+  if (path.includes('/library')) return 'library'
+  if (path.includes('/discover')) return 'discover'
+  return 'home'
+}
+
+function ensureMounted(key: ListKey) {
+  mountedLists[key] = true
+}
+
+function showList(key: ListKey) {
+  if (activeList.value !== key && !document.body.classList.contains('detail-scroll-lock')) {
+    scrollByList[activeList.value] = window.scrollY
+  }
+  activeList.value = key
+  ensureMounted(key)
+}
+
+function lockListScroll() {
+  scrollY.value = window.scrollY
+  scrollByList[activeList.value] = scrollY.value
+  document.body.style.top = `-${scrollY.value}px`
+  document.body.classList.add('detail-scroll-lock')
+}
+
+function unlockListScroll() {
+  document.body.classList.remove('detail-scroll-lock')
+  document.body.style.top = ''
+  const y = scrollByList[activeList.value] || scrollY.value || 0
+  requestAnimationFrame(() => {
+    window.scrollTo({ top: y, behavior: 'instant' as ScrollBehavior })
+  })
 }
 
 watch(
   () => route.name,
   (name, prev) => {
     if (name === 'home' || name === 'discover' || name === 'library') {
-      activeList.value = listKeyFromRouteName(name)
+      // While overlay is still closing after browser back, keep underlay list fixed.
+      if (!(detailOverlay.open && prev === 'anime-detail')) {
+        showList(listKeyFromRouteName(name))
+      }
     }
 
-    // Enter detail: freeze list scroll position.
+    // Enter detail: freeze list scroll; never unmount the underlay list.
     if (name === 'anime-detail' && prev !== 'anime-detail') {
-      scrollY.value = window.scrollY
-      document.body.style.top = `-${scrollY.value}px`
-      document.body.classList.add('detail-scroll-lock')
+      const underlay = listKeyFromPath(detailOverlay.returnPath || '')
+      showList(underlay)
+      lockListScroll()
     }
 
-    // Leave detail via browser back: run full reverse animation first.
+    // Leave detail via browser back: reverse animation first; list already mounted.
     if (prev === 'anime-detail' && name !== 'anime-detail') {
-      if (detailOverlay.open && detailOverlay.phase !== 'collapsing') {
+      if (name === 'home' || name === 'discover' || name === 'library') {
+        ensureMounted(listKeyFromRouteName(name))
+        activeList.value = listKeyFromRouteName(name)
+      }
+      if (
+        detailOverlay.open
+        && detailOverlay.phase !== 'collapsing'
+        && detailOverlay.phase !== 'returning'
+      ) {
         detailOverlay.requestClose()
       }
     }
@@ -55,51 +120,53 @@ watch(
   { immediate: true },
 )
 
-// Unlock list scroll only after overlay fully closed.
+// Unlock list scroll + soft topbar re-entry only after overlay fully closed.
 watch(
   () => detailOverlay.open,
   (isOpen, wasOpen) => {
     if (wasOpen && !isOpen) {
-      document.body.classList.remove('detail-scroll-lock')
-      document.body.style.top = ''
-      requestAnimationFrame(() => {
-        window.scrollTo({ top: scrollY.value, behavior: 'instant' as ScrollBehavior })
-      })
+      markReturningFromDetail()
+      unlockListScroll()
+    }
+  },
+)
+
+// Keep underlay list pinned to the page the card opened from.
+watch(
+  () => detailOverlay.returnPath,
+  (path) => {
+    if (!path) return
+    if (route.name === 'anime-detail' || detailOverlay.open) {
+      showList(listKeyFromPath(path))
     }
   },
 )
 
 onMounted(() => {
-  // If app boots on detail URL, remember a sensible list underlay.
   if (route.name === 'anime-detail') {
-    activeList.value = listKeyFromRouteName(detailOverlay.returnPath.includes('/library')
-      ? 'library'
-      : detailOverlay.returnPath.includes('/discover')
-        ? 'discover'
-        : 'home')
+    showList(listKeyFromPath(detailOverlay.returnPath || '/'))
+  } else if (route.name === 'home' || route.name === 'discover' || route.name === 'library') {
+    showList(listKeyFromRouteName(route.name))
+  } else {
+    ensureMounted('home')
   }
 })
 
 onUnmounted(() => {
   document.body.classList.remove('detail-scroll-lock')
   document.body.style.top = ''
+  if (returnChromeTimer) clearTimeout(returnChromeTimer)
 })
-
-// Keep returnPath list component in sync when opening from a card.
-watch(
-  () => detailOverlay.returnPath,
-  (path) => {
-    if (!path || route.name === 'anime-detail') {
-      if (path.includes('/library')) activeList.value = 'library'
-      else if (path.includes('/discover')) activeList.value = 'discover'
-      else if (path === '/' || path.startsWith('/?')) activeList.value = 'home'
-    }
-  },
-)
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'has-detail-overlay': detailOverlay.open || route.name === 'anime-detail' }">
+  <div
+    class="app-shell"
+    :class="{
+      'has-detail-overlay': detailOverlay.open || route.name === 'anime-detail',
+      'is-returning-from-detail': returningFromDetail,
+    }"
+  >
     <a class="skip-link" href="#main-content">跳到主要内容</a>
     <header class="topbar">
       <RouterLink class="brand" to="/" aria-label="MioAni 首页">
@@ -107,23 +174,44 @@ watch(
       </RouterLink>
 
       <nav :class="['main-nav', { 'is-open': mobileOpen }]" aria-label="主导航">
-        <RouterLink to="/" @click="mobileOpen = false"><PhHouse :size="18" />首页</RouterLink>
-        <RouterLink to="/discover" @click="mobileOpen = false"><PhCompass :size="18" />发现</RouterLink>
-        <RouterLink to="/library" @click="mobileOpen = false"><PhBooks :size="18" />追番库</RouterLink>
+        <div class="main-nav__panel">
+          <RouterLink to="/" @click="mobileOpen = false"><PhHouse :size="18" />首页</RouterLink>
+          <RouterLink to="/discover" @click="mobileOpen = false"><PhCompass :size="18" />发现</RouterLink>
+          <RouterLink to="/library" @click="mobileOpen = false"><PhBooks :size="18" />追番库</RouterLink>
+        </div>
       </nav>
 
       <div class="top-actions">
         <RouterLink class="search-shortcut" to="/discover"><PhMagnifyingGlass :size="18" /><span>搜索</span><kbd>/</kbd></RouterLink>
         <button class="import-button" type="button" @click="importOpen = true"><PhDownloadSimple :size="18" />导入</button>
-        <button class="menu-button" type="button" aria-label="切换菜单" @click="mobileOpen = !mobileOpen"><PhX v-if="mobileOpen" :size="22" /><PhList v-else :size="22" /></button>
+        <button
+          class="menu-button"
+          type="button"
+          :class="{ 'is-open': mobileOpen }"
+          :aria-expanded="mobileOpen"
+          :aria-label="mobileOpen ? '关闭菜单' : '打开菜单'"
+          @click="mobileOpen = !mobileOpen"
+        >
+          <span class="menu-button__icon" aria-hidden="true">
+            <i class="menu-button__line menu-button__line--top" />
+            <i class="menu-button__line menu-button__line--mid" />
+            <i class="menu-button__line menu-button__line--bot" />
+          </span>
+        </button>
       </div>
     </header>
 
     <main id="main-content">
-      <!-- Always keep one list page mounted (even under /anime/:id) so cards never unmount. -->
-      <KeepAlive :max="3">
-        <component :is="listMap[activeList]" :key="activeList" />
-      </KeepAlive>
+      <!-- Visited list pages stay mounted (v-show) so detail open/close never destroys filters, results, or scroll. -->
+      <div v-show="activeList === 'home'" class="list-layer" data-list="home">
+        <HomeView v-if="mountedLists.home" />
+      </div>
+      <div v-show="activeList === 'discover'" class="list-layer" data-list="discover">
+        <DiscoverView v-if="mountedLists.discover" />
+      </div>
+      <div v-show="activeList === 'library'" class="list-layer" data-list="library">
+        <LibraryView v-if="mountedLists.library" />
+      </div>
     </main>
     <footer class="site-footer"><span>MioAni</span><p>数据来自 Bangumi 与 AniList</p><div><a href="https://bangumi.tv" target="_blank">Bangumi</a><a href="https://anilist.co" target="_blank">AniList</a></div></footer>
     <ImportModal :open="importOpen" @close="importOpen = false" />

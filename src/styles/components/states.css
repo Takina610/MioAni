@@ -1,0 +1,4 @@
+.api-error, .error-state, .empty-state { display: grid; justify-items: start; width: min(650px,calc(100% - 40px)); margin: 100px auto; padding: 45px; border: 1px solid var(--line); background: var(--surface); }
+.api-error svg, .error-state svg, .empty-state svg { color: var(--accent); }
+.api-error h1, .error-state h3, .empty-state h3 { margin: 20px 0 7px; }
+.api-error p, .error-state p, .empty-state p { margin: 0 0 22px; color: var(--muted); line-height: 1.7; }
