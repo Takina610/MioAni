@@ -70,6 +70,31 @@
   border-radius: 12px;
   background: rgba(18,21,19,.55);
 }
+.character-card.is-clickable,
+.staff-card.is-clickable {
+  cursor: pointer;
+  transition: border-color .2s ease, background .2s ease, transform .2s ease;
+}
+.character-card.is-clickable:hover,
+.staff-card.is-clickable:hover {
+  border-color: rgba(184,240,95,.28);
+  background: rgba(24, 30, 26, .78);
+}
+.character-card.is-clickable:active,
+.staff-card.is-clickable:active {
+  transform: scale(.99);
+}
+.character-card__va.is-clickable {
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 4px 6px;
+  margin-left: -6px;
+  transition: background .2s ease, color .2s ease;
+}
+.character-card__va.is-clickable:hover {
+  background: rgba(184, 240, 95, .1);
+  color: var(--accent);
+}
 .character-card > img,
 .character-card__ph,
 .staff-card > img,

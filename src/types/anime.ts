@@ -47,17 +47,40 @@ export interface AnimeRelation {
 }
 
 export interface AnimeCharacter {
+  /** e.g. bgm-char-1 | anilist-char-123 */
+  id: string
   name: string
   role: string
   image?: string
   voiceActor?: string
   voiceActorImage?: string
+  /** e.g. bgm-person-9 | anilist-staff-456 */
+  voiceActorId?: string
 }
 
 export interface AnimeStaff {
+  /** e.g. bgm-person-9 | anilist-staff-456 */
+  id: string
   name: string
   role: string
   image?: string
+}
+
+/** Character or person (CV / staff) detail page payload. */
+export interface PersonDetail {
+  id: string
+  kind: 'character' | 'person'
+  source: 'bangumi' | 'anilist'
+  name: string
+  nameAlt?: string
+  image?: string
+  summary?: string
+  gender?: string
+  birthday?: string
+  bloodType?: string
+  careers?: string[]
+  /** Context from the anime list (role in that work). */
+  contextRole?: string
 }
 
 export interface AnimeDetail extends Anime {

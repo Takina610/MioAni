@@ -4,8 +4,10 @@ import { RouterLink, useRoute } from 'vue-router'
 import { PhCompass, PhHouse, PhBooks, PhMagnifyingGlass, PhDownloadSimple } from '@phosphor-icons/vue'
 import ImportModal from './ImportModal.vue'
 import AnimeDetailOverlay from './AnimeDetailOverlay.vue'
+import PersonDetailOverlay from './PersonDetailOverlay.vue'
 import brandLogo from '../assets/MioAni2.png'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
+import { usePersonOverlayStore } from '../stores/personOverlay'
 import HomeView from '../views/HomeView.vue'
 import DiscoverView from '../views/DiscoverView.vue'
 import LibraryView from '../views/LibraryView.vue'
@@ -16,6 +18,10 @@ const importOpen = ref(false)
 const mobileOpen = ref(false)
 const route = useRoute()
 const detailOverlay = useDetailOverlayStore()
+const personOverlay = usePersonOverlayStore()
+
+const PERSON_ROUTES = new Set(['character-detail', 'person-detail'])
+const DETAIL_ROUTES = new Set(['anime-detail', 'character-detail', 'person-detail'])
 
 /** Last non-detail list page shown under the overlay. */
 const activeList = shallowRef<ListKey>('home')
@@ -95,15 +101,32 @@ watch(
       }
     }
 
-    // Enter detail: freeze list scroll; never unmount the underlay list.
-    if (name === 'anime-detail' && prev !== 'anime-detail') {
+    // Enter anime detail (not from person sub-page): freeze list scroll.
+    if (name === 'anime-detail' && prev !== 'anime-detail' && !PERSON_ROUTES.has(String(prev))) {
       const underlay = listKeyFromPath(detailOverlay.returnPath || '')
       showList(underlay)
       lockListScroll()
     }
 
-    // Leave detail via browser back: reverse animation first; list already mounted.
-    if (prev === 'anime-detail' && name !== 'anime-detail') {
+    // Enter person detail while anime is open: keep list locked; do not close anime.
+    if (PERSON_ROUTES.has(String(name)) && !PERSON_ROUTES.has(String(prev))) {
+      if (!document.body.classList.contains('detail-scroll-lock')) {
+        lockListScroll()
+      }
+    }
+
+    // Leave person back to anime: keep anime overlay; ignore as list leave.
+    if (PERSON_ROUTES.has(String(prev)) && name === 'anime-detail') {
+      return
+    }
+
+    // Leave person to list without anime: close person overlay.
+    if (PERSON_ROUTES.has(String(prev)) && !DETAIL_ROUTES.has(String(name))) {
+      if (personOverlay.open) personOverlay.close()
+    }
+
+    // Leave anime detail via browser back to a list page only (not person).
+    if (prev === 'anime-detail' && !DETAIL_ROUTES.has(String(name))) {
       if (name === 'home' || name === 'discover' || name === 'library') {
         ensureMounted(listKeyFromRouteName(name))
         activeList.value = listKeyFromRouteName(name)
@@ -163,7 +186,7 @@ onUnmounted(() => {
   <div
     class="app-shell"
     :class="{
-      'has-detail-overlay': detailOverlay.open || route.name === 'anime-detail',
+      'has-detail-overlay': detailOverlay.open || personOverlay.open || DETAIL_ROUTES.has(String(route.name)),
       'is-returning-from-detail': returningFromDetail,
     }"
   >
@@ -231,5 +254,6 @@ onUnmounted(() => {
     <footer class="site-footer"><span>MioAni</span><p>数据来自 Bangumi 与 AniList</p><div><a href="https://bangumi.tv" target="_blank">Bangumi</a><a href="https://anilist.co" target="_blank">AniList</a></div></footer>
     <ImportModal :open="importOpen" @close="importOpen = false" />
     <AnimeDetailOverlay />
+    <PersonDetailOverlay />
   </div>
 </template>

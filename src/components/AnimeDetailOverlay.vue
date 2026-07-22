@@ -12,10 +12,13 @@ import {
   PhCaretDown,
 } from '@phosphor-icons/vue'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
+import { usePersonOverlayStore } from '../stores/personOverlay'
 import { useLibraryStore } from '../stores/library'
-import type { AnimeRelation, WatchStatus } from '../types/anime'
+import { parsePersonId, personRouteName } from '../services/personIds'
+import type { AnimeCharacter, AnimeRelation, AnimeStaff, WatchStatus } from '../types/anime'
 
 const store = useDetailOverlayStore()
+const personOverlay = usePersonOverlayStore()
 const library = useLibraryStore()
 const route = useRoute()
 const router = useRouter()
@@ -922,6 +925,59 @@ watch(
   },
 )
 
+async function openPersonEntity(opts: {
+  id?: string
+  name?: string
+  image?: string
+  contextRole?: string
+}) {
+  if (!opts.id || !parsePersonId(opts.id)) return
+  if (closing || store.phase === 'expanding' || store.phase === 'returning' || store.phase === 'collapsing') return
+  // Snapshot anime UI (tab/scroll/extras) so return keeps 角色/制作人员 list.
+  captureLayerUi(store.topLayer?.key)
+  const routeName = personRouteName(parsePersonId(opts.id)!.kind)
+  const ok = await personOverlay.openPerson({
+    id: opts.id,
+    name: opts.name,
+    image: opts.image,
+    contextRole: opts.contextRole,
+    returnAnimeId: store.activeId || (typeof route.params.id === 'string' ? route.params.id : ''),
+  })
+  if (!ok) return
+  if (route.name !== routeName || route.params.id !== opts.id) {
+    await router.push({ name: routeName, params: { id: opts.id } })
+  }
+}
+
+function openCharacterDetail(ch: AnimeCharacter) {
+  void openPersonEntity({
+    id: ch.id,
+    name: ch.name,
+    image: ch.image,
+    contextRole: ch.role,
+  })
+}
+
+function openVoiceActorDetail(ch: AnimeCharacter, event?: Event) {
+  event?.stopPropagation?.()
+  if (!ch.voiceActorId) return
+  void openPersonEntity({
+    id: ch.voiceActorId,
+    name: ch.voiceActor,
+    image: ch.voiceActorImage,
+    contextRole: `CV · ${ch.name}`,
+  })
+}
+
+function openStaffDetail(st: AnimeStaff) {
+  void openPersonEntity({
+    id: st.id,
+    name: st.name,
+    image: st.image,
+    contextRole: st.role,
+  })
+}
+
 async function openRelated(rel: AnimeRelation, event: Event) {
   if (!rel.id || rel.id === display.value?.id) return
   if (closing || store.phase === 'expanding' || store.phase === 'returning' || store.phase === 'collapsing') return
@@ -989,11 +1045,21 @@ watch(
 )
 
 watch(
-  () => route.params.id,
-  async (id, prevId) => {
+  () => [route.name, route.params.id] as const,
+  async ([name, id], prev) => {
+    const prevId = prev?.[1]
+    // Person/character routes share params.id shape — never treat them as anime stack ops.
+    if (name === 'character-detail' || name === 'person-detail') return
+
     // Left detail route entirely (e.g. browser back past stack root).
-    if (typeof id !== 'string' || !id) {
-      if (store.open && route.name !== 'anime-detail' && !closing) {
+    if (name !== 'anime-detail' || typeof id !== 'string' || !id) {
+      if (
+        store.open
+        && name !== 'anime-detail'
+        && name !== 'character-detail'
+        && name !== 'person-detail'
+        && !closing
+      ) {
         store.finishClose()
         settled.value = false
         contentReady.value = false
@@ -1001,7 +1067,16 @@ watch(
       }
       return
     }
-    if (store.open && store.activeId === id) return
+    if (store.open && store.activeId === id) {
+      // Returning from person overlay: only restore UI snapshot (tab/extras), no re-fetch.
+      if (prev?.[0] === 'character-detail' || prev?.[0] === 'person-detail') {
+        restoreLayerUi(store.topLayer?.key)
+        contentReady.value = true
+        settled.value = true
+        void nextTick().then(updateTabIndicator)
+      }
+      return
+    }
     if (store.open && store.phase === 'expanding') return
     if (store.open && store.phase === 'returning') return
     if (store.open && store.phase === 'collapsing') return
@@ -1327,16 +1402,26 @@ onUnmounted(() => {
                       <div class="character-grid">
                         <article
                           v-for="(ch, idx) in charactersVisible"
-                          :key="ch.name + idx"
+                          :key="ch.id || ch.name + idx"
                           class="character-card detail-extra-item"
+                          :class="{ 'is-clickable': Boolean(ch.id) }"
                           :style="{ '--enter-i': idx % EXTRA_BATCH }"
+                          :role="ch.id ? 'button' : undefined"
+                          :tabindex="ch.id ? 0 : undefined"
+                          @click="openCharacterDetail(ch)"
+                          @keydown.enter.prevent="openCharacterDetail(ch)"
                         >
                           <img v-if="ch.image" :src="ch.image" :alt="ch.name" />
                           <div v-else class="character-card__ph" />
                           <div class="character-card__meta">
                             <strong>{{ ch.name }}</strong>
                             <span>{{ ch.role }}</span>
-                            <p v-if="ch.voiceActor">
+                            <p
+                              v-if="ch.voiceActor"
+                              class="character-card__va"
+                              :class="{ 'is-clickable': Boolean(ch.voiceActorId) }"
+                              @click="openVoiceActorDetail(ch, $event)"
+                            >
                               <img v-if="ch.voiceActorImage" :src="ch.voiceActorImage" alt="" />
                               CV · {{ ch.voiceActor }}
                             </p>
@@ -1366,9 +1451,14 @@ onUnmounted(() => {
                       <div class="staff-grid">
                         <article
                           v-for="(st, idx) in staffVisible"
-                          :key="st.name + idx"
+                          :key="st.id || st.name + idx"
                           class="staff-card detail-extra-item"
+                          :class="{ 'is-clickable': Boolean(st.id) }"
                           :style="{ '--enter-i': idx % EXTRA_BATCH }"
+                          :role="st.id ? 'button' : undefined"
+                          :tabindex="st.id ? 0 : undefined"
+                          @click="openStaffDetail(st)"
+                          @keydown.enter.prevent="openStaffDetail(st)"
                         >
                           <img v-if="st.image" :src="st.image" :alt="st.name" />
                           <div v-else class="staff-card__ph" />

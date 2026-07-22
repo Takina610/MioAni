@@ -15,10 +15,21 @@ export const router = createRouter({
       name: 'anime-detail',
       component: { template: '<div class="anime-detail-route" aria-hidden="true"></div>' },
     },
+    {
+      path: '/character/:id',
+      name: 'character-detail',
+      component: { template: '<div class="person-detail-route" aria-hidden="true"></div>' },
+    },
+    {
+      path: '/person/:id',
+      name: 'person-detail',
+      component: { template: '<div class="person-detail-route" aria-hidden="true"></div>' },
+    },
   ],
   scrollBehavior(to, from) {
     // Detail open/close must not reset the underlay list scroll position.
-    if (to.name === 'anime-detail' || from.name === 'anime-detail') {
+    const detailNames = new Set(['anime-detail', 'character-detail', 'person-detail'])
+    if (detailNames.has(String(to.name)) || detailNames.has(String(from.name))) {
       return false
     }
     return { top: 0 }

@@ -12,6 +12,12 @@ import {
   mapAniListLanguageCode,
   softFilterBangumiStatus,
 } from './discoverFilters'
+import {
+  buildAniListCharacterId,
+  buildAniListStaffId,
+  buildBgmCharacterId,
+  buildBgmPersonId,
+} from './personIds'
 import type { Anime, AnimeDetail, ImportResult, WatchStatus } from '../types/anime'
 import type {
   DiscoverFilters,
@@ -798,11 +804,15 @@ export async function fetchAnimeDetailExtras(
         )
         if (!res.ok) return
         const persons = await res.json()
-        out.staff = (Array.isArray(persons) ? persons : []).map((p: any) => ({
-          name: p.name || p.person?.name || '未知',
-          role: (p.relation || p.career?.[0] || 'Staff') as string,
-          image: (p.images?.medium || p.person?.images?.medium || '').replace('http://', 'https://') || undefined,
-        }))
+        out.staff = (Array.isArray(persons) ? persons : []).map((p: any) => {
+          const rawId = p.id ?? p.person?.id
+          return {
+            id: rawId != null ? buildBgmPersonId(rawId) : '',
+            name: p.name || p.person?.name || '未知',
+            role: (p.relation || p.career?.[0] || 'Staff') as string,
+            image: (p.images?.medium || p.person?.images?.medium || '').replace('http://', 'https://') || undefined,
+          }
+        }).filter((s: { id: string }) => Boolean(s.id))
       })())
     }
 
@@ -835,13 +845,20 @@ export async function fetchAnimeDetailExtras(
         )
         if (!res.ok) return
         const chars = await res.json()
-        out.characters = (Array.isArray(chars) ? chars : []).map((c: any) => ({
-          name: c.name || c.character?.name || '角色',
-          role: c.relation || '角色',
-          image: (c.images?.medium || c.character?.images?.medium || '').replace('http://', 'https://') || undefined,
-          voiceActor: c.actors?.[0]?.name || undefined,
-          voiceActorImage: (c.actors?.[0]?.images?.medium || '').replace('http://', 'https://') || undefined,
-        }))
+        out.characters = (Array.isArray(chars) ? chars : []).map((c: any) => {
+          const rawId = c.id ?? c.character?.id
+          const actor = c.actors?.[0]
+          const actorId = actor?.id
+          return {
+            id: rawId != null ? buildBgmCharacterId(rawId) : '',
+            name: c.name || c.character?.name || '角色',
+            role: c.relation || '角色',
+            image: (c.images?.medium || c.character?.images?.medium || '').replace('http://', 'https://') || undefined,
+            voiceActor: actor?.name || undefined,
+            voiceActorImage: (actor?.images?.medium || '').replace('http://', 'https://') || undefined,
+            voiceActorId: actorId != null ? buildBgmPersonId(actorId) : undefined,
+          }
+        }).filter((ch: { id: string }) => Boolean(ch.id))
       })())
     }
 
@@ -895,8 +912,9 @@ export async function fetchAnimeDetailExtras(
                 pageInfo { hasNextPage }
                 edges {
                   role
-                  node { name { full native } image { large } }
+                  node { id name { full native } image { large } }
                   voiceActors(language: JAPANESE, sort: [RELEVANCE]) {
+                    id
                     name { full native }
                     image { large }
                   }
@@ -908,13 +926,19 @@ export async function fetchAnimeDetailExtras(
         const data = await aniListRequest(query, { id: rawId, page })
         const block = data.Media?.characters
         const edges = block?.edges || []
-        characters.push(...edges.map((edge: any) => ({
-          name: edge.node?.name?.native || edge.node?.name?.full || 'Character',
-          role: edge.role || 'SUPPORTING',
-          image: edge.node?.image?.large || undefined,
-          voiceActor: edge.voiceActors?.[0]?.name?.native || edge.voiceActors?.[0]?.name?.full || undefined,
-          voiceActorImage: edge.voiceActors?.[0]?.image?.large || undefined,
-        })))
+        characters.push(...edges.map((edge: any) => {
+          const nodeId = edge.node?.id
+          const va = edge.voiceActors?.[0]
+          return {
+            id: nodeId != null ? buildAniListCharacterId(nodeId) : '',
+            name: edge.node?.name?.native || edge.node?.name?.full || 'Character',
+            role: edge.role || 'SUPPORTING',
+            image: edge.node?.image?.large || undefined,
+            voiceActor: va?.name?.native || va?.name?.full || undefined,
+            voiceActorImage: va?.image?.large || undefined,
+            voiceActorId: va?.id != null ? buildAniListStaffId(va.id) : undefined,
+          }
+        }).filter((ch: { id: string }) => Boolean(ch.id)))
         hasNext = Boolean(block?.pageInfo?.hasNextPage)
         page += 1
         if (page > 40) break
@@ -934,7 +958,7 @@ export async function fetchAnimeDetailExtras(
                 pageInfo { hasNextPage }
                 edges {
                   role
-                  node { name { full native } image { large } }
+                  node { id name { full native } image { large } }
                 }
               }
             }
@@ -943,11 +967,15 @@ export async function fetchAnimeDetailExtras(
         const data = await aniListRequest(query, { id: rawId, page })
         const block = data.Media?.staff
         const edges = block?.edges || []
-        staff.push(...edges.map((edge: any) => ({
-          name: edge.node?.name?.native || edge.node?.name?.full || 'Staff',
-          role: edge.role || 'Staff',
-          image: edge.node?.image?.large || undefined,
-        })))
+        staff.push(...edges.map((edge: any) => {
+          const nodeId = edge.node?.id
+          return {
+            id: nodeId != null ? buildAniListStaffId(nodeId) : '',
+            name: edge.node?.name?.native || edge.node?.name?.full || 'Staff',
+            role: edge.role || 'Staff',
+            image: edge.node?.image?.large || undefined,
+          }
+        }).filter((s: { id: string }) => Boolean(s.id)))
         hasNext = Boolean(block?.pageInfo?.hasNextPage)
         page += 1
         if (page > 40) break
