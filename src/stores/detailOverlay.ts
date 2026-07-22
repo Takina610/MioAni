@@ -159,8 +159,13 @@ export const useDetailOverlayStore = defineStore('detailOverlay', () => {
       if (overviewSeqByKey.get(key) !== seq) return
       const layer = layers.value.find((l) => l.key === key)
       if (!layer) return
+      // Prefer richer remote art, but never drop an already-visible seed image mid-open.
+      const image = result.image || layer.seed.image || anime?.image || ''
+      const banner = result.banner || layer.seed.banner || anime?.banner || image
       const merged: AnimeDetail = {
         ...result,
+        image,
+        banner,
         watched: anime?.watched || result.watched,
         status: anime?.status || result.status,
       }
@@ -169,6 +174,8 @@ export const useDetailOverlayStore = defineStore('detailOverlay', () => {
         seed: {
           ...layer.seed,
           ...result,
+          image,
+          banner,
           watched: anime?.watched || result.watched,
           status: anime?.status || result.status,
         },
@@ -313,10 +320,12 @@ export const useDetailOverlayStore = defineStore('detailOverlay', () => {
     if (layers.value.length < 2) return null
     const removed = layers.value[layers.value.length - 1]
     layers.value = layers.value.slice(0, -1)
-    expandMode.value = layers.value.length > 1 ? 'stack' : 'list'
+    // Stay on 'stack' mode until the overlay finishes the return handoff
+    // so activeId watchers do not treat this as a fresh list open.
+    expandMode.value = 'stack'
     const top = layers.value[layers.value.length - 1]
     originRect.value = top?.originRect || null
-    phase.value = 'open'
+    // Keep phase=returning until the overlay clears the flight; caller sets open.
     return removed
   }
 

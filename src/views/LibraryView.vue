@@ -279,7 +279,9 @@ onUnmounted(() => {
       />
 
       <div v-if="loadingMore" class="load-more-status" aria-busy="true">
-        <span class="load-more-dot" />
+        <span class="load-more-dots" aria-hidden="true">
+          <i class="load-more-dot" /><i class="load-more-dot" /><i class="load-more-dot" />
+        </span>
         加载更多…
       </div>
       <div v-else-if="filtered.length && !hasMore" class="load-more-status muted">

@@ -28,6 +28,12 @@ void posterSlotRef
 /** True once flyer has landed and in-flow poster is shown. */
 const settled = ref(false)
 const contentReady = ref(false)
+/** Frozen poster URL for shared-element flight (must not follow stack pop mid-animation). */
+const flyerImage = ref('')
+/** In-flow poster: only swapped after decode so HD replace never flashes empty. */
+const posterSrc = ref('')
+/** Banner bg: start from seed art, upgrade to real banner only after decode. */
+const bannerSrc = ref('')
 type DetailTab = 'overview' | 'characters' | 'staff' | 'relations'
 const tab = ref<DetailTab>('overview')
 const tabsRef = ref<HTMLElement | null>(null)
@@ -62,6 +68,120 @@ const revealOrigin = ref({ x: 50, y: 45 })
 let animTimer: ReturnType<typeof setTimeout> | null = null
 let closing = false
 let lastOverviewId = ''
+
+/** Per-layer UI snapshot so stack return restores tab/scroll/poster instead of re-mounting. */
+type LayerUiState = {
+  tab: DetailTab
+  visibleByTab: Record<ExtraSection, number>
+  metaExpanded: boolean
+  scrollTop: number
+  contentEpoch: number
+  lastOverviewId: string
+  posterSrc: string
+  bannerSrc: string
+}
+const layerUiByKey = new Map<string, LayerUiState>()
+
+function defaultVisibleByTab(): Record<ExtraSection, number> {
+  return {
+    relations: EXTRA_BATCH,
+    characters: EXTRA_BATCH,
+    staff: EXTRA_BATCH,
+  }
+}
+
+function layerPosterUrl(layer: { detail?: { image?: string; banner?: string } | null; seed?: { image?: string; banner?: string } } | null | undefined) {
+  return layer?.detail?.image || layer?.seed?.image || ''
+}
+
+function layerBannerUrl(layer: { detail?: { image?: string; banner?: string } | null; seed?: { image?: string; banner?: string } } | null | undefined) {
+  return layer?.detail?.banner || layer?.seed?.banner || layer?.detail?.image || layer?.seed?.image || ''
+}
+
+function captureLayerUi(key: string | undefined | null) {
+  if (!key) return
+  const scrollEl = surfaceRef.value?.querySelector?.('.detail-scroll') as HTMLElement | null
+  layerUiByKey.set(key, {
+    tab: tab.value,
+    visibleByTab: { ...visibleByTab.value },
+    metaExpanded: metaExpanded.value,
+    scrollTop: scrollEl?.scrollTop || 0,
+    contentEpoch: contentEpoch.value,
+    lastOverviewId: lastOverviewId,
+    posterSrc: posterSrc.value || display.value?.image || '',
+    bannerSrc: bannerSrc.value || display.value?.banner || display.value?.image || '',
+  })
+}
+
+function restoreLayerUi(key: string | undefined | null, opts?: { posterFallback?: string; bannerFallback?: string }) {
+  if (!key) return
+  const saved = layerUiByKey.get(key)
+  if (!saved) {
+    tab.value = 'overview'
+    visibleByTab.value = defaultVisibleByTab()
+    metaExpanded.value = false
+    const fallback = opts?.posterFallback || ''
+    if (fallback) posterSrc.value = fallback
+    if (opts?.bannerFallback) bannerSrc.value = opts.bannerFallback
+    return
+  }
+  tab.value = saved.tab
+  visibleByTab.value = { ...saved.visibleByTab }
+  metaExpanded.value = saved.metaExpanded
+  contentEpoch.value = saved.contentEpoch
+  lastOverviewId = saved.lastOverviewId
+  // Immediate poster/banner swap (parent art already decoded earlier — no await flash).
+  posterSrc.value = saved.posterSrc || opts?.posterFallback || posterSrc.value
+  bannerSrc.value = saved.bannerSrc || opts?.bannerFallback || bannerSrc.value
+  void nextTick(() => {
+    const scrollEl = surfaceRef.value?.querySelector?.('.detail-scroll') as HTMLElement | null
+    if (scrollEl) scrollEl.scrollTop = saved.scrollTop
+    updateTabIndicator()
+  })
+}
+
+/** Soft-upgrade banner only after decode; keep current art if same URL. */
+async function setBannerSrc(src: string) {
+  if (!src || src === bannerSrc.value) return
+  const ok = await preloadImage(src)
+  if (ok || !bannerSrc.value) bannerSrc.value = src
+}
+
+function forgetLayerUi(key: string | undefined | null) {
+  if (key) layerUiByKey.delete(key)
+}
+
+function preloadImage(src: string): Promise<boolean> {
+  if (!src) return Promise.resolve(false)
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.decoding = 'async'
+    const done = (ok: boolean) => resolve(ok)
+    img.onload = () => {
+      if (typeof img.decode === 'function') {
+        img.decode().then(() => done(true)).catch(() => done(true))
+      } else {
+        done(true)
+      }
+    }
+    img.onerror = () => done(false)
+    img.src = src
+  })
+}
+
+/** Swap static poster only after the bitmap is ready (kills HD-replace flash). */
+async function setPosterSrc(src: string, opts?: { force?: boolean }) {
+  if (!src) return false
+  if (!opts?.force && src === posterSrc.value) return true
+  const ok = await preloadImage(src)
+  if (!ok) {
+    // Still assign so we show something; avoid infinite empty slot.
+    posterSrc.value = src
+    return false
+  }
+  posterSrc.value = src
+  return true
+}
 
 function updateTabIndicator() {
   const root = tabsRef.value
@@ -311,6 +431,14 @@ async function runExpand() {
   settled.value = false
   contentReady.value = false
   tab.value = 'overview'
+  const flightArt = display.value?.image || flyerImage.value
+  flyerImage.value = flightArt
+  // Seed banner with card art so CSS bg never starts empty / mid-swap.
+  if (!bannerSrc.value || store.expandMode !== 'stack') {
+    bannerSrc.value = flightArt || display.value?.banner || display.value?.image || ''
+  }
+  // Keep previous poster painted until this layer's art is preloaded (no empty slot flash).
+  if (flightArt) void preloadImage(flightArt)
   await nextTick()
 
   const origin = store.originRect || store.topLayer?.originRect || null
@@ -323,12 +451,13 @@ async function runExpand() {
   if (!flyer) {
     store.phase = 'open'
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+      requestAnimationFrame(async () => {
         applySurfaceReveal(true, true)
         contentReady.value = true
+        await setPosterSrc(flightArt || display.value?.image || '')
+        settled.value = true
       })
     })
-    settled.value = true
     return
   }
 
@@ -362,95 +491,115 @@ async function runExpand() {
       if (animTimer) clearTimeout(animTimer)
       animTimer = setTimeout(() => {
         if (closing) return
-        settled.value = true
-        // Cross-fade handoff: show in-flow poster under flyer, then hide flyer.
-        flyer.style.transition = 'opacity .12s ease'
-        flyer.style.opacity = '0'
-        window.setTimeout(() => {
+        // Decode in-flow poster under the still-visible flyer, then hand off once.
+        void (async () => {
+          const landSrc = display.value?.image || flightArt
+          await setPosterSrc(landSrc)
           if (closing) return
-          flyer.style.visibility = 'hidden'
-          flyer.style.transition = 'none'
-          flyer.style.transform = 'none'
-          flyer.style.opacity = '1'
-          document.documentElement.classList.remove('detail-flight-active')
-        }, 120)
+          settled.value = true
+          await nextTick()
+          flyer.style.transition = 'opacity .1s linear'
+          flyer.style.opacity = '0'
+          window.setTimeout(() => {
+            if (closing) return
+            flyer.style.visibility = 'hidden'
+            flyer.style.transition = 'none'
+            flyer.style.transform = 'none'
+            flyer.style.opacity = '1'
+            document.documentElement.classList.remove('detail-flight-active')
+          }, 100)
+        })()
       }, FLIGHT_MS)
     })
   })
 }
 
+function resetSurfaceToOpen() {
+  const el = surfaceRef.value
+  if (!el) return
+  el.style.transition = 'none'
+  el.style.opacity = '1'
+  el.style.transform = 'scale(1)'
+  el.style.setProperty('--reveal-r', '150%')
+  el.style.boxShadow = 'inset 0 0 0 0 rgba(184,240,95,0)'
+  // Drop any temporary inline mask overrides so CSS radial mask works again.
+  el.style.webkitMaskImage = ''
+  el.style.maskImage = ''
+  flush(el)
+}
+
 /**
- * Pop one layer: reverse of expand (circle collapse + poster flight to origin).
- * Parent layer stays mounted underneath and is revealed when top is removed.
+ * Pop one layer back to the already-loaded parent detail.
+ * Buried shells are incomplete (header only), so we never circle-collapse the whole surface.
+ * Instead: swap to parent UI immediately (preserved snapshot), flyer alone returns to origin.
  */
 async function popDetailStack(opts: { fromBrowserBack?: boolean } = {}) {
   if (!store.canPopDetail || closing) return
 
   closing = true
   if (animTimer) clearTimeout(animTimer)
-  store.beginStackReturn()
-  contentReady.value = false
-  document.documentElement.classList.add('detail-flight-active')
 
-  const flyer = flyerRef.value
+  const outgoing = store.topLayer
+  const parent = store.layers[store.layers.length - 2] || null
+  const outgoingImage = display.value?.image || flyerImage.value || posterSrc.value
+  const parentImage = layerPosterUrl(parent)
+  // Snapshot current (outgoing) UI before swap; parent snapshot was taken when opening related.
+  captureLayerUi(outgoing?.key)
+
   const origin = store.resolvePopOrigin()
-  if (origin) store.originRect = origin
-  setRevealOriginFromRect(origin)
   const target = getTargetPosterRect()
-  await nextTick()
+  // Flyer keeps child art for the return flight; slot switches to parent immediately.
+  flyerImage.value = outgoingImage
+  store.beginStackReturn()
 
-  // Cover in-flow poster first, then reverse-fly (no blank handoff).
-  if (flyer && origin) {
+  // Park flyer on the outgoing poster, then swap the page to parent underneath.
+  const flyer = flyerRef.value
+  if (flyer) {
     placeFlyerAtTarget(target, 14)
     flyer.style.opacity = '1'
     flyer.style.visibility = 'visible'
     flush(flyer)
   }
-  settled.value = false
+
+  const removed = store.applyStackPop()
+  forgetLayerUi(removed?.key)
+  const parentKey = parent?.key || store.topLayer?.key
+  const parentBanner = layerBannerUrl(parent)
+  restoreLayerUi(parentKey, { posterFallback: parentImage, bannerFallback: parentBanner })
+  // Hard-assign parent poster/banner so art is never the child cover after pop.
+  posterSrc.value = parentImage || layerUiByKey.get(parentKey || '')?.posterSrc || posterSrc.value
+  bannerSrc.value = parentBanner || layerUiByKey.get(parentKey || '')?.bannerSrc || bannerSrc.value
+  if (parentImage) void preloadImage(parentImage)
+  if (parentBanner) void preloadImage(parentBanner)
+  // Parent page is already fully loaded in store — keep chrome visible, no re-fetch flash.
+  contentReady.value = true
+  settled.value = true
+  resetSurfaceToOpen()
   applySurfaceReveal(true, false)
-  if (surfaceRef.value) flush(surfaceRef.value)
+  await nextTick()
+  restoreLayerUi(parentKey, { posterFallback: parentImage })
+  if (parentImage) posterSrc.value = parentImage
+
+  document.documentElement.classList.add('detail-flight-active')
 
   if (flyer && origin) {
+    flyerImage.value = outgoingImage
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        applySurfaceReveal(false, true)
         playFlyerToOrigin(origin, target, CLOSE_MS)
       })
     })
   } else if (flyer) {
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        applySurfaceReveal(false, true)
-        flyer.style.transition = `opacity ${CLOSE_MS}ms ease`
-        flyer.style.opacity = '0'
-      })
-    })
-  } else {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => applySurfaceReveal(false, true))
+      flyer.style.transition = `opacity ${CLOSE_MS}ms ease`
+      flyer.style.opacity = '0'
     })
   }
 
   animTimer = setTimeout(async () => {
-    store.applyStackPop()
-    await nextTick()
-    if (surfaceRef.value) {
-      surfaceRef.value.style.transition = 'none'
-      surfaceRef.value.style.opacity = '1'
-      surfaceRef.value.style.transform = 'scale(1)'
-      surfaceRef.value.style.setProperty('--reveal-r', '150%')
-      surfaceRef.value.style.webkitMaskImage = ''
-      surfaceRef.value.style.maskImage = ''
-      flush(surfaceRef.value)
-    }
-    applySurfaceReveal(true, false)
-    closing = false
-    settled.value = true
-    contentReady.value = true
-    tab.value = 'overview'
-    lastOverviewId = store.activeId
-    resetExtraVisible()
-    await nextTick()
+    const parentArt = (store.detail || store.seed)?.image || parentImage || ''
+    posterSrc.value = parentArt || posterSrc.value
+    flyerImage.value = parentArt
     if (flyer) {
       flyer.style.visibility = 'hidden'
       flyer.style.transition = 'none'
@@ -458,12 +607,17 @@ async function popDetailStack(opts: { fromBrowserBack?: boolean } = {}) {
       flyer.style.opacity = '1'
     }
     document.documentElement.classList.remove('detail-flight-active')
+    closing = false
+    store.phase = 'open'
+    store.expandMode = store.layers.length > 1 ? 'stack' : 'list'
     const id = store.activeId
     if (!opts.fromBrowserBack && id && router.currentRoute.value.name === 'anime-detail') {
       if (router.currentRoute.value.params.id !== id) {
         await router.replace({ name: 'anime-detail', params: { id } })
       }
     }
+    restoreLayerUi(store.topLayer?.key, { posterFallback: parentArt })
+    if (parentArt) posterSrc.value = parentArt
     updateTabIndicator()
   }, CLOSE_MS + 40)
 }
@@ -472,8 +626,26 @@ async function popDetailStack(opts: { fromBrowserBack?: boolean } = {}) {
 async function dismissToList() {
   if (!store.open || store.phase === 'collapsing' || closing) return
   closing = true
+  if (animTimer) clearTimeout(animTimer)
+
+  // Always return the FIRST opened detail (list card) — not the top of a related stack.
+  const rootLayer = store.layers[0] || store.topLayer
+  const rootImage = layerPosterUrl(rootLayer) || posterSrc.value || flyerImage.value
+  const rootBanner = layerBannerUrl(rootLayer) || rootImage
+
+  // Collapse stack to root immediately so surface + flyer art match the list card.
+  if (store.layers.length > 1 && rootLayer) {
+    store.layers = [rootLayer]
+  }
+  flyerImage.value = rootImage
+  posterSrc.value = rootImage
+  bannerSrc.value = rootBanner
+  restoreLayerUi(rootLayer?.key, { posterFallback: rootImage, bannerFallback: rootBanner })
+  if (rootImage) posterSrc.value = rootImage
+
   store.beginCollapse()
   contentReady.value = false
+  layerUiByKey.clear()
   document.documentElement.classList.add('detail-flight-active')
 
   const flyer = flyerRef.value
@@ -483,7 +655,7 @@ async function dismissToList() {
   const target = getTargetPosterRect()
   await nextTick()
 
-  // Cover detail poster first so reverse flight never blanks.
+  // Cover root poster first so reverse flight never blanks / never uses child art.
   if (flyer && origin) {
     placeFlyerAtTarget(target, 14)
     flyer.style.opacity = '1'
@@ -491,6 +663,7 @@ async function dismissToList() {
     flush(flyer)
   }
   settled.value = false
+  // Instantly clear surface + scrim blur (no fade that leaves the list frosted).
   applySurfaceReveal(true, false)
   if (surfaceRef.value) flush(surfaceRef.value)
 
@@ -515,7 +688,6 @@ async function dismissToList() {
     })
   }
 
-  if (animTimer) clearTimeout(animTimer)
   animTimer = setTimeout(async () => {
     const back = store.returnPath || '/'
     const shouldNavigate = router.currentRoute.value.name === 'anime-detail'
@@ -525,6 +697,9 @@ async function dismissToList() {
     closing = false
     settled.value = false
     contentReady.value = false
+    flyerImage.value = ''
+    posterSrc.value = ''
+    bannerSrc.value = ''
     if (shouldNavigate && router.currentRoute.value.name === 'anime-detail') {
       await router.replace(back)
     }
@@ -535,11 +710,10 @@ async function closeOverlay() {
   if (!store.open || store.phase === 'collapsing' || store.phase === 'returning' || closing) return
 
   // Back button: previous detail if stacked, else list.
+  // Always pop the in-app stack first and sync the route with replace.
+  // Using history.back() races with the route watcher and can leave the surface
+  // mid-collapse (blurred list + wrong flyer image).
   if (store.canPopDetail) {
-    if (window.history.length > 1 && router.currentRoute.value.name === 'anime-detail') {
-      router.back()
-      return
-    }
     await popDetailStack()
     return
   }
@@ -626,6 +800,9 @@ function loadMoreExtra() {
     visibleByTab.value[section] = Math.min(visibleByTab.value[section] + EXTRA_BATCH, allLen)
     loadingMoreExtra.value = false
     extraLoadTimer = null
+    // Desktop tall viewports: sentinel may stay intersecting after batch —
+    // IntersectionObserver won't re-fire; keep filling until scroll needed.
+    void nextTick().then(() => fillExtraViewport())
   }, 160)
 }
 
@@ -642,23 +819,60 @@ function resetExtraVisible() {
   }
 }
 
+/** Active layer scroll root (not a buried layer's empty .detail-scroll). */
+function getDetailScrollRoot(): Element | null {
+  return surfaceRef.value?.querySelector?.('.detail-scroll')
+    || document.querySelector('.detail-overlay__layer.is-top .detail-scroll')
+    || null
+}
+
+function isExtraSentinelInView(root: Element | null): boolean {
+  const sentinel = extraSentinelRef.value
+  if (!sentinel) return false
+  const s = sentinel.getBoundingClientRect()
+  if (root) {
+    const r = root.getBoundingClientRect()
+    // Expand root by ~200px like rootMargin so pre-fetch matches observer.
+    return s.top < r.bottom + 200 && s.bottom > r.top - 40
+  }
+  const vh = window.innerHeight || 0
+  return s.top < vh + 200 && s.bottom > -40
+}
+
+/** Keep loading batches while sentinel is still visible (desktop tall screens). */
+function fillExtraViewport() {
+  if (tab.value === 'overview' || loadingMoreExtra.value || !activeExtraHasMore()) return
+  const root = getDetailScrollRoot()
+  if (!isExtraSentinelInView(root)) return
+  loadMoreExtra()
+}
+
 function setupExtraObserver() {
   extraObserver?.disconnect()
+  extraObserver = null
   if (!extraSentinelRef.value || tab.value === 'overview') return
+  const root = getDetailScrollRoot()
   extraObserver = new IntersectionObserver(
     (entries) => {
       if (entries.some((entry) => entry.isIntersecting)) loadMoreExtra()
     },
-    { root: document.querySelector('.detail-scroll'), rootMargin: '200px 0px' },
+    { root: root || null, rootMargin: '200px 0px', threshold: 0 },
   )
   extraObserver.observe(extraSentinelRef.value)
+  // If first paint already fills the screen, observer may not emit — force fill.
+  void nextTick().then(() => fillExtraViewport())
 }
 
-// When a new card opens, reset tab + content epoch so old copy never cross-fades in.
+// Only reset tab when a NEW layer is expanding (list card / related push).
+// Stack pop also changes activeId; restoreLayerUi owns that path and must keep the saved tab.
 watch(
   () => store.activeId,
   (id, prev) => {
     if (!id || id === prev) return
+    if (store.phase !== 'expanding') {
+      void nextTick().then(updateTabIndicator)
+      return
+    }
     tab.value = 'overview'
     metaExpanded.value = false
     lastOverviewId = ''
@@ -686,10 +900,14 @@ watch(
   async () => {
     await nextTick()
     setupExtraObserver()
+    fillExtraViewport()
   },
 )
 
-watch(extraSentinelRef, () => setupExtraObserver())
+watch(extraSentinelRef, () => {
+  setupExtraObserver()
+  fillExtraViewport()
+})
 
 // Overview arrived for this open → one soft enter for lead / sidebar / panel.
 watch(
@@ -712,12 +930,35 @@ async function openRelated(rel: AnimeRelation, event: Event) {
     ?.querySelector?.('img, .relation-card__ph') as Element | null
     || (event.currentTarget as Element | null)
 
+  // Snapshot parent UI (tab/scroll/poster/banner) so return can restore without reloading.
+  captureLayerUi(store.topLayer?.key)
+  // Ensure parent poster is stored even if posterSrc lagged behind display.image.
+  if (store.topLayer?.key) {
+    const snap = layerUiByKey.get(store.topLayer.key)
+    const parentArt = display.value?.image || posterSrc.value
+    const parentBanner = display.value?.banner || display.value?.image || bannerSrc.value
+    if (snap && parentArt) {
+      layerUiByKey.set(store.topLayer.key, {
+        ...snap,
+        posterSrc: parentArt,
+        bannerSrc: parentBanner || snap.bannerSrc,
+      })
+    }
+  }
+
   tab.value = 'overview'
   lastOverviewId = ''
   contentEpoch.value = 0
+  settled.value = false
+  contentReady.value = false
+  // Keep posterSrc until land so the slot never blanks mid-push.
   resetExtraVisible()
   // Parent layer stays mounted; new layer expands from relation thumb (same as card open).
   await store.openFromRelated(rel, thumb)
+  const nextArt = (store.detail || store.seed)?.image || rel.image || ''
+  flyerImage.value = nextArt
+  bannerSrc.value = nextArt
+  if (nextArt) void preloadImage(nextArt)
   await router.push({ name: 'anime-detail', params: { id: rel.id } })
 }
 
@@ -727,6 +968,9 @@ watch(
     if (!open) {
       settled.value = false
       contentReady.value = false
+      flyerImage.value = ''
+      posterSrc.value = ''
+      bannerSrc.value = ''
       closing = false
       return
     }
@@ -747,33 +991,80 @@ watch(
 watch(
   () => route.params.id,
   async (id, prevId) => {
-    if (typeof id !== 'string' || !id) return
+    // Left detail route entirely (e.g. browser back past stack root).
+    if (typeof id !== 'string' || !id) {
+      if (store.open && route.name !== 'anime-detail' && !closing) {
+        store.finishClose()
+        settled.value = false
+        contentReady.value = false
+        flyerImage.value = ''
+      }
+      return
+    }
     if (store.open && store.activeId === id) return
     if (store.open && store.phase === 'expanding') return
     if (store.open && store.phase === 'returning') return
     if (store.open && store.phase === 'collapsing') return
+    if (closing) return
 
     // Browser back onto a still-mounted parent layer → reverse flight, then drop top.
     if (
       store.open
       && typeof prevId === 'string'
       && store.stackContains(id)
-      && store.layers.some((l) => l.seed.id === id)
     ) {
       // If target is not immediate parent, pop with animation once then hard-sync.
       await popDetailStack({ fromBrowserBack: true })
       if (store.activeId !== id && store.stackContains(id)) {
+        const parentKey = store.layers.find((l) => l.seed.id === id)?.key
         store.restoreFromStackById(id)
-        lastOverviewId = id
-        contentEpoch.value += 1
+        restoreLayerUi(parentKey || store.topLayer?.key)
+        flyerImage.value = display.value?.image || ''
         settled.value = true
         contentReady.value = true
+        resetSurfaceToOpen()
         applySurfaceReveal(true, false)
       }
       return
     }
 
     await store.reopenFromRoute(id, store.returnPath || '/')
+    flyerImage.value = (store.detail || store.seed)?.image || ''
+  },
+)
+
+watch(
+  () => display.value?.image,
+  (image) => {
+    if (!image) return
+    // During flight / return: freeze flyer art — never swap mid-animation.
+    if (closing || store.phase === 'returning' || store.phase === 'collapsing' || store.phase === 'expanding') {
+      return
+    }
+    // Settled page: soft-swap HD poster only after decode (relation thumb → full cover).
+    if (settled.value) {
+      void setPosterSrc(image)
+      flyerImage.value = image
+      // Prefer seed image as banner until real banner arrives (handled below).
+      if (!bannerSrc.value) bannerSrc.value = image
+      return
+    }
+    flyerImage.value = image
+    if (!bannerSrc.value) bannerSrc.value = image
+  },
+)
+
+watch(
+  () => [display.value?.banner, display.value?.image, store.loading, settled.value] as const,
+  ([banner, image, loading, isSettled]) => {
+    if (!isSettled || loading) return
+    if (closing || store.phase === 'returning' || store.phase === 'collapsing' || store.phase === 'expanding') {
+      return
+    }
+    const next = banner || image || ''
+    if (!next) return
+    // Soft upgrade only — never clear; avoids empty→image flash on overview paint.
+    void setBannerSrc(next)
   },
 )
 
@@ -843,7 +1134,7 @@ onUnmounted(() => {
               <div class="detail-poster-slot">
                 <img
                   v-if="(layer.detail || layer.seed).image"
-                  class="detail-poster-static"
+                  class="detail-poster-static is-landed"
                   :src="(layer.detail || layer.seed).image"
                   :alt="(layer.detail || layer.seed).title"
                 />
@@ -868,9 +1159,8 @@ onUnmounted(() => {
       >
         <div
           class="detail-banner"
-          :style="display.banner || display.image
-            ? { backgroundImage: `url(${display.banner || display.image})` }
-            : undefined"
+          :class="{ 'has-art': Boolean(bannerSrc) }"
+          :style="bannerSrc ? { backgroundImage: `url(${bannerSrc})` } : undefined"
         />
         <div class="detail-banner__shade" />
 
@@ -892,10 +1182,12 @@ onUnmounted(() => {
             <!-- In-flow poster slot: empty during flight, holds real poster after land -->
             <div ref="posterSlotRef" class="detail-poster-slot">
               <img
-                v-if="display.image && settled"
+                v-if="posterSrc"
                 class="detail-poster-static"
-                :src="display.image"
+                :class="{ 'is-landed': settled }"
+                :src="posterSrc"
                 :alt="display.title"
+                decoding="async"
               />
             </div>
 
@@ -1136,14 +1428,14 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Fixed only while flying; hidden after handoff to in-flow poster -->
+      <!-- Fixed only while flying; image frozen so stack pop cannot swap mid-flight -->
       <div
-        v-if="display.image"
+        v-if="flyerImage"
         ref="flyerRef"
         class="detail-flyer"
         aria-hidden="true"
       >
-        <img :src="display.image" alt="" draggable="false" />
+        <img :src="flyerImage" alt="" draggable="false" />
       </div>
     </div>
   </Teleport>

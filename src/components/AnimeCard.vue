@@ -27,17 +27,14 @@ const flash = ref(false)
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null
 let revealObserver: IntersectionObserver | null = null
 /**
- * Hide source poster only while flyer is leaving the card.
- * During collapse the card poster stays visible under the returning flyer
- * so handoff never flashes a blank frame.
- */
-/**
- * Hide list poster only when THIS card is the return target during flight.
- * Related handoffs keep the original list card hidden until full close.
+ * Shared-element source card: hide list poster while its art "lives" in the overlay.
+ * - expand / open / related stack: keep hidden (returnCardId is the list origin)
+ * - collapsing return flight: still hidden until finishClose (flyer is the only art)
  */
 const isActiveExpand = computed(() => {
-  if (!detailOverlay.open || detailOverlay.phase === 'collapsing') return false
-  const returnId = detailOverlay.returnCardId || detailOverlay.activeId
+  if (!detailOverlay.open) return false
+  const returnId = detailOverlay.returnCardId
+  if (!returnId) return false
   return returnId === props.anime.id
 })
 

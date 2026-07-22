@@ -10,16 +10,12 @@
     width: min(340px, calc(100vw - 48px));
     max-width: min(340px, calc(100vw - 48px));
   }
-  .signal-core { width: min(45vw, 410px); }
-  .intro-signal .intro-scene-copy { top: 71%; left: 50%; justify-items: center; transform: translateX(-50%); text-align: center; }
 }
 
 @media (max-width: 760px) {
   body::before { display: none; }
   .intro-hud { top: max(14px, env(safe-area-inset-top, 0px)); left: 14px; right: 14px; }
   .intro-node-label { display: none; }
-  .intro-variant-switch { width: 100%; grid-template-columns: repeat(2,1fr); }
-  .intro-variant-switch button { min-width: 0; min-height: 44px; }
   .intro-scene-copy p { font-size: 11px; }
   .intro-telemetry {
     left: 16px;
@@ -30,12 +26,6 @@
   }
   .intro-telemetry > div:first-child { grid-column: 1/-1; }
   .intro-telemetry small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .signal-grid { background-size: 44px 44px; }
-  .signal-axis { width: 118vw; margin-left: -59vw; }
-  .signal-core { top: 42%; width: min(84vw, 390px); }
-  .intro-signal .intro-scene-copy { top: 68%; width: calc(100% - 32px); gap: 12px; }
-  .intro-signal .intro-scene-copy img { width: min(64vw, 260px); }
-  .intro-signal .intro-scene-copy strong { display: none; }
   .manga-panel-grid { inset: 18% 3% 26%; grid-template-columns: .82fr 1.15fr .82fr; gap: 5px; }
   .manga-panel { border-width: 2px; box-shadow: 6px 6px 0 rgba(184,240,95,.78); }
   .manga-panel > span { left: 8px; right: 8px; bottom: 9px; }
@@ -43,8 +33,6 @@
   .manga-slash { top: 50%; }
   .intro-manga .intro-scene-copy { top: 70%; gap: 9px; }
   .intro-manga .intro-scene-copy strong { font-size: 11px; }
-  .intro-lab { right: 12px; bottom: 12px; }
-  .intro-lab > span { display: none; }
   .topbar { height: 64px; grid-template-columns: 1fr auto; padding: 0 15px; }
   .search-shortcut { display: none; }
   .brand-logo { height: 44px; width: auto; }
@@ -347,7 +335,6 @@
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
-  .signal-scan,
   .manga-speedlines { display: none; }
   .hero-depth,
   .hero-depth-next,
@@ -357,7 +344,6 @@
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .topbar, .modal-backdrop, .intro-variant-switch, .intro-lab { backdrop-filter: none; }
+  .topbar, .modal-backdrop { backdrop-filter: none; }
   .topbar { background: var(--bg); }
-  .intro-variant-switch, .intro-lab { background: #0b0d0c; }
 }

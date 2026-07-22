@@ -13,20 +13,25 @@ body.detail-scroll-lock {
   cursor: pointer;
 }
 /*
- * Only hide source card chrome after flyer is already covering it
- * (html.detail-flight-active is toggled from JS once flyer is parked).
+ * Source list card: poster is "in the overlay" for the whole open lifetime.
+ * Do not require detail-flight-active — otherwise the card image pops back
+ * after the flyer lands and shows a second copy under the scrim / on return.
  */
 .anime-card.is-expanding {
   pointer-events: none;
 }
-html.detail-flight-active .anime-card.is-expanding .poster-wrap img,
-html.detail-flight-active .anime-card.is-expanding .poster-missing,
-html.detail-flight-active .anime-card.is-expanding .poster-action,
-html.detail-flight-active .anime-card.is-expanding .library-chip,
-html.detail-flight-active .anime-card.is-expanding .rank-number,
-html.detail-flight-active .anime-card.is-expanding .card-toast {
+.anime-card.is-expanding .poster-wrap img,
+.anime-card.is-expanding .poster-missing,
+.anime-card.is-expanding .poster-action,
+.anime-card.is-expanding .library-chip,
+.anime-card.is-expanding .rank-number,
+.anime-card.is-expanding .card-toast {
   opacity: 0 !important;
   transition: none !important;
+}
+/* Empty pad so layout/shadow stay; only art leaves with the flyer */
+.anime-card.is-expanding .poster-wrap {
+  background: rgba(255, 255, 255, .03);
 }
 .detail-overlay {
   position: fixed;
@@ -73,14 +78,29 @@ html.detail-flight-active .anime-card.is-expanding .card-toast {
 }
 .detail-overlay.is-expanding .detail-scrim,
 .detail-overlay.is-open .detail-scrim,
+.detail-overlay.is-returning .detail-scrim,
 .detail-overlay.is-content-ready .detail-scrim {
   opacity: 1;
   backdrop-filter: blur(12px) saturate(120%);
 }
+/* Full dismiss to list: drop blur immediately so list is sharp under the flyer */
 .detail-overlay.is-collapsing .detail-scrim {
-  opacity: 0;
-  backdrop-filter: blur(0px);
-  transition-duration: .38s;
+  opacity: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transition: opacity .28s var(--ease);
+}
+.detail-overlay.is-collapsing .detail-surface {
+  /* Circle wipe only — no residual frosted glass on the page behind */
+  backdrop-filter: none !important;
+}
+/* Keep top surface above buried parents while collapsing back one layer */
+.detail-overlay.is-returning .detail-overlay__layer.is-top {
+  z-index: 20;
+}
+/* Parent buried layer already has full page chrome under the shrinking mask */
+.detail-overlay.is-returning .detail-overlay__layer.is-buried {
+  opacity: 1;
 }
 
 /* Full page surface: soft circular wipe from click origin (JS drives --reveal-r) */
@@ -179,6 +199,11 @@ html.detail-flight-active .anime-card.is-expanding .card-toast {
   visibility: hidden;
   pointer-events: none;
 }
+/* Stack return keeps settled parent page + flying child poster */
+.detail-overlay.is-returning .detail-flyer {
+  visibility: visible !important;
+  pointer-events: none;
+}
 
 .detail-banner {
   position: absolute;
@@ -186,9 +211,16 @@ html.detail-flight-active .anime-card.is-expanding .card-toast {
   left: 0;
   right: 0;
   height: min(220px, 28vh);
+  background-color: #101512;
   background-size: cover;
   background-position: center top;
+  background-repeat: no-repeat;
   filter: saturate(.9);
+  opacity: .5;
+  /* Avoid blank→image paint flash when CSS bg URL swaps */
+  transition: none;
+}
+.detail-banner.has-art {
   opacity: .5;
 }
 .detail-banner__shade {

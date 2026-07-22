@@ -19,6 +19,14 @@
   opacity: 1;
   transform: translateY(0);
 }
+/* Stack return: keep page chrome readable; only surface mask / flyer moves. */
+.detail-overlay.is-returning.is-content-ready .detail-header__main,
+.detail-overlay.is-returning.is-content-ready .detail-content,
+.detail-overlay.is-returning.is-content-ready .detail-loader {
+  opacity: 1;
+  transform: translateY(0);
+  transition: none;
+}
 .detail-overlay.is-collapsing .detail-header__main,
 .detail-overlay.is-collapsing .detail-content,
 .detail-overlay.is-collapsing .detail-loader {
@@ -61,7 +69,12 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  /* No opacity/transform transition here — avoids second "nudge" after flight */
+  /* Hidden under flyer until land; no fade (fade = double flash with flyer handoff). */
+  opacity: 0;
+  pointer-events: none;
+}
+.detail-poster-static.is-landed {
+  opacity: 1;
 }
 .detail-header__main { min-width: 0; padding-bottom: 4px; }
 .detail-kicker {

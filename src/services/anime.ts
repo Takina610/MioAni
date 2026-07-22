@@ -5,17 +5,30 @@ import {
   FALLBACK_ANILIST_GENRES,
   FALLBACK_BANGUMI_GENRES,
 } from '../constants/discover'
+import {
+  bangumiNeedsPrecisionGather,
+  buildAniListVariables,
+  buildBangumiSearchBody,
+  mapAniListLanguageCode,
+  softFilterBangumiStatus,
+} from './discoverFilters'
 import type { Anime, AnimeDetail, ImportResult, WatchStatus } from '../types/anime'
 import type {
-  AirStatus,
   DiscoverFilters,
   DiscoverGenreOption,
   DiscoverPageRequest,
   DiscoverPageResult,
-  DiscoverSeason,
-  DiscoverSort,
   DiscoverSource,
 } from '../types/discover'
+
+export {
+  aniListStatus,
+  bangumiNeedsPrecisionGather,
+  buildAniListVariables,
+  buildBangumiSearchBody,
+  classifyBangumiAirStatus,
+  softFilterBangumiStatus,
+} from './discoverFilters'
 
 const statusMap: Record<string, WatchStatus> = {
   CURRENT: 'watching', COMPLETED: 'completed', PLANNING: 'planned', PAUSED: 'paused', DROPPED: 'dropped',
@@ -153,24 +166,6 @@ function hardFilterBangumiFormat(items: Anime[], format: string | null): Anime[]
 }
 
 /**
- * Bangumi language → search tags (API has no country field).
- * Accepts chip ids (ja/zh/…) and AniList ISO (JP/CN/…) when routed here.
- * 日语 is default catalog — no tag prefilter.
- */
-function bangumiLanguageTags(language: string | null): string[] {
-  if (!language) return []
-  const key = language.trim().toLowerCase()
-  if (key === 'ja' || key === 'jp') return []
-  if (key === 'zh' || key === 'cn' || key === 'tw' || key === 'hk') {
-    return ['中国', '国产', '国创', '中国动画']
-  }
-  if (key === 'ko' || key === 'kr') return ['韩国']
-  if (key === 'en' || key === 'us' || key === 'gb') return ['美国']
-  if (key === 'other') return []
-  return []
-}
-
-/**
  * Soft client check after Bangumi language tag prefilter.
  * Missing tags still keep the row (tag API already narrowed the pool).
  */
@@ -287,64 +282,6 @@ export async function searchAnime(keyword: string): Promise<Anime[]> {
 
 // ── Discover browse pipeline (paginated + filters) ──────────────────────────
 
-function seasonDateRange(year: number, season: DiscoverSeason): { start: string; end: string } {
-  const ranges: Record<DiscoverSeason, [number, number]> = {
-    WINTER: [1, 3],
-    SPRING: [4, 6],
-    SUMMER: [7, 9],
-    FALL: [10, 12],
-  }
-  const [startMonth, endMonth] = ranges[season]
-  const start = `${year}-${String(startMonth).padStart(2, '0')}-01`
-  const endMonthStr = String(endMonth).padStart(2, '0')
-  const lastDay = new Date(year, endMonth, 0).getDate()
-  const end = `${year}-${endMonthStr}-${String(lastDay).padStart(2, '0')}`
-  return { start, end }
-}
-
-function bangumiAirDateFilter(filters: DiscoverFilters): string[] | undefined {
-  if (filters.year && filters.season) {
-    const { start, end } = seasonDateRange(filters.year, filters.season)
-    return [`>=${start}`, `<=${end}`]
-  }
-  if (filters.year) {
-    return [`>=${filters.year}-01-01`, `<=${filters.year}-12-31`]
-  }
-  // Season without year: map to current calendar year season window (best-effort).
-  if (filters.season) {
-    const year = new Date().getFullYear()
-    const { start, end } = seasonDateRange(year, filters.season)
-    return [`>=${start}`, `<=${end}`]
-  }
-  return undefined
-}
-
-function bangumiSort(sort: DiscoverSort, hasKeyword: boolean): string {
-  // Keyword search must stay on match; heat/rank/score bury relevance.
-  if (hasKeyword) return 'match'
-  if (sort === 'score') return 'score'
-  if (sort === 'rank') return 'rank'
-  if (sort === 'match') return 'heat'
-  return 'heat'
-}
-
-function aniListSort(sort: DiscoverSort, hasKeyword: boolean): string {
-  if (hasKeyword) return 'SEARCH_MATCH'
-  switch (sort) {
-    case 'score':
-      return 'SCORE_DESC'
-    case 'rank':
-      return 'TRENDING_DESC'
-    case 'start_date':
-      return 'START_DATE_DESC'
-    case 'match':
-      return 'POPULARITY_DESC'
-    case 'heat':
-    default:
-      return 'POPULARITY_DESC'
-  }
-}
-
 function normalizeSearchText(value: string): string {
   return value
     .toLowerCase()
@@ -387,25 +324,6 @@ export function filterAndRankByKeyword(items: Anime[], keyword: string): Anime[]
     .filter((row) => row.score >= 0)
     .sort((a, b) => a.score - b.score || (b.item.popularity || 0) - (a.item.popularity || 0))
     .map((row) => row.item)
-}
-
-function aniListStatus(status: AirStatus): string | undefined {
-  if (status === 'releasing') return 'RELEASING'
-  if (status === 'finished') return 'FINISHED'
-  if (status === 'not_yet') return 'NOT_YET_RELEASED'
-  return undefined
-}
-
-/** Soft client filter for Bangumi (no native airing status API field). */
-function softFilterBangumiStatus(items: Anime[], status: AirStatus): Anime[] {
-  if (status === 'all') return items
-  const year = new Date().getFullYear()
-  return items.filter((item) => {
-    if (status === 'not_yet') return item.year > year || (item.year === 0 && !item.nextEpisode)
-    if (status === 'releasing') return Boolean(item.nextEpisode) || item.year === year
-    if (status === 'finished') return item.year > 0 && item.year < year && !item.nextEpisode
-    return true
-  })
 }
 
 /**
@@ -533,30 +451,7 @@ export async function browseBangumi(req: DiscoverPageRequest, signal?: AbortSign
   const genreValues = req.filters.genres.filter(Boolean)
   const format = (req.filters.format || '').trim() || null
   const language = (req.filters.language || '').trim() || null
-  const airDate = bangumiAirDateFilter(req.filters)
-  const rating: string[] = []
-  if (req.filters.scoreMin > 0) rating.push(`>=${req.filters.scoreMin}`)
-  if (req.filters.scoreMax < 10) rating.push(`<=${req.filters.scoreMax}`)
-
-  const filter: Record<string, unknown> = { type: [2] }
-  // Format + language both use Bangumi tags (no native platform/country filters).
-  const langTags = bangumiLanguageTags(language)
-  // Use ONE language tag as primary (API AND-s all tags — multi-tag empties results).
-  const primaryLangTag = langTags[0] || null
-  const allTags = [
-    ...genreValues,
-    ...(format ? [format] : []),
-    ...(primaryLangTag ? [primaryLangTag] : []),
-  ]
-  if (allTags.length) filter.tag = allTags
-  if (airDate) filter.air_date = airDate
-  if (rating.length) filter.rating = rating
-
-  const body = {
-    keyword: keyword || '',
-    sort: bangumiSort(req.filters.sort, Boolean(keyword)),
-    filter,
-  }
+  const body = buildBangumiSearchBody(req)
 
   // Soft client filters only (API already applied format/language tags).
   const applyBangumiSoftFilters = (list: Anime[]) => {
@@ -571,8 +466,8 @@ export async function browseBangumi(req: DiscoverPageRequest, signal?: AbortSign
     return mapped
   }
 
-  // Keyword/genre need multi-page gather. Format/language use normal API pagination.
-  const needsPrecision = Boolean(keyword || genreValues.length)
+  // Keyword / genre / airing-status need multi-page gather (status is client-only on BGM).
+  const needsPrecision = bangumiNeedsPrecisionGather(req)
   if (needsPrecision) {
     const precise: Anime[] = []
     const seen = new Set<string>()
@@ -632,23 +527,8 @@ export async function browseAniList(req: DiscoverPageRequest): Promise<DiscoverP
   const keyword = req.keyword.trim()
   const genreValues = req.filters.genres.filter(Boolean)
   const format = (req.filters.format || '').trim() || null
-  // Accept both AniList ISO (JP/CN/…) and Bangumi chips (ja/zh/…) when routed here.
-  const languageRaw = (req.filters.language || '').trim()
-  const language = (() => {
-    if (!languageRaw) return null
-    const map: Record<string, string> = {
-      ja: 'JP', jp: 'JP',
-      zh: 'CN', cn: 'CN',
-      en: 'US', us: 'US',
-      ko: 'KR', kr: 'KR',
-      tw: 'TW', hk: 'HK',
-    }
-    const lower = languageRaw.toLowerCase()
-    if (lower === 'other') return null // no single country
-    return (map[lower] || languageRaw).toUpperCase()
-  })()
-  const status = aniListStatus(req.filters.status)
-  const sort = aniListSort(req.filters.sort, Boolean(keyword))
+  const language = mapAniListLanguageCode(req.filters.language)
+  const variables = buildAniListVariables({ ...req, pageSize })
 
   const query = `
     query (
@@ -671,28 +551,6 @@ export async function browseAniList(req: DiscoverPageRequest): Promise<DiscoverP
     }
   `
 
-  const variables: Record<string, unknown> = {
-    page: req.page,
-    perPage: pageSize,
-    sort: [sort],
-  }
-  if (keyword) variables.search = keyword
-  if (genreValues.length) variables.genre_in = genreValues
-  // AniList rejects season without seasonYear; default year when only season is set.
-  if (req.filters.year) {
-    variables.seasonYear = req.filters.year
-  } else if (req.filters.season) {
-    variables.seasonYear = new Date().getFullYear()
-  }
-  if (req.filters.season) variables.season = req.filters.season
-  if (status) variables.status = status
-  // AniList averageScore is 0–100
-  if (req.filters.scoreMin > 0) variables.scoreGreater = Math.round(req.filters.scoreMin * 10) - 1
-  if (req.filters.scoreMax < 10) variables.scoreLesser = Math.round(req.filters.scoreMax * 10) + 1
-  // Native MediaFormat — API does the heavy lifting for pagination
-  if (format) variables.format_in = [format.toUpperCase()]
-  if (language) variables.countryOfOrigin = language
-
   const mapMedia = (media: any): Anime => {
     const item = mapAniList(media)
     if (Array.isArray(media.genres) && media.genres.length) {
@@ -714,7 +572,7 @@ export async function browseAniList(req: DiscoverPageRequest): Promise<DiscoverP
     return mapped
   }
 
-  // Keyword/genre still need multi-page gather; format/language use normal API paging.
+  // Keyword/genre still need multi-page gather; status is API-native (no gather).
   const needsPrecision = Boolean(keyword || genreValues.length)
   if (needsPrecision) {
     const precise: Anime[] = []
@@ -751,7 +609,7 @@ export async function browseAniList(req: DiscoverPageRequest): Promise<DiscoverP
     }
   }
 
-  // Normal path (format / language / bare browse): one API page, trust pageInfo.
+  // Normal path (format / language / status / bare browse): one API page, trust pageInfo.
   const data = await aniListRequest(query, variables)
   const page = data.Page
   let items: Anime[] = (page.media ?? []).map(mapMedia)

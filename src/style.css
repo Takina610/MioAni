@@ -32,9 +32,7 @@
 
 /* Intro */
 @import './styles/pages/intro/overlay.css';
-@import './styles/pages/intro/signal.css';
 @import './styles/pages/intro/manga.css';
-@import './styles/pages/intro/lab.css';
 
 /* Shared loading / states / modal / footer */
 @import './styles/pages/home/loading.css';

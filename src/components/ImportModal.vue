@@ -31,7 +31,7 @@ async function runImport() {
       <div v-if="open" class="modal-backdrop" @click.self="emit('close')">
         <section class="import-modal" role="dialog" aria-modal="true" aria-labelledby="import-title">
           <button class="modal-close" type="button" aria-label="关闭" @click="emit('close')"><PhX :size="21" /></button>
-          <div class="modal-heading"><span>IMPORT</span><h2 id="import-title">导入你的动画收藏</h2><p>公开收藏无需 API Key。私有数据可在 `.env.local` 配置 Access Token。</p></div>
+          <div class="modal-heading"><span>IMPORT</span><h2 id="import-title">导入你的动画收藏</h2></div>
           <div class="source-tabs" role="tablist">
             <button type="button" :class="{ active: source === 'bangumi' }" @click="source = 'bangumi'"><strong>Bangumi</strong><span>中文条目与收藏进度</span></button>
             <button type="button" :class="{ active: source === 'anilist' }" @click="source = 'anilist'"><strong>AniList</strong><span>国际条目与评分记录</span></button>

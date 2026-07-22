@@ -7,19 +7,16 @@ import AnimeCard from '../components/AnimeCard.vue'
 import { useCatalogStore } from '../stores/catalog'
 import { useLibraryStore } from '../stores/library'
 import type { Anime } from '../types/anime'
-import brandMark from '../assets/MioAni1.png'
-import brandLogo from '../assets/MioAni2.png'
 import mangaPanelAnimePortrait from '../assets/manga-intro/panel-anime-portrait.png'
 import mangaPanelAnimeBeach from '../assets/manga-intro/panel-anime-beach.jpg'
 import mangaPanelMangaFigure from '../assets/manga-intro/panel-manga-figure.jpg'
 
-type IntroVariant = 'signal' | 'manga'
-
-const INTRO_VARIANTS: readonly IntroVariant[] = ['signal', 'manga']
-const INTRO_COPY: Record<IntroVariant, readonly string[]> = {
-  signal: ['BOOTING VISUAL CORE', 'CONNECTING BANGUMI / ANILIST', 'INDEXING CURRENT SEASON', 'SIGNAL LOCKED'],
-  manga: ['INKING FRAME 01', 'CUTTING IMPACT PANELS', 'SYNCING KEY FRAMES', 'READY / IMPACT'],
-}
+const INTRO_COPY = [
+  'INKING FRAME 01',
+  'CUTTING IMPACT PANELS',
+  'SYNCING KEY FRAMES',
+  'READY / IMPACT',
+] as const
 const INTRO_WAIT_COPY = [
   'VERIFYING REMOTE CATALOG',
   'DECODING SEASON ARTWORK',
@@ -28,20 +25,13 @@ const INTRO_WAIT_COPY = [
 ] as const
 const INTRO_WAIT_PROGRESS_LIMIT = 98.4
 const INTRO_WAIT_STATUS_INTERVAL = 2200
-const SIGNAL_SHARD_ENTRY_X = [-82, 66, -26] as const
-const SIGNAL_SHARD_ENTRY_Y = [18, -36, 56] as const
-const SIGNAL_SHARD_ENTRY_ROTATION = [-12, 9, -4] as const
 // Free anime/manga-style panels from Wikimedia Commons (CC BY-SA) so the intro never waits on the catalog API.
 const MANGA_INTRO_PANELS = [
   { src: mangaPanelAnimePortrait, label: 'ANIME / PORTRAIT' },
   { src: mangaPanelAnimeBeach, label: 'ANIME / SUMMER FRAME' },
   { src: mangaPanelMangaFigure, label: 'MANGA / FIGURE' },
 ] as const
-const INTRO_CRITICAL_ASSETS = [
-  brandLogo,
-  brandMark,
-  ...MANGA_INTRO_PANELS.map((item) => item.src),
-] as const
+const INTRO_CRITICAL_ASSETS = MANGA_INTRO_PANELS.map((item) => item.src)
 
 const catalog = useCatalogStore()
 const library = useLibraryStore()
@@ -57,8 +47,7 @@ const INTRO_ASSET_TIMEOUT = 4500
 let introAssetsPromise: Promise<boolean[]> | null = null
 
 const introVisible = ref(true)
-const introVariant = ref<IntroVariant>('signal')
-const introStatus = ref(INTRO_COPY.signal[0])
+const introStatus = ref<string>(INTRO_COPY[0])
 const introEntryDone = ref(false)
 const introIsFinishing = ref(false)
 const introWaiting = ref(false)
@@ -106,26 +95,10 @@ const quarter = computed(() => {
   return `${date.getFullYear()} Q${Math.floor(date.getMonth() / 3) + 1}`
 })
 
-function chooseRandomIntroVariant(): IntroVariant {
-  return Math.random() < 0.5 ? 'signal' : 'manga'
-}
-
 function setIntroDocumentState(active: boolean) {
   document.body.classList.toggle('intro-active', active)
   const shell = document.querySelector<HTMLElement>('.app-shell')
   if (shell) shell.inert = active
-}
-
-function focusIntroVariantControl() {
-  introRootRef.value
-    ?.querySelector<HTMLButtonElement>('.intro-variant-switch button.active')
-    ?.focus({ preventScroll: true })
-}
-
-function restoreIntroTriggerFocus() {
-  document
-    .querySelector<HTMLButtonElement>('.intro-lab button.active')
-    ?.focus({ preventScroll: true })
 }
 
 function updateIntroProgress(value: number) {
@@ -157,7 +130,7 @@ function addIntroProgressTween(
 }
 
 function setIntroStatus(step: number) {
-  introStatus.value = INTRO_COPY[introVariant.value][step] || INTRO_COPY[introVariant.value][0]
+  introStatus.value = INTRO_COPY[step] || INTRO_COPY[0]
 }
 
 function stopIntroWaitingState() {
@@ -226,40 +199,7 @@ function startIntroWaitingState(generation: number) {
   scheduleIntroWaitingProgress(generation)
 }
 
-function createSignalEntryTimeline(generation: number) {
-  const timeline = gsap.timeline({
-    defaults: { ease: 'power3.out' },
-    onComplete: () => markIntroEntryDone(generation),
-  })
-  timeline
-    .fromTo('.signal-grid', { autoAlpha: 0, scale: 1.12 }, { autoAlpha: 0.72, scale: 1, duration: 1.1 }, 0)
-    .fromTo('.signal-axis', { scaleX: 0 }, { scaleX: 1, duration: 0.72, stagger: 0.09 }, 0.08)
-    .fromTo('.signal-orbit', { autoAlpha: 0, scale: 0.45, rotate: -110 }, { autoAlpha: 1, scale: 1, rotate: 0, duration: 1.15, stagger: 0.08 }, 0.18)
-    .fromTo('.signal-shard', {
-      autoAlpha: 0,
-      xPercent: (index) => SIGNAL_SHARD_ENTRY_X[index] ?? 0,
-      yPercent: (index) => SIGNAL_SHARD_ENTRY_Y[index] ?? 0,
-      rotate: (index) => SIGNAL_SHARD_ENTRY_ROTATION[index] ?? 0,
-      filter: 'blur(14px) brightness(2)',
-    }, {
-      autoAlpha: 1,
-      xPercent: 0,
-      yPercent: 0,
-      rotate: 0,
-      filter: 'blur(0px) brightness(1)',
-      duration: 0.9,
-      stagger: 0.08,
-    }, 0.48)
-    .fromTo('.signal-lock', { scale: 1.7, autoAlpha: 0 }, { scale: 1, autoAlpha: 1, duration: 0.46 }, 1.12)
-    .fromTo('.intro-signal .intro-scene-copy > *', { y: 24, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.62, stagger: 0.08 }, 1.08)
-    .fromTo('.signal-scan', { yPercent: -120, autoAlpha: 0 }, { yPercent: 140, autoAlpha: 0.9, duration: 1.35, ease: 'power1.inOut' }, 0.34)
-    .call(() => setIntroStatus(1), [], 0.82)
-    .call(() => setIntroStatus(2), [], 1.72)
-  addIntroProgressTween(timeline, 84, 0.14, 2.65)
-  return timeline
-}
-
-function createMangaEntryTimeline(generation: number) {
+function createIntroEntryTimeline(generation: number) {
   const timeline = gsap.timeline({
     defaults: { ease: 'expo.out' },
     onComplete: () => markIntroEntryDone(generation),
@@ -291,12 +231,7 @@ function createMangaEntryTimeline(generation: number) {
   return timeline
 }
 
-function createIntroEntryTimeline(variant: IntroVariant, generation: number) {
-  if (variant === 'manga') return createMangaEntryTimeline(generation)
-  return createSignalEntryTimeline(generation)
-}
-
-function createIntroFinishTimeline(variant: IntroVariant, generation: number) {
+function createIntroFinishTimeline(generation: number) {
   const root = introRootRef.value
   const timeline = gsap.timeline({
     defaults: { ease: 'power3.inOut' },
@@ -305,71 +240,28 @@ function createIntroFinishTimeline(variant: IntroVariant, generation: number) {
       introVisible.value = false
       introIsFinishing.value = false
       setIntroDocumentState(false)
-      void nextTick(restoreIntroTriggerFocus)
     },
   })
   setIntroStatus(3)
   addIntroProgressTween(timeline, 100, 0, 0.42)
-
-  if (variant === 'signal') {
-    timeline
-      .to('.intro-signal .intro-scene-copy > *', {
-        y: 24,
-        autoAlpha: 0,
-        duration: 0.38,
-        stagger: { each: 0.06, from: 'end' },
-      }, 0.04)
-      .to('.signal-scan', {
-        yPercent: -120,
-        autoAlpha: 0,
-        duration: 0.65,
-        ease: 'power1.inOut',
-      }, 0.18)
-      .to('.signal-lock', { scale: 1.7, autoAlpha: 0, duration: 0.32 }, 0.28)
-      .to('.signal-shard', {
-        autoAlpha: 0,
-        xPercent: (index) => SIGNAL_SHARD_ENTRY_X[index] ?? 0,
-        yPercent: (index) => SIGNAL_SHARD_ENTRY_Y[index] ?? 0,
-        rotate: (index) => SIGNAL_SHARD_ENTRY_ROTATION[index] ?? 0,
-        filter: 'blur(14px) brightness(2)',
-        duration: 0.62,
-        stagger: { each: 0.08, from: 'end' },
-      }, 0.42)
-      .to('.signal-orbit', {
-        autoAlpha: 0,
-        scale: 0.45,
-        rotate: -110,
-        duration: 0.72,
-        stagger: { each: 0.08, from: 'end' },
-      }, 0.46)
-      .to('.signal-axis', {
-        scaleX: 0,
-        duration: 0.52,
-        stagger: { each: 0.09, from: 'end' },
-      }, 0.86)
-      .to('.signal-grid', { autoAlpha: 0, scale: 1.12, duration: 0.58 }, 0.96)
-      .to('.intro-hud, .intro-telemetry', { autoAlpha: 0, duration: 0.32 }, 1.02)
-      .to(root, { autoAlpha: 0, duration: 0.18 }, 1.48)
-  } else {
-    timeline
-      .to('.manga-panel', {
-        xPercent: (index) => [-145, 0, 145][index] || 0,
-        yPercent: (index) => [25, -150, 28][index] || 0,
-        rotate: (index) => [-10, 5, 10][index] || 0,
-        duration: 0.66,
-        stagger: 0.035,
-      }, 0.32)
-      .to('.manga-impact-word span', { xPercent: -130, duration: 0.48 }, 0.38)
-      .to('.manga-impact-word strong', { xPercent: 130, duration: 0.48 }, 0.38)
-      .to('.manga-slash', {
-        filter: 'brightness(1.65)',
-        boxShadow: '0 0 90px rgba(184,240,95,.72)',
-        duration: 0.1,
-        yoyo: true,
-        repeat: 1,
-      }, 0.62)
-      .to(root, { autoAlpha: 0, scale: 1.04, duration: 0.34 }, 0.78)
-  }
+  timeline
+    .to('.manga-panel', {
+      xPercent: (index) => [-145, 0, 145][index] || 0,
+      yPercent: (index) => [25, -150, 28][index] || 0,
+      rotate: (index) => [-10, 5, 10][index] || 0,
+      duration: 0.66,
+      stagger: 0.035,
+    }, 0.32)
+    .to('.manga-impact-word span', { xPercent: -130, duration: 0.48 }, 0.38)
+    .to('.manga-impact-word strong', { xPercent: 130, duration: 0.48 }, 0.38)
+    .to('.manga-slash', {
+      filter: 'brightness(1.65)',
+      boxShadow: '0 0 90px rgba(184,240,95,.72)',
+      duration: 0.1,
+      yoyo: true,
+      repeat: 1,
+    }, 0.62)
+    .to(root, { autoAlpha: 0, scale: 1.04, duration: 0.34 }, 0.78)
   return timeline
 }
 
@@ -400,36 +292,32 @@ async function maybeFinishIntro(generation: number) {
     introVisible.value = false
     introIsFinishing.value = false
     setIntroDocumentState(false)
-    await nextTick()
-    restoreIntroTriggerFocus()
     return
   }
 
-  introTimeline = createIntroFinishTimeline(introVariant.value, generation)
+  introTimeline = createIntroFinishTimeline(generation)
 }
 
-async function playIntroVariant(variant: IntroVariant) {
+async function playIntro() {
   const generation = ++introGeneration
   stopIntroWaitingState()
   introTimeline?.kill()
   introContext?.revert()
   introContext = null
   introTimeline = null
-  introVariant.value = variant
-  introStatus.value = INTRO_COPY[variant][0]
+  introStatus.value = INTRO_COPY[0]
   introEntryDone.value = false
   introIsFinishing.value = false
   introVisible.value = true
   setIntroDocumentState(true)
 
   // Prefetch critical bitmaps before animating so deploy/CDN latency doesn't show empty panels.
-  await waitIntroAssets(variant)
+  await waitIntroAssets()
   if (generation !== introGeneration) return
 
   await nextTick()
   if (generation !== introGeneration || !introRootRef.value) return
   updateIntroProgress(0)
-  focusIntroVariantControl()
 
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     updateIntroProgress(84)
@@ -438,7 +326,7 @@ async function playIntroVariant(variant: IntroVariant) {
   }
 
   introContext = gsap.context(() => {
-    introTimeline = createIntroEntryTimeline(variant, generation)
+    introTimeline = createIntroEntryTimeline(generation)
   }, introRootRef.value)
 }
 
@@ -501,15 +389,13 @@ function preloadIntroAssets() {
   return introAssetsPromise
 }
 
-async function waitIntroAssets(variant: IntroVariant) {
-  // Always warm all intro assets; manga waits harder so panels don't pop in mid-animation.
-  const results = await preloadIntroAssets()
-  if (variant !== 'manga') return
+async function waitIntroAssets() {
+  // Warm intro assets so panels don't pop in mid-animation.
+  await preloadIntroAssets()
   // If still missing, give one more short pass for the three panels.
   await Promise.all(
     MANGA_INTRO_PANELS.map((item) => loadImage(item.src, 1800)),
   )
-  void results
 }
 
 async function waitImg(el: HTMLImageElement | null | undefined, timeout = 800) {
@@ -1043,10 +929,9 @@ onMounted(() => {
   // Kick off asset warm-up immediately, in parallel with catalog fetch.
   void preloadIntroAssets()
   const shouldPlayIntro = !catalog.loaded
-  const randomIntroVariant = chooseRandomIntroVariant()
   catalog.load()
   if (shouldPlayIntro) {
-    void playIntroVariant(randomIntroVariant)
+    void playIntro()
   } else {
     introVisible.value = false
   }
@@ -1097,53 +982,19 @@ onUnmounted(() => {
       v-if="introVisible"
       ref="introRootRef"
       class="intro-overlay"
-      :class="[`intro-${introVariant}`, { 'intro-is-waiting': introWaiting }]"
+      :class="{ 'intro-is-waiting': introWaiting }"
       role="dialog"
       aria-modal="true"
-      aria-label="MioAni 开屏动画效果预览"
+      aria-label="MioAni 开屏"
     >
       <header class="intro-hud">
         <div class="intro-node-label">
           <span>MIO / VISUAL NODE</span>
           <small>{{ quarter }}</small>
         </div>
-        <div class="intro-variant-switch" role="group" aria-label="切换开屏动画效果">
-          <button
-            v-for="variant in INTRO_VARIANTS"
-            :key="variant"
-            type="button"
-            :class="{ active: introVariant === variant }"
-            :aria-pressed="introVariant === variant"
-            @click="playIntroVariant(variant)"
-          >
-            <b>{{ variant === 'signal' ? 'A' : 'B' }}</b>
-            <span>{{ variant === 'signal' ? '信号' : '漫画' }}</span>
-          </button>
-        </div>
       </header>
 
-      <div v-if="introVariant === 'signal'" class="intro-scene intro-signal" aria-hidden="true">
-        <div class="signal-grid"></div>
-        <div class="signal-scan"></div>
-        <div class="signal-axis signal-axis--horizontal"></div>
-        <div class="signal-axis signal-axis--vertical"></div>
-        <div class="signal-core">
-          <span class="signal-orbit signal-orbit--outer"></span>
-          <span class="signal-orbit signal-orbit--inner"></span>
-          <span class="signal-orbit signal-orbit--dash"></span>
-          <div class="signal-shards">
-            <img v-for="index in 3" :key="index" :src="brandMark" :class="`signal-shard signal-shard--${index}`" alt="" />
-          </div>
-          <span class="signal-lock"></span>
-        </div>
-        <div class="intro-scene-copy">
-          <p>SEASONAL DATABASE / LIVE</p>
-          <img :src="brandLogo" alt="" />
-          <strong>FOLLOW YOUR SEASON</strong>
-        </div>
-      </div>
-
-      <div v-else class="intro-scene intro-manga" aria-hidden="true">
+      <div class="intro-scene intro-manga" aria-hidden="true">
         <div class="manga-speedlines"></div>
         <div class="manga-panel-grid">
           <article v-for="(item, index) in MANGA_INTRO_PANELS" :key="item.src" :class="`manga-panel manga-panel--${index + 1}`">
@@ -1177,18 +1028,6 @@ onUnmounted(() => {
     </Teleport>
 
     <div class="page home-page">
-    <aside v-if="!introVisible" class="intro-lab" aria-label="开屏动画效果实验室">
-      <span>OPENING FX</span>
-      <button
-        v-for="variant in INTRO_VARIANTS"
-        :key="variant"
-        type="button"
-        :class="{ active: introVariant === variant }"
-        :aria-label="`播放方案 ${variant === 'signal' ? 'A 信号启动' : 'B 漫画冲击'}`"
-        @click="playIntroVariant(variant)"
-      >{{ variant === 'signal' ? 'A' : 'B' }}</button>
-    </aside>
-
     <section v-if="catalog.loading && !feature" class="home-loading" aria-label="正在加载真实番剧数据">
       <div class="loading-copy"><span></span><i></i><i></i><i></i></div><div class="loading-poster"></div>
     </section>
