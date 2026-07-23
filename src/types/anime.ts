@@ -25,6 +25,7 @@ export interface Anime {
   tags: string[]
   summary: string
   airDay?: string
+  airDate?: string
   nextEpisode?: string
   popularity?: number
   /** Linked ids from other sources after merge, e.g. ['bgm-123', 'anilist-456'] */
@@ -87,7 +88,6 @@ export interface AnimeDetail extends Anime {
   studios?: string[]
   format?: string
   sourceMaterial?: string
-  airDate?: string
   rank?: number
   scoreCount?: number
   duration?: number

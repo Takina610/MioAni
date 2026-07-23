@@ -77,8 +77,6 @@ const ambientBRef = ref<HTMLElement | null>(null)
 const ambientActive = ref<'a' | 'b'>('a')
 let autoplayTween: gsap.core.Tween | null = null
 let wasPlayingBeforeHidden = false
-let heroParallaxFrame: number | null = null
-let reducedMotionQuery: MediaQueryList | null = null
 
 const slides = computed(() => catalog.seasonal.slice(0, 8))
 const feature = computed(() => slides.value[activeIndex.value] || catalog.featured)
@@ -333,29 +331,6 @@ async function playIntro() {
 function mediaOf(anime: Anime | null | undefined) {
   if (!anime) return ''
   return anime.banner || anime.image
-}
-
-function updateHeroParallax() {
-  heroParallaxFrame = null
-  const hero = heroRef.value
-  if (!hero) return
-
-  if (reducedMotionQuery?.matches) {
-    hero.style.setProperty('--hero-scroll-progress', '0')
-    return
-  }
-
-  const rect = hero.getBoundingClientRect()
-  const activeDistance = rect.height * 0.75
-  const progress = activeDistance > 0
-    ? Math.max(0, Math.min(1, window.scrollY / activeDistance))
-    : 0
-  hero.style.setProperty('--hero-scroll-progress', progress.toFixed(4))
-}
-
-function scheduleHeroParallax() {
-  if (heroParallaxFrame !== null) return
-  heroParallaxFrame = window.requestAnimationFrame(updateHeroParallax)
 }
 
 function wait(ms: number) {
@@ -708,14 +683,11 @@ async function goTo(index: number) {
   const bridgeImageStartScale = nextLayerBox && nextImgBox && nextLayerBox.width > 0
     ? nextImgBox.width / nextLayerBox.width
     : 1
-  // 与 .hero-depth-next 对齐：inset -72px + 同向 scroll parallax，避免 bridge 出现时先跳一帧。
+  // 与 .hero-depth-next 对齐：inset -72px，避免 bridge 出现时先跳一帧。
   const depthBleed = 72
-  const scrollProgress = Number.parseFloat(
-    hero.style.getPropertyValue('--hero-scroll-progress') || '0',
-  ) || 0
   const from = {
     left: 0,
-    top: -depthBleed + scrollProgress * depthBleed,
+    top: -depthBleed,
     width: heroBox.width,
     height: heroBox.height + depthBleed,
   }
@@ -908,7 +880,6 @@ watch(feature, (f) => {
   nextTick(() => {
     initAmbient()
     initNextLayer()
-    scheduleHeroParallax()
   })
 })
 
@@ -936,12 +907,7 @@ onMounted(() => {
     introVisible.value = false
   }
   hideBridgeLayers()
-  reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
-  reducedMotionQuery.addEventListener('change', scheduleHeroParallax)
-  window.addEventListener('scroll', scheduleHeroParallax, { passive: true })
-  window.addEventListener('resize', scheduleHeroParallax)
   document.addEventListener('visibilitychange', handleVisibilityChange)
-  scheduleHeroParallax()
   // feature 可能尚未加载；watch 会在数据到达后补初始化
   nextTick(() => {
     if (feature.value) {
@@ -962,15 +928,6 @@ onUnmounted(() => {
   setIntroDocumentState(false)
   document.body.classList.remove('home-page-active')
   stopAutoplayProgress(true)
-  window.removeEventListener('scroll', scheduleHeroParallax)
-  window.removeEventListener('resize', scheduleHeroParallax)
-  reducedMotionQuery?.removeEventListener('change', scheduleHeroParallax)
-  reducedMotionQuery = null
-  if (heroParallaxFrame !== null) {
-    window.cancelAnimationFrame(heroParallaxFrame)
-    heroParallaxFrame = null
-  }
-  heroRef.value?.style.removeProperty('--hero-scroll-progress')
   document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>

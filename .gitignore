@@ -15,6 +15,7 @@ lerna-debug.log*
 .superpowers
 .trellis
 .opencode
+.open-project
 
 # 构建、依赖、输出目录
 node_modules

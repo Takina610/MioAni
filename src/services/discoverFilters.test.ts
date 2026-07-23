@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_DISCOVER_FILTERS, DISCOVER_PAGE_SIZE } from '../constants/discover'
 import type { Anime } from '../types/anime'
 import type { DiscoverFilters, DiscoverPageRequest } from '../types/discover'
+import { browseBangumi } from './anime'
 import {
   bangumiNeedsPrecisionGather,
   buildAniListVariables,
@@ -48,6 +49,27 @@ function anime(partial: Partial<Anime> & Pick<Anime, 'id' | 'year'>): Anime {
   }
 }
 
+function dateOnly(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(dateOnly(date).getTime() + days * 24 * 60 * 60 * 1000)
+}
+
+function dateClause(date: Date): string {
+  const local = dateOnly(date)
+  return [
+    local.getFullYear(),
+    String(local.getMonth() + 1).padStart(2, '0'),
+    String(local.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
 describe('buildBangumiSearchBody', () => {
   it('always sends type anime and never invents a status field', () => {
     const body = buildBangumiSearchBody(req({ filters: { status: 'releasing' } }))
@@ -57,23 +79,31 @@ describe('buildBangumiSearchBody', () => {
   })
 
   it('maps releasing/not_yet/finished to air_date windows (no year needed)', () => {
-    const year = new Date().getFullYear()
+    const today = dateOnly(new Date())
+    const year = today.getFullYear()
     const releasing = buildBangumiSearchBody(req({ filters: { status: 'releasing' } }))
-    expect(releasing.filter.air_date).toEqual([`>=${year}-01-01`, `<=${year}-12-31`])
+    expect(releasing.filter.air_date).toEqual([
+      `>=${year}-01-01`,
+      `<=${year}-12-31`,
+    ])
 
     const notYet = buildBangumiSearchBody(req({ filters: { status: 'not_yet' } }))
-    expect(notYet.filter.air_date).toEqual([`>=${year + 1}-01-01`])
+    expect(notYet.filter.air_date).toEqual([`>=${dateClause(addDays(today, 1))}`])
 
     const finished = buildBangumiSearchBody(req({ filters: { status: 'finished' } }))
-    expect(finished.filter.air_date).toEqual([`<=${year - 1}-12-31`])
+    expect(finished.filter.air_date).toEqual([`<=${dateClause(today)}`])
   })
 
   it('intersects explicit year with status air_date', () => {
-    const year = new Date().getFullYear()
+    const today = dateOnly(new Date())
+    const year = today.getFullYear()
     const body = buildBangumiSearchBody(req({
       filters: { year, status: 'releasing' },
     }))
-    expect(body.filter.air_date).toEqual([`>=${year}-01-01`, `<=${year}-12-31`])
+    expect(body.filter.air_date).toEqual([
+      `>=${year}-01-01`,
+      `<=${year}-12-31`,
+    ])
   })
 
   it('maps year+season to air_date range', () => {
@@ -183,6 +213,24 @@ describe('classifyBangumiAirStatus', () => {
     expect(classifyBangumiAirStatus({ year: 2027 }, now)).toBe('not_yet')
     expect(classifyBangumiAirStatus({ year: 0 }, now)).toBe('unknown')
   })
+
+  it('uses airDate and episode count to classify same-year items', () => {
+    expect(classifyBangumiAirStatus({
+      year: 2026,
+      airDate: '2026-04-01',
+      episodes: 12,
+    }, now)).toBe('finished')
+    expect(classifyBangumiAirStatus({
+      year: 2026,
+      airDate: '2026-07-01',
+      episodes: 12,
+    }, now)).toBe('releasing')
+    expect(classifyBangumiAirStatus({
+      year: 2026,
+      airDate: '2026-10-01',
+      episodes: 12,
+    }, now)).toBe('not_yet')
+  })
 })
 
 describe('softFilterBangumiStatus', () => {
@@ -213,6 +261,21 @@ describe('softFilterBangumiStatus', () => {
     expect(filtered.length).toBeGreaterThan(0)
     expect(filtered.every((i) => i.year === 2026)).toBe(true)
   })
+
+  it('separates same-year finished, releasing, and not_yet rows by airDate', () => {
+    const sameYearPool = [
+      anime({ id: 'finished-this-year', year: 2026, airDate: '2026-04-01', episodes: 12 }),
+      anime({ id: 'releasing-now', year: 2026, airDate: '2026-07-01', episodes: 12 }),
+      anime({ id: 'future-this-year', year: 2026, airDate: '2026-10-01', episodes: 12 }),
+    ]
+
+    expect(softFilterBangumiStatus(sameYearPool, 'finished', now).map((i) => i.id))
+      .toEqual(['finished-this-year'])
+    expect(softFilterBangumiStatus(sameYearPool, 'releasing', now).map((i) => i.id))
+      .toEqual(['releasing-now'])
+    expect(softFilterBangumiStatus(sameYearPool, 'not_yet', now).map((i) => i.id))
+      .toEqual(['future-this-year'])
+  })
 })
 
 describe('bangumiNeedsPrecisionGather', () => {
@@ -225,6 +288,105 @@ describe('bangumiNeedsPrecisionGather', () => {
   it('requires gather for keyword and genres', () => {
     expect(bangumiNeedsPrecisionGather(req({ keyword: 'abc' }))).toBe(true)
     expect(bangumiNeedsPrecisionGather(req({ filters: { genres: ['科幻'] } }))).toBe(true)
+  })
+})
+
+describe('browseBangumi status filtering', () => {
+  function stubBangumiSearchPayload(data: any[]) {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        data,
+        total: data.length,
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  function bangumiSubject(id: number, airDate: string, eps = 12) {
+    return {
+      id,
+      name: `subject-${id}`,
+      name_cn: `条目 ${id}`,
+      air_date: airDate,
+      eps,
+      platform: 'TV',
+      images: { large: '' },
+      rating: { score: 7 },
+      tags: [],
+      meta_tags: [],
+      collection: { doing: 0 },
+    }
+  }
+
+  it('keeps same-year finished/releasing/not_yet distinct through mapBangumi', async () => {
+    const today = dateOnly(new Date())
+    const payload = [
+      bangumiSubject(1, dateClause(addDays(today, -140))),
+      bangumiSubject(2, dateClause(addDays(today, -14))),
+      bangumiSubject(3, dateClause(addDays(today, 60))),
+    ]
+
+    stubBangumiSearchPayload(payload)
+
+    const finished = await browseBangumi(req({ filters: { status: 'finished' } }))
+    expect(finished.items.map((i) => i.id)).toEqual(['bgm-1'])
+
+    const releasing = await browseBangumi(req({ filters: { status: 'releasing' } }))
+    expect(releasing.items.map((i) => i.id)).toEqual(['bgm-2'])
+
+    const notYet = await browseBangumi(req({ filters: { status: 'not_yet' } }))
+    expect(notYet.items.map((i) => i.id)).toEqual(['bgm-3'])
+  })
+
+  it('does not mark a full approximate status page as fully loaded immediately', async () => {
+    const today = dateOnly(new Date())
+    const payload = Array.from({ length: DISCOVER_PAGE_SIZE }, (_, index) =>
+      bangumiSubject(index + 1, dateClause(addDays(today, -14))),
+    )
+    stubBangumiSearchPayload(payload)
+
+    const result = await browseBangumi(req({ filters: { status: 'releasing' } }))
+
+    expect(result.items).toHaveLength(DISCOVER_PAGE_SIZE)
+    expect(result.hasMore).toBe(true)
+  })
+
+  it('keeps scanning when Bangumi caps requested precision pages to 20 rows', async () => {
+    const today = dateOnly(new Date())
+    const apiLimit = 20
+    const releasing = (id: number) => bangumiSubject(id, dateClause(addDays(today, -14)))
+    const finished = (id: number) => bangumiSubject(id, dateClause(addDays(today, -140)))
+    const pages = [
+      [
+        ...Array.from({ length: 4 }, (_, index) => releasing(index + 1)),
+        ...Array.from({ length: 16 }, (_, index) => finished(index + 101)),
+      ],
+      Array.from({ length: apiLimit }, (_, index) => releasing(index + 201)),
+    ]
+
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL) => {
+      const url = new URL(String(input))
+      const offset = Number(url.searchParams.get('offset') || 0)
+      const data = pages[offset / apiLimit] ?? []
+      return {
+        ok: true,
+        json: async () => ({
+          data,
+          total: 642,
+          limit: apiLimit,
+          offset,
+        }),
+      }
+    }))
+
+    const result = await browseBangumi(req({ filters: { status: 'releasing' } }))
+
+    expect(result.items).toHaveLength(DISCOVER_PAGE_SIZE)
+    expect(result.items.map((i) => i.id)).toContain('bgm-201')
+    expect(result.hasMore).toBe(true)
+    expect(result.total).toBeUndefined()
   })
 })
 

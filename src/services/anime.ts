@@ -40,6 +40,8 @@ const statusMap: Record<string, WatchStatus> = {
   CURRENT: 'watching', COMPLETED: 'completed', PLANNING: 'planned', PAUSED: 'paused', DROPPED: 'dropped',
 }
 
+const BANGUMI_SEARCH_PAGE_LIMIT = 20
+
 function cleanText(value?: string): string {
   return value?.replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() ?? ''
 }
@@ -140,6 +142,7 @@ function mapBangumi(item: any): Anime {
     image: (item.images?.large || '').replace('http://', 'https://'),
     score: item.rating?.score || item.score || 0,
     year: Number((item.air_date || item.date)?.slice(0, 4)) || 0,
+    airDate: item.air_date || item.date || undefined,
     season: item.platform || '',
     episodes: item.eps || item.total_episodes || 0,
     watched: item.ep_status || 0,
@@ -484,12 +487,15 @@ export async function browseBangumi(req: DiscoverPageRequest, signal?: AbortSign
     const maxRawScan = 360
 
     while (precise.length < need && !exhausted && rawOffset < maxRawScan) {
-      const batch = Math.min(40, maxRawScan - rawOffset)
+      const batch = Math.min(BANGUMI_SEARCH_PAGE_LIMIT, maxRawScan - rawOffset)
       const payload = await fetchBangumiSearchPage(body, batch, rawOffset, signal)
       const rawBatch: any[] = payload.data ?? []
       if (typeof payload.total === 'number') apiTotal = payload.total
+      const responseLimit = typeof payload.limit === 'number' && payload.limit > 0
+        ? payload.limit
+        : batch
       rawOffset += rawBatch.length
-      if (!rawBatch.length || (apiTotal != null && rawOffset >= apiTotal) || rawBatch.length < batch) {
+      if (!rawBatch.length || (apiTotal != null && rawOffset >= apiTotal) || rawBatch.length < responseLimit) {
         exhausted = true
       }
 
@@ -503,8 +509,10 @@ export async function browseBangumi(req: DiscoverPageRequest, signal?: AbortSign
 
     const start = (req.page - 1) * pageSize
     const items = precise.slice(start, start + pageSize)
+    const isApproximateStatusPage = req.filters.status !== 'all' && items.length >= pageSize
     const hasMore = precise.length > start + items.length
       || (!exhausted && rawOffset < maxRawScan && (apiTotal == null || rawOffset < apiTotal))
+      || isApproximateStatusPage
 
     return {
       items,

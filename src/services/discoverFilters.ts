@@ -9,6 +9,42 @@ import type {
 
 export type BangumiAirClass = 'releasing' | 'finished' | 'not_yet' | 'unknown'
 
+const DEFAULT_BANGUMI_STATUS_EPISODES = 12
+const DAY_MS = 24 * 60 * 60 * 1000
+
+function localDateOnly(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * DAY_MS)
+}
+
+function formatDateClause(date: Date): string {
+  const local = localDateOnly(date)
+  return [
+    local.getFullYear(),
+    String(local.getMonth() + 1).padStart(2, '0'),
+    String(local.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
+function parseBangumiAirDate(value: string | undefined): Date | null {
+  const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  if (!year || month < 1 || month > 12 || day < 1 || day > 31) return null
+  const parsed = new Date(year, month - 1, day)
+  if (
+    parsed.getFullYear() !== year
+    || parsed.getMonth() !== month - 1
+    || parsed.getDate() !== day
+  ) return null
+  return parsed
+}
+
 export function seasonDateRange(year: number, season: DiscoverSeason): { start: string; end: string } {
   const ranges: Record<DiscoverSeason, [number, number]> = {
     WINTER: [1, 3],
@@ -34,7 +70,8 @@ export function bangumiAirDateFilter(
   filters: DiscoverFilters,
   now: Date = new Date(),
 ): string[] | undefined {
-  const currentYear = now.getFullYear()
+  const today = localDateOnly(now)
+  const currentYear = today.getFullYear()
   let lower: string | undefined
   let upper: string | undefined
 
@@ -59,14 +96,14 @@ export function bangumiAirDateFilter(
   }
 
   // Status has no native Bangumi field — approximate with air_date so the API
-  // returns candidates in the right era (client soft-filter still refines).
+  // returns candidates in the right date window (client soft-filter refines).
   if (filters.status === 'releasing') {
     tightenLower(`${currentYear}-01-01`)
     tightenUpper(`${currentYear}-12-31`)
   } else if (filters.status === 'finished') {
-    tightenUpper(`${currentYear - 1}-12-31`)
+    tightenUpper(formatDateClause(today))
   } else if (filters.status === 'not_yet') {
-    tightenLower(`${currentYear + 1}-01-01`)
+    tightenLower(formatDateClause(addDays(today, 1)))
   }
 
   if (!lower && !upper) return undefined
@@ -149,13 +186,26 @@ export function mapAniListLanguageCode(languageRaw: string | null | undefined): 
 }
 
 /**
- * Year-only airing classification for Bangumi (no nextEpisode required).
- * year === 0 → unknown (only under status=all).
+ * Bangumi has no native airing status in search results. Prefer full airDate
+ * and episode count; fall back to year when search payload only exposes year.
  */
 export function classifyBangumiAirStatus(
-  item: Pick<Anime, 'year'>,
+  item: Pick<Anime, 'year'> & Partial<Pick<Anime, 'airDate' | 'episodes'>>,
   now: Date = new Date(),
 ): BangumiAirClass {
+  const airDate = parseBangumiAirDate(item.airDate)
+  if (airDate) {
+    const today = localDateOnly(now)
+    const start = localDateOnly(airDate)
+    if (start > today) return 'not_yet'
+
+    const episodeCount = Number(item.episodes) > 0
+      ? Number(item.episodes)
+      : DEFAULT_BANGUMI_STATUS_EPISODES
+    const estimatedEnd = addDays(start, Math.max(1, episodeCount) * 7)
+    return today > estimatedEnd ? 'finished' : 'releasing'
+  }
+
   const year = Number(item.year) || 0
   if (year <= 0) return 'unknown'
   const current = now.getFullYear()

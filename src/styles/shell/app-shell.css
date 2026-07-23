@@ -3,6 +3,7 @@
 .list-stage {
   position: relative;
   min-height: calc(100dvh - 72px);
+  overflow: clip;
 }
 .list-layer {
   position: absolute;
