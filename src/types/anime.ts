@@ -43,6 +43,8 @@ export interface AnimeRelation {
   title: string
   type: string
   image?: string
+  originalTitle?: string
+  role?: string
   format?: string
   status?: string
 }
@@ -67,6 +69,30 @@ export interface AnimeStaff {
   image?: string
 }
 
+export interface PersonVoiceRole {
+  /** e.g. bgm-char-1 | anilist-char-123 */
+  id: string
+  name: string
+  image?: string
+  role?: string
+  subjectId?: string
+  subjectTitle?: string
+  subjectImage?: string
+}
+
+export interface PersonComment {
+  id: string
+  author: string
+  time?: string
+  text: string
+  replies?: PersonComment[]
+}
+
+export interface PersonFact {
+  label: string
+  value: string
+}
+
 /** Character or person (CV / staff) detail page payload. */
 export interface PersonDetail {
   id: string
@@ -80,8 +106,25 @@ export interface PersonDetail {
   birthday?: string
   bloodType?: string
   careers?: string[]
+  /** Source-specific profile rows not represented by the common fields above. */
+  extraFacts?: PersonFact[]
   /** Context from the anime list (role in that work). */
   contextRole?: string
+  /** Anime this character appears in, or works this person participated in. */
+  works?: AnimeRelation[]
+  worksPage?: number
+  worksTotal?: number
+  worksHasMore?: boolean
+  /** Characters performed by a CV / staff entity. */
+  voiceRoles?: PersonVoiceRole[]
+  voiceRolesPage?: number
+  voiceRolesTotal?: number
+  voiceRolesHasMore?: boolean
+  /** Bangumi-only user comments parsed from the public mono page. */
+  comments?: PersonComment[]
+  commentsPage?: number
+  commentsTotal?: number
+  commentsHasMore?: boolean
 }
 
 export interface AnimeDetail extends Anime {

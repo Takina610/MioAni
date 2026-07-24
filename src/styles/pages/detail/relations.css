@@ -57,14 +57,15 @@
 .staff-grid {
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
 }
-/* Rectangular cards like relations; use contain so full-body art is not cropped */
+/* External character/CV/staff cards use a compact square head crop.
+   The full portrait remains untouched inside PersonDetailOverlay. */
 .character-card,
 .staff-card {
   display: grid;
   grid-template-columns: 72px 1fr;
   gap: 12px;
   align-items: center;
-  min-height: 108px;
+  min-height: 92px;
   padding: 10px;
   border: 1px solid rgba(228,237,230,.1);
   border-radius: 12px;
@@ -100,9 +101,9 @@
 .staff-card > img,
 .staff-card__ph {
   width: 72px;
-  height: 96px;
-  object-fit: contain;
-  object-position: center top;
+  height: 72px;
+  object-fit: cover;
+  object-position: 50% 16%;
   border-radius: 8px;
   background: #161a17;
 }
@@ -137,10 +138,10 @@
 }
 .character-card__meta p img {
   flex-shrink: 0;
-  width: 28px;
-  height: 36px;
-  object-fit: contain;
-  object-position: center top;
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  object-position: 50% 16%;
   border-radius: 4px;
   background: #161a17;
 }
