@@ -8,10 +8,15 @@ import {
   fetchPersonWorksPage,
 } from '../services/person'
 import { parsePersonId, personRouteName } from '../services/personIds'
+import type { ExpandRect } from './detailOverlay'
 import type { PersonDetail } from '../types/anime'
+
+export type PersonPhase = 'idle' | 'expanding' | 'open' | 'collapsing'
 
 export const usePersonOverlayStore = defineStore('personOverlay', () => {
   const open = ref(false)
+  const phase = ref<PersonPhase>('idle')
+  const originRect = ref<ExpandRect | null>(null)
   const loading = ref(false)
   const loadingProfile = ref(false)
   const loadingComments = ref(false)
@@ -96,6 +101,7 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
     image?: string
     contextRole?: string
     returnAnimeId?: string
+    originRect?: ExpandRect | null
   }) {
     const parsed = parsePersonId(opts.id)
     if (!parsed) {
@@ -104,7 +110,19 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
     }
 
     const seq = ++loadSeq
+    const sameVisible =
+      open.value
+      && seed.value?.id === opts.id
+      && (phase.value === 'expanding' || phase.value === 'open')
     open.value = true
+    // Avoid restarting the circle reveal when the same person is already on screen
+    // (e.g. route push after card open, or data refresh).
+    if (!sameVisible) {
+      phase.value = 'expanding'
+      originRect.value = opts.originRect || null
+    } else if (opts.originRect && !originRect.value) {
+      originRect.value = opts.originRect
+    }
     loading.value = true
     loadingProfile.value = false
     loadingComments.value = false
@@ -149,6 +167,8 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
       detail.value = {
         ...result,
         ...commentState,
+        // Keep seed image first so flight/handoff never blanks.
+        image: result.image || opts.image || current?.image,
         contextRole: opts.contextRole || result.contextRole,
       }
       seed.value = { ...seed.value, ...detail.value }
@@ -252,9 +272,21 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
     }
   }
 
-  function close() {
+  function markOpen() {
+    if (open.value) phase.value = 'open'
+  }
+
+  function beginCollapse() {
+    if (!open.value || phase.value === 'collapsing') return false
+    phase.value = 'collapsing'
+    return true
+  }
+
+  function finishClose() {
     loadSeq += 1
     open.value = false
+    phase.value = 'idle'
+    originRect.value = null
     loading.value = false
     loadingProfile.value = false
     loadingComments.value = false
@@ -265,6 +297,11 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
     seed.value = null
     contextRole.value = ''
     // Keep returnAnimeId until consumer navigates, then clear.
+  }
+
+  /** Immediate close without collapse animation (route hard-exit fallback). */
+  function close() {
+    finishClose()
   }
 
   function clearReturn() {
@@ -279,6 +316,8 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
 
   return {
     open,
+    phase,
+    originRect,
     loading,
     loadingProfile,
     loadingComments,
@@ -292,6 +331,9 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
     title,
     kind,
     openPerson,
+    markOpen,
+    beginCollapse,
+    finishClose,
     loadMoreWorks,
     loadMoreVoiceRoles,
     loadMoreComments,

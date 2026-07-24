@@ -44,11 +44,15 @@ const commentsSentinelRef = ref<HTMLElement | null>(null)
 const personScrollRef = ref<HTMLElement | null>(null)
 const worksTrackRef = ref<HTMLElement | null>(null)
 const rolesTrackRef = ref<HTMLElement | null>(null)
+const personSurfaceRef = ref<HTMLElement | null>(null)
+const personScrimRef = ref<HTMLElement | null>(null)
+const personRevealOrigin = ref({ x: 50, y: 42 })
+const PERSON_REVEAL_MS = 720
+let personAnimTimer: ReturnType<typeof window.setTimeout> | null = null
+let personClosing = false
+let personExpandToken = 0
+let personExpandRunning = false
 type HorizontalKind = 'works' | 'roles'
-const horizontalEdges = ref<Record<HorizontalKind, { left: boolean; right: boolean }>>({
-  works: { left: false, right: false },
-  roles: { left: false, right: false },
-})
 const COLLAPSED_CARD_COUNT = 8
 let extraObserver: IntersectionObserver | null = null
 let scrollPollTimer: ReturnType<typeof window.setInterval> | null = null
@@ -283,10 +287,6 @@ function resetExtraTriggerState() {
   horizontalIntentReady.roles = false
   lastHorizontalIntentAt.works = 0
   lastHorizontalIntentAt.roles = 0
-  horizontalEdges.value = {
-    works: { left: false, right: false },
-    roles: { left: false, right: false },
-  }
 }
 
 function markUserScrollIntent() {
@@ -358,6 +358,10 @@ async function translateData(key: string, text: unknown) {
   }
 }
 
+function trackForKind(kind: HorizontalKind) {
+  return kind === 'works' ? worksTrackRef.value : rolesTrackRef.value
+}
+
 async function toggleWorksExpanded() {
   await animateSectionToggle('works')
 }
@@ -420,31 +424,6 @@ async function animateSectionToggle(kind: HorizontalKind) {
   }
 }
 
-function trackForKind(kind: HorizontalKind) {
-  return kind === 'works' ? worksTrackRef.value : rolesTrackRef.value
-}
-
-function updateHorizontalEdges(kind: HorizontalKind, target = trackForKind(kind)) {
-  if (!target) return
-  const maxScrollLeft = Math.max(0, target.scrollWidth - target.clientWidth)
-  const next = {
-    left: target.scrollLeft > 2,
-    right: maxScrollLeft - target.scrollLeft > 2,
-  }
-  const current = horizontalEdges.value[kind]
-  if (current.left === next.left && current.right === next.right) return
-  horizontalEdges.value = { ...horizontalEdges.value, [kind]: next }
-}
-
-function refreshHorizontalEdges() {
-  updateHorizontalEdges('works')
-  updateHorizontalEdges('roles')
-}
-
-function onViewportResize() {
-  void nextTick(refreshHorizontalEdges)
-}
-
 function markHorizontalIntent(kind: HorizontalKind, event: Event) {
   if ((kind === 'works' && store.loadingWorks) || (kind === 'roles' && store.loadingVoiceRoles)) return
   const now = Date.now()
@@ -460,7 +439,6 @@ function onHorizontalTrackScroll(kind: HorizontalKind, event: Event) {
   if (typeof window === 'undefined' || !window.matchMedia('(max-width: 640px)').matches) return
   const track = event.currentTarget as HTMLElement | null
   if (!track) return
-  updateHorizontalEdges(kind, track)
   const remaining = track.scrollWidth - track.scrollLeft - track.clientWidth
   if (remaining > Math.max(120, track.clientWidth * .35)) return
   if (!horizontalIntentReady[kind]) return
@@ -564,7 +542,7 @@ async function openWork(work: AnimeRelation, event?: Event) {
   if (!work.id) return
   const thumb = thumbFromEvent(event)
   await detailStore.openFromRelated(work, thumb)
-  store.close()
+  store.finishClose()
   store.clearReturn()
   if (route.name !== 'anime-detail' || route.params.id !== work.id) {
     await router.push({ name: 'anime-detail', params: { id: work.id } })
@@ -581,6 +559,7 @@ async function openVoiceRole(role: PersonVoiceRole, event?: Event) {
     image: role.image,
     contextRole: [role.role, role.subjectTitle].filter(Boolean).join(' · '),
     returnAnimeId: store.returnAnimeId,
+    originRect: detailStore.captureRect(thumbFromEvent(event)),
   })
   if (ok && routeName && (route.name !== routeName || route.params.id !== role.id)) {
     await router.push({ name: routeName, params: { id: role.id } })
@@ -628,7 +607,6 @@ watch(
       bindPersonScroll()
       startScrollPolling()
       resetExtraObserver()
-      refreshHorizontalEdges()
     }
   },
 )
@@ -639,19 +617,127 @@ watch(
     if (!open) {
       if (scrollPollTimer) window.clearInterval(scrollPollTimer)
       scrollPollTimer = null
+      if (personAnimTimer) {
+        window.clearTimeout(personAnimTimer)
+        personAnimTimer = null
+      }
+      personClosing = false
+      personExpandRunning = false
+      personExpandToken += 1
       return
     }
     await nextTick()
     bindPersonScroll()
     startScrollPolling()
     resetExtraObserver()
-    refreshHorizontalEdges()
   },
 )
 
+// One expand per open cycle only — dual watches / data reloads must not re-trigger the circle.
+watch(
+  () => [store.open, store.phase, store.seed?.id || store.detail?.id || ''] as const,
+  async ([open, phase, id], prev) => {
+    if (!open || phase !== 'expanding' || personClosing || !id) return
+    const prevId = prev?.[2]
+    // Same person still expanding (e.g. detail payload arrived) — do not restart reveal.
+    if (personExpandRunning && prevId === id) return
+    await nextTick()
+    void runPersonExpand()
+  },
+)
+
+function setPersonRevealOriginFromRect(rect: { top: number; left: number; width: number; height: number } | null) {
+  if (!rect) {
+    personRevealOrigin.value = { x: 50, y: 42 }
+    return
+  }
+  const cx = rect.left + rect.width / 2
+  const cy = rect.top + rect.height / 2
+  const vw = Math.max(window.innerWidth, 1)
+  const vh = Math.max(window.innerHeight, 1)
+  personRevealOrigin.value = {
+    x: Math.min(100, Math.max(0, (cx / vw) * 100)),
+    y: Math.min(100, Math.max(0, (cy / vh) * 100)),
+  }
+}
+
+function applyPersonSurfaceReveal(open: boolean, withTransition: boolean) {
+  const el = personSurfaceRef.value
+  if (!el) return
+  const { x, y } = personRevealOrigin.value
+  el.style.setProperty('--reveal-x', `${x}%`)
+  el.style.setProperty('--reveal-y', `${y}%`)
+  const ms = PERSON_REVEAL_MS
+  const ease = 'cubic-bezier(.16,.84,.24,1)'
+  const opacityMs = open ? Math.round(ms * 0.55) : Math.round(ms * 0.72)
+  const opacityDelay = open ? 0 : Math.round(ms * 0.18)
+  el.style.transition = withTransition
+    ? [
+        `opacity ${opacityMs}ms ${ease} ${opacityDelay}ms`,
+        `transform ${ms}ms ${ease}`,
+        `--reveal-r ${ms}ms ${ease}`,
+        `box-shadow ${ms}ms ${ease}`,
+      ].join(', ')
+    : 'none'
+  if (open) {
+    el.style.opacity = '1'
+    el.style.transform = 'scale(1)'
+    el.style.setProperty('--reveal-r', '150%')
+    el.style.boxShadow = 'inset 0 0 0 0 rgba(184,240,95,0)'
+  } else {
+    el.style.opacity = '0'
+    el.style.transform = 'scale(.994)'
+    el.style.setProperty('--reveal-r', '0%')
+    el.style.boxShadow = 'inset 0 0 140px 0 rgba(184,240,95,.08)'
+  }
+  const scrim = personScrimRef.value
+  if (scrim) {
+    scrim.style.transition = withTransition ? `opacity ${ms}ms ${ease}` : 'none'
+    scrim.style.opacity = open ? '1' : '0'
+  }
+}
+
+async function runPersonExpand() {
+  if (!store.open || personClosing || personExpandRunning) return
+  personExpandRunning = true
+  const token = ++personExpandToken
+  setPersonRevealOriginFromRect(store.originRect)
+  await nextTick()
+  if (token !== personExpandToken || !store.open) return
+  // Park closed without transition, then open on next frame (single circle only).
+  applyPersonSurfaceReveal(false, false)
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  })
+  if (token !== personExpandToken || !store.open) return
+  applyPersonSurfaceReveal(true, true)
+  if (personAnimTimer) window.clearTimeout(personAnimTimer)
+  personAnimTimer = window.setTimeout(() => {
+    if (token === personExpandToken) {
+      store.markOpen()
+      personExpandRunning = false
+    }
+    personAnimTimer = null
+  }, PERSON_REVEAL_MS + 20)
+}
+
 async function closePerson() {
+  if (!store.open || personClosing) return
+  personClosing = true
   const animeId = store.returnAnimeId
-  store.close()
+  setPersonRevealOriginFromRect(store.originRect)
+  store.beginCollapse()
+  await nextTick()
+  applyPersonSurfaceReveal(false, true)
+  if (personAnimTimer) window.clearTimeout(personAnimTimer)
+  await new Promise<void>((resolve) => {
+    personAnimTimer = window.setTimeout(() => {
+      personAnimTimer = null
+      resolve()
+    }, PERSON_REVEAL_MS + 30)
+  })
+  store.finishClose()
+  personClosing = false
   if (animeId && (route.name === 'character-detail' || route.name === 'person-detail')) {
     await router.replace({ name: 'anime-detail', params: { id: animeId } })
     store.clearReturn()
@@ -687,7 +773,6 @@ watch(
 
 onMounted(() => {
   document.addEventListener('keydown', onKeydown)
-  window.addEventListener('resize', onViewportResize, { passive: true })
   if (
     (route.name === 'character-detail' || route.name === 'person-detail')
     && typeof route.params.id === 'string'
@@ -699,17 +784,16 @@ onMounted(() => {
     bindPersonScroll()
     startScrollPolling()
     resetExtraObserver()
-    refreshHorizontalEdges()
   })
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', onKeydown)
-  window.removeEventListener('resize', onViewportResize)
   personScrollRef.value?.removeEventListener('scroll', onPersonScroll)
   personScrollRef.value?.removeEventListener('wheel', markUserScrollIntent)
   personScrollRef.value?.removeEventListener('touchmove', markUserScrollIntent)
   if (scrollPollTimer) window.clearInterval(scrollPollTimer)
+  if (personAnimTimer) window.clearTimeout(personAnimTimer)
   extraObserver?.disconnect()
 })
 </script>
@@ -719,14 +803,23 @@ onUnmounted(() => {
     <div
       v-if="store.open && display"
       class="person-overlay"
-      :class="{ 'is-loading': store.loading }"
+      :class="{
+        'is-loading': store.loading,
+        [`is-${store.phase}`]: true,
+      }"
       role="dialog"
       aria-modal="true"
       :aria-label="store.title"
     >
-      <button class="person-scrim" type="button" aria-label="关闭人物详情" @click="closePerson" />
+      <button
+        ref="personScrimRef"
+        class="person-scrim"
+        type="button"
+        aria-label="关闭人物详情"
+        @click="closePerson"
+      />
 
-      <div class="person-surface">
+      <div ref="personSurfaceRef" class="person-surface">
         <div
           class="person-banner"
           :style="display.image ? { backgroundImage: `url(${display.image})` } : undefined"
@@ -932,10 +1025,6 @@ onUnmounted(() => {
               <div
                 v-if="!store.loading && works.length"
                 class="person-track-shell"
-                :class="{
-                  'has-left-overflow': horizontalEdges.works.left,
-                  'has-right-overflow': horizontalEdges.works.right,
-                }"
               >
                 <div
                   id="person-works-grid"
@@ -1049,10 +1138,6 @@ onUnmounted(() => {
               <div
                 v-if="!store.loading && voiceRoles.length"
                 class="person-track-shell"
-                :class="{
-                  'has-left-overflow': horizontalEdges.roles.left,
-                  'has-right-overflow': horizontalEdges.roles.right,
-                }"
               >
                 <div
                   id="person-roles-grid"
@@ -1191,13 +1276,19 @@ onUnmounted(() => {
                   </span>
                 </article>
               </div>
-              <div v-else-if="comments.length" class="person-comments">
-                <article v-for="comment in comments" :key="comment.id" class="person-comment">
-                  <header>
+              <div v-else-if="comments.length" class="person-comments is-chat">
+                <article
+                  v-for="(comment, index) in comments"
+                  :key="comment.id"
+                  class="person-comment"
+                  :class="index % 2 === 0 ? 'is-left' : 'is-right'"
+                >
+                  <header class="person-comment__head">
                     <strong>{{ comment.author }}</strong>
                     <time v-if="comment.time">{{ comment.time }}</time>
                   </header>
-                  <p>{{ comment.text }}</p>
+                  <p v-if="comment.replyTo" class="person-comment__reply-to">回复 @{{ comment.replyTo }}</p>
+                  <p class="person-comment__body">{{ comment.text }}</p>
                   <button
                     v-if="shouldOfferTranslation(comment.text)"
                     type="button"
@@ -1215,16 +1306,18 @@ onUnmounted(() => {
                     <p v-if="commentTranslations[comment.id]">{{ commentTranslations[comment.id] }}</p>
                     <p v-else class="person-translation__error">{{ commentTranslateErrors[comment.id] }}</p>
                   </div>
-                  <details v-if="comment.replies?.length" class="person-comment-replies">
-                    <summary>查看 {{ comment.replies.length }} 条回复</summary>
-                    <div class="person-comment-replies__list">
-                      <article v-for="reply in comment.replies" :key="reply.id" class="person-comment-reply">
-                      <header>
+                  <div v-if="comment.replies?.length" class="person-comment-replies">
+                    <article
+                      v-for="reply in comment.replies"
+                      :key="reply.id"
+                      class="person-comment-reply"
+                    >
+                      <header class="person-comment__head">
                         <strong>{{ reply.author }}</strong>
-                        <span>回复</span>
                         <time v-if="reply.time">{{ reply.time }}</time>
                       </header>
-                      <p>{{ reply.text }}</p>
+                      <p v-if="reply.replyTo" class="person-comment__reply-to">回复 @{{ reply.replyTo }}</p>
+                      <p class="person-comment__body">{{ reply.text }}</p>
                       <button
                         v-if="shouldOfferTranslation(reply.text)"
                         type="button"
@@ -1242,9 +1335,8 @@ onUnmounted(() => {
                         <p v-if="commentTranslations[reply.id]">{{ commentTranslations[reply.id] }}</p>
                         <p v-else class="person-translation__error">{{ commentTranslateErrors[reply.id] }}</p>
                       </div>
-                      </article>
-                    </div>
-                  </details>
+                    </article>
+                  </div>
                 </article>
               </div>
               <div
@@ -1321,6 +1413,7 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+
     </div>
   </Teleport>
 </template>

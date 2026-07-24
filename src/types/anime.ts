@@ -85,6 +85,8 @@ export interface PersonComment {
   author: string
   time?: string
   text: string
+  /** Username this floor is replying to (from Bangumi quote tip), if any. */
+  replyTo?: string
   replies?: PersonComment[]
 }
 

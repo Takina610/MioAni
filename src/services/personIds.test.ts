@@ -220,6 +220,112 @@ Markdown Content:
     expect(comments[1]?.time).toBeUndefined()
   })
 
+  it('strips quote chrome, keeps replyTo, soft/hard breaks, drops deleted placeholders', () => {
+    const html = `
+<div id="comment_list">
+  <div class="commentList">
+    <div id="post_1" class="row row_reply clearit">
+      <div class="action"><small><a>#1</a> - 2026-1-23 13:32</small></div>
+      <div class="inner">
+        <strong><a class="l">夏実</a></strong>
+        <div class="reply_content">
+          <div class="message clearit">写真集很色很文艺，甚至有雪天泳衣骑马，敬业啊<br><br>另外公式照有点像另外一个名字里带优的人</div>
+        </div>
+      </div>
+    </div>
+    <div id="post_2" class="row row_reply clearit">
+      <div class="action"><small><a>#2</a> - 2026-1-27 00:27</small></div>
+      <div class="inner">
+        <strong><a class="l">夏実</a></strong>
+        <div class="reply_content">
+          <div class="message clearit">
+            <div class="quote"><q><span class="tip_j">回复</span> 2233：还有写真集吗 说: 还有写真集吗</q></div>
+            有的，悠悠吉日
+          </div>
+          <div class="topic_sub_reply">
+            <div id="post_3" class="sub_reply_bg clearit">
+              <div class="action"><small><a>#2-1</a> - 2026-1-28 02:41</small></div>
+              <div class="inner">
+                <strong><a class="l">夏実</a></strong>
+                <div class="cmt_sub_content">
+                  <div class="quote"><q><span class="tip_j">回复</span> 2233：夏実 说: 有的，悠悠吉日</q></div>
+                  有没有地址啊，想看
+                </div>
+              </div>
+            </div>
+            <div id="post_4" class="sub_reply_bg clearit">
+              <div class="action"><small><a>#2-2</a> - 2026-5-19 12:49</small></div>
+              <div class="inner">
+                <strong><a class="l">pandakun</a></strong>
+                <div class="cmt_sub_content">删除了回复</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="post_5" class="row row_reply clearit">
+      <div class="action"><small><a>#3</a> - 2026-5-21 20:51</small></div>
+      <div class="inner">
+        <strong><a class="l">匿名用户</a></strong>
+        <div class="reply_content">
+          <div class="message clearit">かくや过来的<br>她歌声很辽阔啊 那几首歌她唱得很有感觉</div>
+        </div>
+      </div>
+    </div>
+    <div id="post_6" class="row row_reply clearit">
+      <div class="action"><small><a>#4</a> - 2026-5-22 12:00</small></div>
+      <div class="inner">
+        <strong><a class="l">pandakun</a></strong>
+        <div class="reply_content"><div class="message clearit">删除了回复</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="footer"></div>
+`
+
+    const comments = parseBangumiMonoHtmlComments(html)
+    expect(comments.map((c) => c.id)).toEqual(['5', '2', '1'])
+    expect(comments[0]?.text).toBe('かくや过来的\n她歌声很辽阔啊 那几首歌她唱得很有感觉')
+    expect(comments[1]).toMatchObject({
+      id: '2',
+      author: '夏実',
+      text: '有的，悠悠吉日',
+      replyTo: '2233',
+    })
+    expect(comments[1]?.replies).toEqual([{
+      id: '3',
+      author: '夏実',
+      time: '2026-1-28 02:41',
+      text: '有没有地址啊，想看',
+      replyTo: '2233',
+    }])
+    expect(comments[2]?.text).toBe(
+      '写真集很色很文艺，甚至有雪天泳衣骑马，敬业啊\n\n另外公式照有点像另外一个名字里带优的人',
+    )
+  })
+
+  it('cleans markdown reply quote noise without dropping real floors', () => {
+    const markdown = `
+## 吐槽箱
+[#1](https://bgm.tv/rakuen/topic/prsn/1#post_1) - 2026-1-27 00:27
+**[夏実](https://bgm.tv/user/a)**
+回复 2233：还有写真集吗 说: 还有写真集吗
+有的，悠悠吉日
+**[夏実](https://bgm.tv/user/a)**
+回复 2233：夏実 说: 有的，悠悠吉日有没有地址啊，想看 说: 有没有地址啊，想看
+[#2](https://bgm.tv/rakuen/topic/prsn/1#post_2) - 2026-5-19 12:49
+**[pandakun](https://bgm.tv/user/b)**
+删除了回复
+© 2008
+`
+    const comments = parseBangumiMonoComments(markdown)
+    expect(comments).toHaveLength(1)
+    expect(comments[0]?.text).toBe('有的，悠悠吉日')
+    expect(comments[0]?.replies?.[0]?.text).toBe('有没有地址啊，想看')
+  })
+
   it('loads complete Bangumi HTML comments in pages of twenty', async () => {
     const rows = Array.from({ length: 21 }, (_, index) => {
       const floor = index + 1

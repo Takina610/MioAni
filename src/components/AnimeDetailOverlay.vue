@@ -10,11 +10,13 @@ import {
   PhArrowLeft,
   PhClock,
   PhCaretDown,
+  PhTranslate,
 } from '@phosphor-icons/vue'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
 import { usePersonOverlayStore } from '../stores/personOverlay'
 import { useLibraryStore } from '../stores/library'
 import { parsePersonId, personRouteName } from '../services/personIds'
+import { shouldOfferTranslation, translateToChinese } from '../services/translate'
 import type { AnimeCharacter, AnimeRelation, AnimeStaff, WatchStatus } from '../types/anime'
 
 const store = useDetailOverlayStore()
@@ -59,6 +61,15 @@ const loadingMoreExtra = ref(false)
 const extraSentinelRef = ref<HTMLElement | null>(null)
 /** Mobile: meta board collapsed so tabs content stays above the fold. */
 const metaExpanded = ref(false)
+const summaryTranslation = ref('')
+const summaryTranslating = ref(false)
+const summaryTranslateError = ref('')
+const titleTranslation = ref('')
+const titleTranslating = ref(false)
+const titleTranslateError = ref('')
+const tagsTranslation = ref('')
+const tagsTranslating = ref(false)
+const tagsTranslateError = ref('')
 let extraObserver: IntersectionObserver | null = null
 let extraLoadTimer: ReturnType<typeof setTimeout> | null = null
 /**
@@ -256,6 +267,93 @@ function applySurfaceReveal(open: boolean, withTransition: boolean) {
 const display = computed(() => store.detail || store.seed)
 const libraryItem = computed(() => (display.value ? library.findInLibrary(display.value) : undefined))
 const detail = computed(() => store.detail)
+
+function displayText(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+const titleTranslationText = computed(() => {
+  const title = displayText(display.value?.title)
+  const original = displayText(display.value?.originalTitle)
+  if (title && original && original !== title) return `${title}\n${original}`
+  return title || original
+})
+const summaryCanTranslate = computed(() => shouldOfferTranslation(display.value?.summary))
+const titleCanTranslate = computed(() => shouldOfferTranslation(titleTranslationText.value))
+const tagsCanTranslate = computed(() => {
+  const tags = display.value?.tags?.slice(0, 10) || []
+  return tags.some((tag) => shouldOfferTranslation(tag))
+})
+const tagsTranslationText = computed(() => (display.value?.tags?.slice(0, 10) || []).join(' · '))
+
+function resetTranslationState() {
+  summaryTranslation.value = ''
+  summaryTranslating.value = false
+  summaryTranslateError.value = ''
+  titleTranslation.value = ''
+  titleTranslating.value = false
+  titleTranslateError.value = ''
+  tagsTranslation.value = ''
+  tagsTranslating.value = false
+  tagsTranslateError.value = ''
+}
+
+async function translateSummary() {
+  const text = displayText(display.value?.summary)
+  if (!text || summaryTranslating.value) return
+  if (summaryTranslation.value) {
+    summaryTranslation.value = ''
+    summaryTranslateError.value = ''
+    return
+  }
+  summaryTranslating.value = true
+  summaryTranslateError.value = ''
+  try {
+    summaryTranslation.value = await translateToChinese(text)
+  } catch (reason) {
+    summaryTranslateError.value = reason instanceof Error ? reason.message : '翻译失败'
+  } finally {
+    summaryTranslating.value = false
+  }
+}
+
+async function translateTitle() {
+  const text = titleTranslationText.value
+  if (!text || titleTranslating.value) return
+  if (titleTranslation.value) {
+    titleTranslation.value = ''
+    titleTranslateError.value = ''
+    return
+  }
+  titleTranslating.value = true
+  titleTranslateError.value = ''
+  try {
+    titleTranslation.value = await translateToChinese(text)
+  } catch (reason) {
+    titleTranslateError.value = reason instanceof Error ? reason.message : '翻译失败'
+  } finally {
+    titleTranslating.value = false
+  }
+}
+
+async function translateTags() {
+  const text = tagsTranslationText.value
+  if (!text || tagsTranslating.value) return
+  if (tagsTranslation.value) {
+    tagsTranslation.value = ''
+    tagsTranslateError.value = ''
+    return
+  }
+  tagsTranslating.value = true
+  tagsTranslateError.value = ''
+  try {
+    tagsTranslation.value = await translateToChinese(text)
+  } catch (reason) {
+    tagsTranslateError.value = reason instanceof Error ? reason.message : '翻译失败'
+  } finally {
+    tagsTranslating.value = false
+  }
+}
 
 const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
   { value: 'watching', label: '在看' },
@@ -803,9 +901,6 @@ function loadMoreExtra() {
     visibleByTab.value[section] = Math.min(visibleByTab.value[section] + EXTRA_BATCH, allLen)
     loadingMoreExtra.value = false
     extraLoadTimer = null
-    // Desktop tall viewports: sentinel may stay intersecting after batch —
-    // IntersectionObserver won't re-fire; keep filling until scroll needed.
-    void nextTick().then(() => fillExtraViewport())
   }, 160)
 }
 
@@ -829,27 +924,6 @@ function getDetailScrollRoot(): Element | null {
     || null
 }
 
-function isExtraSentinelInView(root: Element | null): boolean {
-  const sentinel = extraSentinelRef.value
-  if (!sentinel) return false
-  const s = sentinel.getBoundingClientRect()
-  if (root) {
-    const r = root.getBoundingClientRect()
-    // Expand root by ~200px like rootMargin so pre-fetch matches observer.
-    return s.top < r.bottom + 200 && s.bottom > r.top - 40
-  }
-  const vh = window.innerHeight || 0
-  return s.top < vh + 200 && s.bottom > -40
-}
-
-/** Keep loading batches while sentinel is still visible (desktop tall screens). */
-function fillExtraViewport() {
-  if (tab.value === 'overview' || loadingMoreExtra.value || !activeExtraHasMore()) return
-  const root = getDetailScrollRoot()
-  if (!isExtraSentinelInView(root)) return
-  loadMoreExtra()
-}
-
 function setupExtraObserver() {
   extraObserver?.disconnect()
   extraObserver = null
@@ -859,11 +933,9 @@ function setupExtraObserver() {
     (entries) => {
       if (entries.some((entry) => entry.isIntersecting)) loadMoreExtra()
     },
-    { root: root || null, rootMargin: '200px 0px', threshold: 0 },
+    { root: root || null, rootMargin: '80px 0px', threshold: 0 },
   )
   extraObserver.observe(extraSentinelRef.value)
-  // If first paint already fills the screen, observer may not emit — force fill.
-  void nextTick().then(() => fillExtraViewport())
 }
 
 // Only reset tab when a NEW layer is expanding (list card / related push).
@@ -881,6 +953,7 @@ watch(
     lastOverviewId = ''
     contentEpoch.value = 0
     resetExtraVisible()
+    resetTranslationState()
     void nextTick().then(updateTabIndicator)
   },
 )
@@ -903,13 +976,11 @@ watch(
   async () => {
     await nextTick()
     setupExtraObserver()
-    fillExtraViewport()
   },
 )
 
 watch(extraSentinelRef, () => {
   setupExtraObserver()
-  fillExtraViewport()
 })
 
 // Overview arrived for this open → one soft enter for lead / sidebar / panel.
@@ -925,14 +996,22 @@ watch(
   },
 )
 
+function personThumbFromEvent(event?: Event) {
+  const root = event?.currentTarget as HTMLElement | null
+  if (!root) return null
+  return root.querySelector?.('img, .character-card__ph, .staff-card__ph') || root
+}
+
 async function openPersonEntity(opts: {
   id?: string
   name?: string
   image?: string
   contextRole?: string
+  event?: Event
 }) {
   if (!opts.id || !parsePersonId(opts.id)) return
   if (closing || store.phase === 'expanding' || store.phase === 'returning' || store.phase === 'collapsing') return
+  if (personOverlay.open) return
   // Snapshot anime UI (tab/scroll/extras) so return keeps 角色/制作人员 list.
   captureLayerUi(store.topLayer?.key)
   const routeName = personRouteName(parsePersonId(opts.id)!.kind)
@@ -942,6 +1021,7 @@ async function openPersonEntity(opts: {
     image: opts.image,
     contextRole: opts.contextRole,
     returnAnimeId: store.activeId || (typeof route.params.id === 'string' ? route.params.id : ''),
+    originRect: store.captureRect(personThumbFromEvent(opts.event)),
   })
   if (!ok) return
   if (route.name !== routeName || route.params.id !== opts.id) {
@@ -949,12 +1029,13 @@ async function openPersonEntity(opts: {
   }
 }
 
-function openCharacterDetail(ch: AnimeCharacter) {
+function openCharacterDetail(ch: AnimeCharacter, event?: Event) {
   void openPersonEntity({
     id: ch.id,
     name: ch.name,
     image: ch.image,
     contextRole: ch.role,
+    event,
   })
 }
 
@@ -966,15 +1047,17 @@ function openVoiceActorDetail(ch: AnimeCharacter, event?: Event) {
     name: ch.voiceActor,
     image: ch.voiceActorImage,
     contextRole: `CV · ${ch.name}`,
+    event,
   })
 }
 
-function openStaffDetail(st: AnimeStaff) {
+function openStaffDetail(st: AnimeStaff, event?: Event) {
   void openPersonEntity({
     id: st.id,
     name: st.name,
     image: st.image,
     contextRole: st.role,
+    event,
   })
 }
 
@@ -1268,22 +1351,49 @@ onUnmounted(() => {
 
             <div class="detail-header__main">
               <p class="detail-kicker">{{ display.source.toUpperCase() }} · {{ display.id }}</p>
-              <h1 class="detail-title">{{ display.title }}</h1>
+              <div class="detail-title-row">
+                <h1 class="detail-title">{{ display.title }}</h1>
+                <button
+                  v-if="titleCanTranslate && !store.loading"
+                  type="button"
+                  class="person-translate person-translate--compact"
+                  :disabled="titleTranslating"
+                  @click="translateTitle"
+                >
+                  <PhTranslate :size="14" weight="bold" />
+                  {{ titleTranslating ? '翻译中' : titleTranslation ? '隐藏翻译' : '翻译标题' }}
+                </button>
+              </div>
               <p
                 v-if="display.originalTitle && display.originalTitle !== display.title"
                 class="detail-original"
               >
                 {{ display.originalTitle }}
               </p>
+              <p
+                v-if="titleTranslation || titleTranslateError"
+                class="person-inline-translation"
+                :class="{ 'is-error': titleTranslateError }"
+              >
+                {{ titleTranslation || titleTranslateError }}
+              </p>
 
               <Transition name="detail-soft" mode="out-in">
-                <p
-                  :key="`lead-${store.activeId}-${contentEpoch}-${store.loading ? 'load' : 'ready'}`"
-                  class="detail-lead"
-                  :class="{ 'is-loading': store.loading }"
+                <div
+                  v-if="store.loading"
+                  :key="`lead-${store.activeId}-load`"
+                  class="detail-lead-skeleton"
+                  aria-busy="true"
+                  aria-label="正在加载简介"
                 >
-                  <template v-if="store.loading">正在解码条目数据流…</template>
-                  <template v-else>{{ display.summary || store.error || '暂无剧情简介。' }}</template>
+                  <i /><i /><i />
+                </div>
+                <p
+                  v-else
+                  :key="`lead-${store.activeId}-${contentEpoch}-ready`"
+                  class="detail-lead"
+                >
+                  {{ display.summary || store.error || '暂无剧情简介。' }}
                 </p>
               </Transition>
 
@@ -1333,12 +1443,38 @@ onUnmounted(() => {
                   class="detail-main__panel"
                 >
                   <template v-if="tab === 'overview'">
-                    <header class="detail-block-head">
-                      <span>OVERVIEW</span>
-                      <h2>剧情与资料</h2>
+                    <header class="detail-block-head detail-block-head--row">
+                      <div>
+                        <span>OVERVIEW</span>
+                        <h2>剧情与资料</h2>
+                      </div>
+                      <button
+                        v-if="summaryCanTranslate && !store.loading"
+                        type="button"
+                        class="person-translate"
+                        :disabled="summaryTranslating"
+                        @click="translateSummary"
+                      >
+                        <PhTranslate :size="15" weight="bold" />
+                        {{ summaryTranslating ? '翻译中' : summaryTranslation ? '隐藏翻译' : '翻译简介' }}
+                      </button>
                     </header>
-                    <p v-if="store.loading && !display.summary" class="detail-summary is-loading">正在加载简介…</p>
+                    <div
+                      v-if="store.loading && !display.summary"
+                      class="detail-summary-skeleton"
+                      aria-busy="true"
+                      aria-label="正在加载简介"
+                    >
+                      <i /><i /><i /><i /><i />
+                    </div>
                     <p v-else class="detail-summary">{{ display.summary || store.error || '暂无剧情简介。' }}</p>
+                    <div
+                      v-if="summaryTranslation || summaryTranslateError"
+                      class="person-translation"
+                    >
+                      <p v-if="summaryTranslation">{{ summaryTranslation }}</p>
+                      <p v-else class="person-translation__error">{{ summaryTranslateError }}</p>
+                    </div>
                     <div class="detail-mini-meta">
                       <span v-if="display.year"><PhCalendarBlank :size="14" />{{ display.year }}</span>
                       <span v-if="display.episodes"><PhFilmStrip :size="14" />{{ display.episodes }} 话</span>
@@ -1356,9 +1492,13 @@ onUnmounted(() => {
                         已显示 {{ relationsVisible.length }} / {{ relationsAll.length }} 部
                       </p>
                     </header>
-                    <div v-if="store.loadingExtras && !relationsAll.length" class="detail-loader detail-loader--inline" aria-busy="true">
-                      <div class="detail-loader__prism" aria-hidden="true"><i /><i /><i /></div>
-                      <p>正在加载关联作品…</p>
+                    <div
+                      v-if="store.loadingExtras && !relationsAll.length"
+                      class="detail-card-skeleton detail-card-skeleton--relation"
+                      aria-busy="true"
+                      aria-label="正在加载关联作品"
+                    >
+                      <i v-for="n in 6" :key="n" />
                     </div>
                     <template v-else-if="relationsAll.length">
                       <div class="relation-grid">
@@ -1379,9 +1519,16 @@ onUnmounted(() => {
                           </div>
                         </button>
                       </div>
+                      <div
+                        v-if="loadingMoreExtra"
+                        class="detail-card-skeleton detail-card-skeleton--relation detail-card-skeleton--append"
+                        aria-busy="true"
+                        aria-label="加载更多"
+                      >
+                        <i v-for="n in 3" :key="n" />
+                      </div>
                       <div ref="extraSentinelRef" class="detail-infinite-sentinel" aria-hidden="true" />
-                      <p v-if="loadingMoreExtra" class="detail-infinite-status">加载更多…</p>
-                      <p v-else-if="!relationsHasMore" class="detail-infinite-status">已全部加载</p>
+                      <p v-if="!loadingMoreExtra && !relationsHasMore" class="detail-infinite-status">已全部加载</p>
                     </template>
                     <p v-else class="detail-empty">暂无关联作品。</p>
                   </template>
@@ -1394,12 +1541,16 @@ onUnmounted(() => {
                         已显示 {{ charactersVisible.length }} / {{ charactersAll.length }} 位
                       </p>
                     </header>
-                    <div v-if="store.loadingExtras && !charactersAll.length" class="detail-loader detail-loader--inline" aria-busy="true">
-                      <div class="detail-loader__prism" aria-hidden="true"><i /><i /><i /></div>
-                      <p>正在加载角色与声优…</p>
+                    <div
+                      v-if="store.loadingExtras && !charactersAll.length"
+                      class="detail-card-skeleton detail-card-skeleton--person"
+                      aria-busy="true"
+                      aria-label="正在加载角色与声优"
+                    >
+                      <i v-for="n in 6" :key="n" />
                     </div>
                     <template v-else-if="charactersAll.length">
-                      <div class="character-grid">
+                      <div class="character-grid" :class="{ 'is-anilist': display.source === 'anilist' }">
                         <article
                           v-for="(ch, idx) in charactersVisible"
                           :key="ch.id || ch.name + idx"
@@ -1408,8 +1559,8 @@ onUnmounted(() => {
                           :style="{ '--enter-i': idx % EXTRA_BATCH }"
                           :role="ch.id ? 'button' : undefined"
                           :tabindex="ch.id ? 0 : undefined"
-                          @click="openCharacterDetail(ch)"
-                          @keydown.enter.prevent="openCharacterDetail(ch)"
+                          @click="openCharacterDetail(ch, $event)"
+                          @keydown.enter.prevent="openCharacterDetail(ch, $event)"
                         >
                           <img v-if="ch.image" :src="ch.image" :alt="ch.name" />
                           <div v-else class="character-card__ph" />
@@ -1428,9 +1579,16 @@ onUnmounted(() => {
                           </div>
                         </article>
                       </div>
+                      <div
+                        v-if="loadingMoreExtra"
+                        class="detail-card-skeleton detail-card-skeleton--person detail-card-skeleton--append"
+                        aria-busy="true"
+                        aria-label="加载更多"
+                      >
+                        <i v-for="n in 3" :key="n" />
+                      </div>
                       <div ref="extraSentinelRef" class="detail-infinite-sentinel" aria-hidden="true" />
-                      <p v-if="loadingMoreExtra" class="detail-infinite-status">加载更多…</p>
-                      <p v-else-if="!charactersHasMore" class="detail-infinite-status">已全部加载</p>
+                      <p v-if="!loadingMoreExtra && !charactersHasMore" class="detail-infinite-status">已全部加载</p>
                     </template>
                     <p v-else class="detail-empty">暂无角色资料。</p>
                   </template>
@@ -1443,12 +1601,16 @@ onUnmounted(() => {
                         已显示 {{ staffVisible.length }} / {{ staffAll.length }} 位
                       </p>
                     </header>
-                    <div v-if="store.loadingExtras && !staffAll.length" class="detail-loader detail-loader--inline" aria-busy="true">
-                      <div class="detail-loader__prism" aria-hidden="true"><i /><i /><i /></div>
-                      <p>正在加载制作人员…</p>
+                    <div
+                      v-if="store.loadingExtras && !staffAll.length"
+                      class="detail-card-skeleton detail-card-skeleton--person"
+                      aria-busy="true"
+                      aria-label="正在加载制作人员"
+                    >
+                      <i v-for="n in 6" :key="n" />
                     </div>
                     <template v-else-if="staffAll.length">
-                      <div class="staff-grid">
+                      <div class="staff-grid" :class="{ 'is-anilist': display.source === 'anilist' }">
                         <article
                           v-for="(st, idx) in staffVisible"
                           :key="st.id || st.name + idx"
@@ -1457,8 +1619,8 @@ onUnmounted(() => {
                           :style="{ '--enter-i': idx % EXTRA_BATCH }"
                           :role="st.id ? 'button' : undefined"
                           :tabindex="st.id ? 0 : undefined"
-                          @click="openStaffDetail(st)"
-                          @keydown.enter.prevent="openStaffDetail(st)"
+                          @click="openStaffDetail(st, $event)"
+                          @keydown.enter.prevent="openStaffDetail(st, $event)"
                         >
                           <img v-if="st.image" :src="st.image" :alt="st.name" />
                           <div v-else class="staff-card__ph" />
@@ -1468,9 +1630,16 @@ onUnmounted(() => {
                           </div>
                         </article>
                       </div>
+                      <div
+                        v-if="loadingMoreExtra"
+                        class="detail-card-skeleton detail-card-skeleton--person detail-card-skeleton--append"
+                        aria-busy="true"
+                        aria-label="加载更多"
+                      >
+                        <i v-for="n in 3" :key="n" />
+                      </div>
                       <div ref="extraSentinelRef" class="detail-infinite-sentinel" aria-hidden="true" />
-                      <p v-if="loadingMoreExtra" class="detail-infinite-status">加载更多…</p>
-                      <p v-else-if="!staffHasMore" class="detail-infinite-status">已全部加载</p>
+                      <p v-if="!loadingMoreExtra && !staffHasMore" class="detail-infinite-status">已全部加载</p>
                     </template>
                     <p v-else class="detail-empty">暂无制作人员资料。</p>
                   </template>
@@ -1508,8 +1677,30 @@ onUnmounted(() => {
                     <span>{{ fact.label }}</span>
                     <strong>{{ fact.value }}</strong>
                   </div>
-                  <div v-if="display.tags?.length" class="detail-side-tags">
-                    <span v-for="tag in display.tags.slice(0, 10)" :key="tag">{{ tag }}</span>
+                  <div v-if="display.tags?.length" class="detail-side-tags-wrap">
+                    <div class="detail-side-tags-head">
+                      <span>标签</span>
+                      <button
+                        v-if="tagsCanTranslate"
+                        type="button"
+                        class="person-translate person-translate--meta"
+                        :disabled="tagsTranslating"
+                        @click="translateTags"
+                      >
+                        <PhTranslate :size="12" weight="bold" />
+                        {{ tagsTranslating ? '翻译中' : tagsTranslation ? '隐藏' : '翻译' }}
+                      </button>
+                    </div>
+                    <div class="detail-side-tags">
+                      <span v-for="tag in display.tags.slice(0, 10)" :key="tag">{{ tag }}</span>
+                    </div>
+                    <p
+                      v-if="tagsTranslation || tagsTranslateError"
+                      class="person-meta-translation"
+                      :class="{ 'is-error': tagsTranslateError }"
+                    >
+                      {{ tagsTranslation || tagsTranslateError }}
+                    </p>
                   </div>
                 </aside>
               </div>

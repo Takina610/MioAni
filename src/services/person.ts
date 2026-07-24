@@ -545,6 +545,139 @@ function htmlClassContent(html: string, className: string): string {
   return htmlTagClassContent(html, 'div', className)
 }
 
+/** Balanced <div class="…message…">…</div> so nested quote divs do not truncate the body. */
+function htmlBalancedClassContent(html: string, className: string): string {
+  const openPattern = new RegExp(
+    `<div\\b[^>]*\\bclass\\s*=\\s*(["'])[^"']*\\b${className}\\b[^"']*\\1[^>]*>`,
+    'i',
+  )
+  const open = openPattern.exec(html)
+  if (!open || open.index == null) return ''
+  const start = open.index + open[0].length
+  let depth = 1
+  const token = /<\/?div\b[^>]*>/gi
+  token.lastIndex = start
+  let match: RegExpExecArray | null
+  while ((match = token.exec(html))) {
+    if (match[0].startsWith('</')) {
+      depth -= 1
+      if (depth === 0) return html.slice(start, match.index)
+    } else if (!/\/>$/.test(match[0])) {
+      depth += 1
+    }
+  }
+  return html.slice(start)
+}
+
+/** Remove one balanced element starting at `openIndex` (points at '<'). */
+function stripBalancedElement(html: string, openIndex: number): string {
+  const openTag = /^<([a-z0-9]+)\b[^>]*>/i.exec(html.slice(openIndex))
+  if (!openTag) return html
+  const tag = openTag[1]
+  if (/\/>$/.test(openTag[0])) {
+    return html.slice(0, openIndex) + html.slice(openIndex + openTag[0].length)
+  }
+  const token = new RegExp(`</?${tag}\\b[^>]*>`, 'gi')
+  token.lastIndex = openIndex + openTag[0].length
+  let depth = 1
+  let match: RegExpExecArray | null
+  while ((match = token.exec(html))) {
+    if (match[0].startsWith('</')) {
+      depth -= 1
+      if (depth === 0) {
+        return html.slice(0, openIndex) + html.slice(match.index + match[0].length)
+      }
+    } else if (!/\/>$/.test(match[0])) {
+      depth += 1
+    }
+  }
+  return html.slice(0, openIndex)
+}
+
+/** Bangumi keeps reply-to chrome in div.quote / q / blockquote (open-project strips the same). */
+function stripHtmlCommentQuotes(html: string): string {
+  let out = html
+  for (let guard = 0; guard < 20; guard += 1) {
+    const quoteOpen = /<div\b[^>]*\bclass\s*=\s*(["'])[^"']*\bquote\b[^"']*\1[^>]*>/i.exec(out)
+    if (!quoteOpen || quoteOpen.index == null) break
+    out = stripBalancedElement(out, quoteOpen.index)
+  }
+  out = out
+    .replace(/<blockquote\b[^>]*>[\s\S]*?<\/blockquote>/gi, '')
+    .replace(/<q\b[^>]*>[\s\S]*?<\/q>/gi, '')
+  return out
+}
+
+/**
+ * Who this floor replies to — from Bangumi quote tip:
+ * `<span class="tip_j">回复</span> 用户名：…`
+ * Aligns with open-project keeping quote context for display.
+ */
+function extractCommentReplyTo(html: string): string | undefined {
+  const tip = /<span\b[^>]*\bclass\s*=\s*(["'])[^"']*\btip_j\b[^"']*\1[^>]*>\s*回复\s*<\/span>\s*([^：:<\n]+)/i
+    .exec(html)
+  if (tip?.[2]) {
+    const name = htmlFragmentText(tip[2]).replace(/[：:]\s*$/, '').trim()
+    if (name) return name
+  }
+  const plain = htmlFragmentText(html)
+  const match = /(?:^|\n)\s*(?:回复|Re:)\s+([^\n：:]{1,40})[：:]/u.exec(plain)
+  const name = match?.[1]?.trim()
+  return name || undefined
+}
+
+/**
+ * Plain-text cleanup after HTML quote nodes are gone.
+ * - Drop "删除了回复"
+ * - Drop leftover "回复 X：… 说: …" quote headers (markdown / failed strip)
+ * - Normalize newlines: collapse 3+ blank lines; keep intentional paragraph breaks
+ */
+function cleanCommentText(value: string): string {
+  const lines = value
+    .replace(/\r\n?/g, '\n')
+    .replace(/^\s*>+\s?/gm, '')
+    .split('\n')
+    .map((raw) => {
+      const line = raw.replace(/[ \t]+/g, ' ').trim()
+      if (!line || /^删除了回复$/.test(line)) return ''
+
+      // Reply-quote chrome (JS \b is ASCII-only — do not use it after CJK).
+      if (/^(?:回复|Re:)\s/iu.test(line) && /说[：:]/u.test(line)) {
+        const parts = line.split(/说[：:]/u)
+        const body = (parts[parts.length - 1] || '').trim()
+        if (!body) return ''
+        const beforeLast = parts.slice(0, -1).join('说:')
+        const quotedTail = beforeLast.split(/[：:]/u).pop()?.trim()
+        // Echo quote only — real body after "说:" that differs is kept.
+        if (quotedTail && quotedTail === body) return ''
+        return body
+      }
+
+      if (/^(?:回复|Re:)\s+\S.{0,60}[：:]\s*$/iu.test(line)) return ''
+      return line
+    })
+    .filter((line, index, list) => {
+      if (!line) return index > 0 && Boolean(list[index - 1])
+      return true
+    })
+
+  const text = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  if (!text || /^删除了回复$/.test(text)) return ''
+  return text
+}
+
+/** Comment HTML → text: double <br> = paragraph; single <br> = soft break (space). */
+function commentHtmlToText(html: string): string {
+  const prepared = html
+    .replace(/(?:<br\s*\/?>\s*){2,}/gi, '\n\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p\s*>\s*<p\b[^>]*>/gi, '\n\n')
+    .replace(/<\/p\s*>/gi, '\n')
+    .replace(/<img\b[^>]*\balt=(["'])(.*?)\1[^>]*>/gis, ' $2 ')
+    .replace(/<[^>]+>/g, '')
+  return cleanCommentText(decodeHtmlText(prepared))
+}
+
 export function parseBangumiMonoProfileHtml(
   html: string,
   _kind: BangumiMonoKind,
@@ -627,13 +760,16 @@ function parseHtmlCommentBlock(
   contentClass: 'message' | 'cmt_sub_content',
 ): PersonComment | null {
   const id = htmlCommentId(opening)
-  const text = htmlFragmentText(htmlClassContent(block, contentClass))
+  const rawHtml = htmlBalancedClassContent(block, contentClass)
+  const replyTo = extractCommentReplyTo(rawHtml)
+  const text = commentHtmlToText(stripHtmlCommentQuotes(rawHtml))
   if (!id || !text) return null
   return {
     id,
     author: htmlCommentAuthor(block),
     time: htmlCommentTime(block),
     text,
+    ...(replyTo ? { replyTo } : {}),
   }
 }
 
@@ -659,13 +795,17 @@ function commentsFromFloorBlock(
   const parsed = authors.flatMap((author, index) => {
     const blockStart = (author.index || 0) + author[0].length
     const blockEnd = authors[index + 1]?.index ?? block.length
-    const text = cleanMarkdownText(block.slice(blockStart, blockEnd))
+    const raw = cleanMarkdownText(block.slice(blockStart, blockEnd))
+    const replyMatch = /^(?:回复|Re:)\s+([^\n：:]{1,40})[：:]/u.exec(raw.trim())
+    const replyTo = replyMatch?.[1]?.trim()
+    const text = cleanCommentText(raw)
     if (!text) return []
     return [{
       id: index === 0 ? id : `${id}-reply-${index}`,
       author: author[1]?.trim() || 'Bangumi 用户',
       time: index === 0 ? time?.trim() || undefined : undefined,
       text,
+      ...(replyTo ? { replyTo } : {}),
     } satisfies PersonComment]
   })
   if (!parsed.length) return null
@@ -755,7 +895,7 @@ export function parseBangumiMonoComments(markdown: string): PersonComment[] {
     const author = authors[index]
     const blockStart = (author.index || 0) + author[0].length
     const blockEnd = authors[index + 1]?.index ?? section.length
-    const text = cleanMarkdownText(section.slice(blockStart, blockEnd))
+    const text = cleanCommentText(cleanMarkdownText(section.slice(blockStart, blockEnd)))
     if (!text) continue
     comments.push({ id: String(index + 1), author: author[1]?.trim() || 'Bangumi 用户', text })
   }
