@@ -508,12 +508,32 @@ function thumbFromEvent(event?: Event): Element | null {
   return root.querySelector?.('img, .person-work__ph, .person-role__ph') || root
 }
 
+/** Hide person without wiping state. Handles stale Pinia HMR instances missing suspend(). */
+function suspendPersonForAnimeWork() {
+  const s = usePersonOverlayStore()
+  if (typeof s.suspend === 'function') {
+    s.suspend()
+    return
+  }
+  // Fallback for hot-reload before store methods rebind: hide only, keep detail/stack.
+  s.$patch({
+    open: false,
+    phase: 'idle',
+    loading: false,
+    loadingProfile: false,
+    loadingComments: false,
+    loadingWorks: false,
+    loadingVoiceRoles: false,
+    suspended: true,
+  })
+}
+
 async function openWork(work: AnimeRelation, event?: Event) {
   if (!work.id) return
   const thumb = thumbFromEvent(event)
+  // Keep CV/person page + stack for back; do not finishClose (that wiped state and broke flight).
+  suspendPersonForAnimeWork()
   await detailStore.openFromRelated(work, thumb)
-  store.finishClose()
-  store.clearReturn()
   if (route.name !== 'anime-detail' || route.params.id !== work.id) {
     await router.push({ name: 'anime-detail', params: { id: work.id } })
   }
@@ -522,6 +542,8 @@ async function openWork(work: AnimeRelation, event?: Event) {
 async function openVoiceRole(role: PersonVoiceRole, event?: Event) {
   event?.stopPropagation?.()
   if (!role.id) return
+  // Same person: no-op. Different person: store pushes current onto stack.
+  if (role.id === (store.detail?.id || store.seed?.id)) return
   const routeName = store.routeNameFor(role.id)
   const ok = await store.openPerson({
     id: role.id,
@@ -629,6 +651,11 @@ watch(
     bindPersonScroll()
     resetExtraObserver()
     updateTabIndicator()
+    // Resume from anime work: surface must be fully open without replaying circle to 0.
+    if (store.phase === 'open') {
+      setPersonRevealOriginFromRect(store.originRect)
+      applyPersonSurfaceReveal(true, false)
+    }
   },
 )
 
@@ -722,6 +749,35 @@ async function runPersonExpand() {
 
 async function closePerson() {
   if (!store.open || personClosing) return
+
+  // Person → person: restore previous person while keeping the surface fully open.
+  // Full circle collapse would shrink to 0 and flash the anime detail underlay first.
+  if (store.canPopPerson) {
+    personClosing = true
+    if (personAnimTimer) {
+      window.clearTimeout(personAnimTimer)
+      personAnimTimer = null
+    }
+    personExpandRunning = false
+    personExpandToken += 1
+    const restoredId = store.popPerson()
+    if (restoredId) {
+      const routeName = store.routeNameFor(restoredId)
+      if (routeName && (route.name !== routeName || route.params.id !== restoredId)) {
+        await router.replace({ name: routeName, params: { id: restoredId } })
+      }
+      await nextTick()
+      // Stay fully revealed; only swap content under the open mask.
+      setPersonRevealOriginFromRect(store.originRect)
+      applyPersonSurfaceReveal(true, false)
+      updateTabIndicator()
+      resetExtraObserver()
+      bindPersonScroll()
+    }
+    personClosing = false
+    return
+  }
+
   personClosing = true
   const animeId = store.returnAnimeId
   setPersonRevealOriginFromRect(store.originRect)
@@ -757,14 +813,30 @@ watch(
   async ([name, id]) => {
     if (name !== 'character-detail' && name !== 'person-detail') return
     if (typeof id !== 'string' || !id) return
-    if (store.open && store.detail?.id === id) return
-    if (store.open && store.seed?.id === id && store.loading) return
+    if (store.open && (store.detail?.id === id || (store.seed?.id === id && store.loading))) return
     const parsed = parsePersonId(id)
     if (!parsed) return
+
+    // Browser back / in-app pop: prefer restoring a buried person page over reloading.
+    if (store.open && store.canPopPerson && store.activeId !== id) {
+      while (store.canPopPerson) {
+        const restored = store.popPerson()
+        if (restored === id) {
+          await nextTick()
+          void runPersonExpand()
+          return
+        }
+        if (!restored) break
+      }
+      if (store.activeId === id) return
+    }
+
     if (!store.open || store.seed?.id !== id) {
       await store.openPerson({
         id,
         returnAnimeId: store.returnAnimeId,
+        // History / deep-link recovery must not invent stack edges.
+        replace: true,
       })
     }
   },

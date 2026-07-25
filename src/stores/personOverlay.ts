@@ -13,7 +13,17 @@ import type { PersonDetail } from '../types/anime'
 
 export type PersonPhase = 'idle' | 'expanding' | 'open' | 'collapsing'
 
+/** One person page under the current one (person → person navigation). */
+export interface PersonStackEntry {
+  detail: PersonDetail | null
+  seed: Partial<PersonDetail> | null
+  contextRole: string
+  originRect: ExpandRect | null
+  error: string
+}
+
 export const usePersonOverlayStore = defineStore('personOverlay', () => {
+  // NOTE: after adding actions, hard-refresh if HMR leaves a stale store without new methods.
   const open = ref(false)
   const phase = ref<PersonPhase>('idle')
   const originRect = ref<ExpandRect | null>(null)
@@ -29,10 +39,22 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
   const returnAnimeId = ref('')
   /** Role context shown under the name (from the anime list). */
   const contextRole = ref('')
+  /** Buried person pages for back navigation (person → person). */
+  const stack = ref<PersonStackEntry[]>([])
+  /**
+   * Hidden but not destroyed — person opened an anime work on top.
+   * Resume when that anime layer is popped/dismissed back to this person.
+   */
+  const suspended = ref(false)
   let loadSeq = 0
 
   const title = computed(() => detail.value?.name || seed.value?.name || '人物详情')
   const kind = computed(() => detail.value?.kind || seed.value?.kind || parsePersonId(seed.value?.id || '')?.kind || 'person')
+  const canPopPerson = computed(() => stack.value.length > 0)
+  const activeId = computed(() => detail.value?.id || seed.value?.id || '')
+  const hasSuspendedPerson = computed(() => (
+    suspended.value && Boolean(detail.value?.id || seed.value?.id)
+  ))
 
   function mergeFacts(
     current: PersonDetail['extraFacts'],
@@ -95,6 +117,29 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
       })
   }
 
+  function snapshotCurrent(): PersonStackEntry {
+    return {
+      detail: detail.value ? { ...detail.value } : null,
+      seed: seed.value ? { ...seed.value } : null,
+      contextRole: contextRole.value,
+      originRect: originRect.value ? { ...originRect.value } : null,
+      error: error.value,
+    }
+  }
+
+  function restoreEntry(entry: PersonStackEntry) {
+    detail.value = entry.detail
+    seed.value = entry.seed
+    contextRole.value = entry.contextRole
+    originRect.value = entry.originRect
+    error.value = entry.error
+    loading.value = false
+    loadingProfile.value = false
+    loadingComments.value = false
+    loadingWorks.value = false
+    loadingVoiceRoles.value = false
+  }
+
   async function openPerson(opts: {
     id: string
     name?: string
@@ -102,6 +147,8 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
     contextRole?: string
     returnAnimeId?: string
     originRect?: ExpandRect | null
+    /** When true, never push (hard replace / route recovery). */
+    replace?: boolean
   }) {
     const parsed = parsePersonId(opts.id)
     if (!parsed) {
@@ -109,11 +156,32 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
       return false
     }
 
-    const seq = ++loadSeq
+    const currentId = seed.value?.id || detail.value?.id || ''
     const sameVisible =
       open.value
-      && seed.value?.id === opts.id
+      && currentId === opts.id
       && (phase.value === 'expanding' || phase.value === 'open')
+
+    // Fresh open while a person was suspended under an anime work: drop stale suspend.
+    if (!open.value && suspended.value && !sameVisible) {
+      stack.value = []
+      suspended.value = false
+    }
+
+    // Person → person: bury the current page so back can restore it.
+    // Only stack when the current page has settled (open) to avoid burying a half-loaded hop.
+    if (
+      open.value
+      && !opts.replace
+      && currentId
+      && currentId !== opts.id
+      && phase.value === 'open'
+    ) {
+      stack.value = [...stack.value, snapshotCurrent()]
+    }
+
+    const seq = ++loadSeq
+    suspended.value = false
     open.value = true
     // Avoid restarting the circle reveal when the same person is already on screen
     // (e.g. route push after card open, or data refresh).
@@ -187,6 +255,53 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
       loadingProfile.value = false
       return false
     }
+  }
+
+  /** Restore previous person page; returns restored person id or null. */
+  function popPerson(): string | null {
+    if (!stack.value.length) return null
+    loadSeq += 1
+    const prev = stack.value[stack.value.length - 1]
+    stack.value = stack.value.slice(0, -1)
+    restoreEntry(prev)
+    suspended.value = false
+    phase.value = 'open'
+    return prev.detail?.id || prev.seed?.id || null
+  }
+
+  /**
+   * Hide person overlay but keep page + person-stack + returnAnimeId.
+   * Used when opening an anime work from a person page so flight/back can return here.
+   */
+  function suspend(): boolean {
+    if (!open.value && !suspended.value) return false
+    if (!detail.value && !seed.value) return false
+    loadSeq += 1
+    open.value = false
+    phase.value = 'idle'
+    suspended.value = true
+    loading.value = false
+    loadingProfile.value = false
+    loadingComments.value = false
+    loadingWorks.value = false
+    loadingVoiceRoles.value = false
+    return true
+  }
+
+  /** Show suspended person again. Returns person id or null. */
+  function resume(): string | null {
+    if (!hasSuspendedPerson.value && !detail.value && !seed.value) return null
+    const id = detail.value?.id || seed.value?.id || null
+    if (!id) return null
+    suspended.value = false
+    open.value = true
+    phase.value = 'open'
+    loading.value = false
+    loadingProfile.value = false
+    loadingComments.value = false
+    loadingWorks.value = false
+    loadingVoiceRoles.value = false
+    return id
   }
 
   async function ensureWorks() {
@@ -369,6 +484,8 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
     detail.value = null
     seed.value = null
     contextRole.value = ''
+    stack.value = []
+    suspended.value = false
     // Keep returnAnimeId until consumer navigates, then clear.
   }
 
@@ -401,9 +518,17 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
     seed,
     returnAnimeId,
     contextRole,
+    stack,
+    suspended,
+    canPopPerson,
+    hasSuspendedPerson,
+    activeId,
     title,
     kind,
     openPerson,
+    popPerson,
+    suspend,
+    resume,
     markOpen,
     beginCollapse,
     finishClose,

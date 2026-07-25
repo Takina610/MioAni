@@ -435,6 +435,133 @@ Markdown Content:
     })
   })
 
+  it('person stack restores previous person without clearing returnAnimeId', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/v0/characters/1')) {
+        return Response.json({
+          name: '角色A',
+          summary: '简介A',
+          infobox: [],
+          images: { large: 'https://example.com/a.jpg' },
+        })
+      }
+      if (url.endsWith('/v0/characters/2')) {
+        return Response.json({
+          name: '角色B',
+          summary: '简介B',
+          infobox: [],
+          images: { large: 'https://example.com/b.jpg' },
+        })
+      }
+      if (url.endsWith('/subjects') || url.endsWith('/characters')) return Response.json([])
+      return new Response('', { status: 404 })
+    }))
+    setActivePinia(createPinia())
+    const store = usePersonOverlayStore()
+
+    await store.openPerson({
+      id: 'bgm-char-1',
+      name: '角色A',
+      returnAnimeId: 'bgm-999',
+    })
+    store.markOpen()
+    expect(store.activeId).toBe('bgm-char-1')
+    expect(store.canPopPerson).toBe(false)
+    expect(store.returnAnimeId).toBe('bgm-999')
+
+    await store.openPerson({
+      id: 'bgm-char-2',
+      name: '角色B',
+      returnAnimeId: 'bgm-999',
+    })
+    store.markOpen()
+    expect(store.activeId).toBe('bgm-char-2')
+    expect(store.canPopPerson).toBe(true)
+    expect(store.stack).toHaveLength(1)
+    expect(store.stack[0]?.seed?.id).toBe('bgm-char-1')
+    expect(store.returnAnimeId).toBe('bgm-999')
+
+    const restored = store.popPerson()
+    expect(restored).toBe('bgm-char-1')
+    expect(store.activeId).toBe('bgm-char-1')
+    expect(store.detail?.name).toBe('角色A')
+    expect(store.canPopPerson).toBe(false)
+    expect(store.returnAnimeId).toBe('bgm-999')
+
+    expect(store.popPerson()).toBeNull()
+    store.close()
+    expect(store.open).toBe(false)
+    expect(store.stack).toHaveLength(0)
+  })
+
+  it('suspend keeps person state for anime work back navigation', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/v0/persons/42')) {
+        return Response.json({
+          name: '声优X',
+          summary: 'CV',
+          infobox: [],
+          images: { large: 'https://example.com/cv.jpg' },
+          career: ['seiyu'],
+        })
+      }
+      if (url.endsWith('/subjects') || url.endsWith('/characters')) return Response.json([])
+      return new Response('', { status: 404 })
+    }))
+    setActivePinia(createPinia())
+    const store = usePersonOverlayStore()
+
+    await store.openPerson({
+      id: 'bgm-person-42',
+      name: '声优X',
+      returnAnimeId: 'bgm-100',
+    })
+    store.markOpen()
+    expect(store.open).toBe(true)
+    expect(store.hasSuspendedPerson).toBe(false)
+
+    expect(store.suspend()).toBe(true)
+    expect(store.open).toBe(false)
+    expect(store.hasSuspendedPerson).toBe(true)
+    expect(store.activeId).toBe('bgm-person-42')
+    expect(store.returnAnimeId).toBe('bgm-100')
+    expect(store.detail?.name).toBe('声优X')
+
+    const resumed = store.resume()
+    expect(resumed).toBe('bgm-person-42')
+    expect(store.open).toBe(true)
+    expect(store.hasSuspendedPerson).toBe(false)
+    expect(store.phase).toBe('open')
+    expect(store.returnAnimeId).toBe('bgm-100')
+    store.close()
+  })
+
+  it('replace open does not push person stack', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/v0/characters/')) {
+        return Response.json({
+          name: '角色',
+          summary: '',
+          infobox: [],
+          images: { large: 'https://example.com/x.jpg' },
+        })
+      }
+      if (url.endsWith('/subjects') || url.endsWith('/characters')) return Response.json([])
+      return new Response('', { status: 404 })
+    }))
+    setActivePinia(createPinia())
+    const store = usePersonOverlayStore()
+    await store.openPerson({ id: 'bgm-char-1', returnAnimeId: 'bgm-1' })
+    store.markOpen()
+    await store.openPerson({ id: 'bgm-char-2', replace: true })
+    expect(store.canPopPerson).toBe(false)
+    expect(store.activeId).toBe('bgm-char-2')
+    store.close()
+  })
+
   it('lazy-loads Bangumi comments only when the comments tab is requested', async () => {
     const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds))
     const html = `

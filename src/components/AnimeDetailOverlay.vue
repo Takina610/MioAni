@@ -712,15 +712,54 @@ async function popDetailStack(opts: { fromBrowserBack?: boolean } = {}) {
     store.phase = 'open'
     store.expandMode = store.layers.length > 1 ? 'stack' : 'list'
     const id = store.activeId
-    if (!opts.fromBrowserBack && id && router.currentRoute.value.name === 'anime-detail') {
-      if (router.currentRoute.value.params.id !== id) {
-        await router.replace({ name: 'anime-detail', params: { id } })
-      }
-    }
+
     restoreLayerUi(store.topLayer?.key, { posterFallback: parentArt })
     if (parentArt) posterSrc.value = parentArt
     updateTabIndicator()
   }, CLOSE_MS + 40)
+}
+
+/**
+ * Restore CV/person hidden while browsing an anime work opened from that person.
+ * Never flash the parent anime: person surface covers immediately.
+ */
+async function resumeSuspendedPersonFromAnime() {
+  if (!personOverlay.hasSuspendedPerson) return false
+  const personId = personOverlay.detail?.id || personOverlay.seed?.id
+  if (!personId) return false
+  const returnAnime = personOverlay.returnAnimeId
+
+  // Silently unwind anime layers pushed after the person hop (e.g. [X, Y] → [X]).
+  // Do not run flyer/parent UI handoff — that is what caused the "first anime flash".
+  while (store.canPopDetail) {
+    const removed = store.applyStackPop()
+    forgetLayerUi(removed?.key)
+  }
+  store.phase = 'open'
+  store.expandMode = 'list'
+
+  // Keep original anime under person when it matches returnAnimeId; otherwise drop anime chrome.
+  if (returnAnime && store.activeId === returnAnime) {
+    restoreLayerUi(store.topLayer?.key)
+    contentReady.value = true
+    settled.value = true
+  } else if (store.open) {
+    store.finishClose()
+    settled.value = false
+    contentReady.value = false
+    flyerImage.value = ''
+    posterSrc.value = ''
+    bannerSrc.value = ''
+  }
+
+  personOverlay.resume()
+  const routeName = personOverlay.routeNameFor(personId)
+  if (routeName && (route.name !== routeName || route.params.id !== personId)) {
+    await router.replace({ name: routeName, params: { id: personId } })
+  }
+  await nextTick()
+  updateTabIndicator()
+  return true
 }
 
 /** Fully dismiss overlay to list (X button / final back). */
@@ -794,6 +833,11 @@ async function dismissToList() {
     const shouldNavigate = router.currentRoute.value.name === 'anime-detail'
     // Flyer is already sitting on the card; reveal card under it then unmount.
     document.documentElement.classList.remove('detail-flight-active')
+    // Full list dismiss also drops any person suspended under this anime chain.
+    if (personOverlay.hasSuspendedPerson || personOverlay.open) {
+      personOverlay.finishClose()
+      personOverlay.clearReturn()
+    }
     store.finishClose()
     closing = false
     settled.value = false
@@ -809,6 +853,16 @@ async function dismissToList() {
 
 async function closeOverlay() {
   if (!store.open || store.phase === 'collapsing' || store.phase === 'returning' || closing) return
+
+  // Anime work opened from CV/person: always restore person first (never flash parent anime).
+  if (personOverlay.hasSuspendedPerson) {
+    closing = true
+    if (animTimer) clearTimeout(animTimer)
+    document.documentElement.classList.remove('detail-flight-active')
+    await resumeSuspendedPersonFromAnime()
+    closing = false
+    return
+  }
 
   // Back button: previous detail if stacked, else list.
   // Always pop the in-app stack first and sync the route with replace.
