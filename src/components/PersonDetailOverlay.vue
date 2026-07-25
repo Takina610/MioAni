@@ -25,10 +25,11 @@ const detailStore = useDetailOverlayStore()
 const route = useRoute()
 const router = useRouter()
 
-const summaryExpanded = ref(false)
-const worksExpanded = ref(false)
-const voiceRolesExpanded = ref(false)
-const sectionAnimating = ref<Record<'works' | 'roles', boolean>>({ works: false, roles: false })
+type PersonTab = 'profile' | 'works' | 'voices' | 'comments'
+const tab = ref<PersonTab>('profile')
+const tabsRef = ref<HTMLElement | null>(null)
+const indicatorStyle = ref({ width: '0px', transform: 'translateX(0px)' })
+const metaExpanded = ref(false)
 const summaryTranslation = ref('')
 const summaryTranslating = ref(false)
 const summaryTranslateError = ref('')
@@ -42,20 +43,17 @@ const worksSentinelRef = ref<HTMLElement | null>(null)
 const rolesSentinelRef = ref<HTMLElement | null>(null)
 const commentsSentinelRef = ref<HTMLElement | null>(null)
 const personScrollRef = ref<HTMLElement | null>(null)
-const worksTrackRef = ref<HTMLElement | null>(null)
-const rolesTrackRef = ref<HTMLElement | null>(null)
 const personSurfaceRef = ref<HTMLElement | null>(null)
 const personScrimRef = ref<HTMLElement | null>(null)
 const personRevealOrigin = ref({ x: 50, y: 42 })
 const PERSON_REVEAL_MS = 720
+const EXTRA_ENTER_BATCH = 12
 let personAnimTimer: ReturnType<typeof window.setTimeout> | null = null
 let personClosing = false
 let personExpandToken = 0
 let personExpandRunning = false
-type HorizontalKind = 'works' | 'roles'
-const COLLAPSED_CARD_COUNT = 8
 let extraObserver: IntersectionObserver | null = null
-let scrollPollTimer: ReturnType<typeof window.setInterval> | null = null
+let userScrollEpoch = 0
 let lastObservedScrollTop = 0
 let lastObservedScrollHeight = 0
 const lastExtraTriggerTop = {
@@ -68,15 +66,10 @@ const lastExtraTriggerEpoch = {
   roles: 0,
   comments: 0,
 }
-const horizontalIntentReady = {
-  works: false,
-  roles: false,
-}
-const lastHorizontalIntentAt = {
-  works: 0,
-  roles: 0,
-}
-let userScrollEpoch = 0
+/** Only newly appended cards play enter animation (stable keys keep old ones still). */
+const worksEnterFrom = ref(0)
+const rolesEnterFrom = ref(0)
+const commentsEnterFrom = ref(0)
 
 const display = computed(() => store.detail || store.seed)
 const kindLabel = computed(() => (store.kind === 'character' ? '角色' : '人物'))
@@ -159,43 +152,43 @@ const summaryParagraphs = computed(() => {
   return [normalized]
 })
 
-const summaryLong = computed(() => {
-  const text = summaryParagraphs.value.join('')
-  return text.length > 280 || summaryParagraphs.value.length > 3
-})
-
-const summaryPreview = computed(() => {
-  if (!summaryLong.value || summaryExpanded.value) return summaryParagraphs.value
-  const joined = summaryParagraphs.value
-  if (joined.length > 2) return joined.slice(0, 2)
-  const first = joined[0] || ''
-  if (first.length <= 220) return joined
-  return [`${first.slice(0, 220).trim()}…`]
-})
-
 const works = computed(() => store.detail?.works || [])
 const voiceRoles = computed(() => store.detail?.voiceRoles || [])
 const comments = computed(() => store.detail?.comments || [])
+const personTabs = computed(() => {
+  const tabs: { id: PersonTab; label: string }[] = [
+    { id: 'profile', label: '简介' },
+    { id: 'works', label: store.kind === 'character' ? '出演' : '作品' },
+  ]
+  if (store.kind === 'person') tabs.push({ id: 'voices', label: '演出角色' })
+  if (display.value?.source === 'bangumi') tabs.push({ id: 'comments', label: '吐槽' })
+  return tabs
+})
 const emptySummaryMessage = computed(() => (
   display.value?.source === 'bangumi' && facts.value.length > 1
     ? 'Bangumi 官网暂无独立简介，已有资料已完整整理在「基本资料」中。'
     : `该${kindLabel.value}暂无简介资料。`
 ))
-const worksCanCollapse = computed(() => works.value.length > COLLAPSED_CARD_COUNT)
-const voiceRolesCanCollapse = computed(() => voiceRoles.value.length > COLLAPSED_CARD_COUNT)
-const worksToggleLabel = computed(() => {
-  if (worksExpanded.value) return '收起'
-  const total = store.detail?.worksTotal || works.value.length
-  return `展开更多${total > COLLAPSED_CARD_COUNT ? ` · 共 ${total} 部` : ''}`
-})
-const voiceRolesToggleLabel = computed(() => {
-  if (voiceRolesExpanded.value) return '收起'
-  const total = store.detail?.voiceRolesTotal || voiceRoles.value.length
-  return `展开更多${total > COLLAPSED_CARD_COUNT ? ` · 共 ${total} 个` : ''}`
-})
 const worksHeading = computed(() => (store.kind === 'character' ? '出演番剧' : '制作作品'))
 const worksKicker = computed(() => (store.kind === 'character' ? 'APPEARANCES' : 'WORKS'))
 const summaryCanTranslate = computed(() => shouldOfferTranslation(store.detail?.summary))
+/** Soft-enter panel key: re-animates on tab switch / first payload, not every infinite-scroll append. */
+const personPanelKey = computed(() => {
+  const id = display.value?.id || 'person'
+  if (tab.value === 'profile') {
+    return `${id}-profile-${store.loading || store.loadingProfile ? 'x' : 'd'}`
+  }
+  if (tab.value === 'works') {
+    const pending = store.loadingWorks && !works.value.length
+    return `${id}-works-${pending ? 'x' : 'd'}`
+  }
+  if (tab.value === 'voices') {
+    const pending = store.loadingVoiceRoles && !voiceRoles.value.length
+    return `${id}-voices-${pending ? 'x' : 'd'}`
+  }
+  const pending = store.loadingComments && !comments.value.length
+  return `${id}-comments-${pending ? 'x' : 'd'}`
+})
 
 function joinContent(values: unknown[]): string {
   return [...new Set(values.map(displayText).filter(Boolean))]
@@ -283,10 +276,6 @@ function resetExtraTriggerState() {
   userScrollEpoch = 0
   lastObservedScrollTop = 0
   lastObservedScrollHeight = 0
-  horizontalIntentReady.works = false
-  horizontalIntentReady.roles = false
-  lastHorizontalIntentAt.works = 0
-  lastHorizontalIntentAt.roles = 0
 }
 
 function markUserScrollIntent() {
@@ -358,104 +347,47 @@ async function translateData(key: string, text: unknown) {
   }
 }
 
-function trackForKind(kind: HorizontalKind) {
-  return kind === 'works' ? worksTrackRef.value : rolesTrackRef.value
-}
-
-async function toggleWorksExpanded() {
-  await animateSectionToggle('works')
-}
-
-async function toggleVoiceRolesExpanded() {
-  await animateSectionToggle('roles')
-}
-
-async function animateSectionToggle(kind: HorizontalKind) {
-  if (sectionAnimating.value[kind]) return
-  const state = kind === 'works' ? worksExpanded : voiceRolesExpanded
-  const track = trackForKind(kind)
-  const nextExpanded = !state.value
-  if (
-    !track
-    || typeof track.animate !== 'function'
-    || window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  ) {
-    state.value = nextExpanded
-    await nextTick()
-    resetExtraObserver()
+function updateTabIndicator() {
+  const root = tabsRef.value
+  if (!root) return
+  const active = root.querySelector<HTMLElement>('button.active')
+  if (!active) {
+    indicatorStyle.value = { width: '0px', transform: 'translateX(0px)' }
     return
   }
-
-  sectionAnimating.value = { ...sectionAnimating.value, [kind]: true }
-  const from = track.getBoundingClientRect().height
-  try {
-    if (nextExpanded) {
-      state.value = true
-      await nextTick()
-    } else {
-      state.value = false
-      await nextTick()
-      const collapsedHeight = track.getBoundingClientRect().height
-      state.value = true
-      await nextTick()
-      track.style.overflow = 'hidden'
-      const animation = track.animate(
-        [{ height: `${from}px` }, { height: `${collapsedHeight}px` }],
-        { duration: 380, easing: 'cubic-bezier(.22,.8,.24,1)' },
-      )
-      await animation.finished.catch(() => undefined)
-      state.value = false
-      return
-    }
-
-    const expandedHeight = track.getBoundingClientRect().height
-    track.style.overflow = 'hidden'
-    const animation = track.animate(
-      [{ height: `${from}px` }, { height: `${expandedHeight}px` }],
-      { duration: 380, easing: 'cubic-bezier(.22,.8,.24,1)' },
-    )
-    await animation.finished.catch(() => undefined)
-  } finally {
-    track.style.removeProperty('height')
-    track.style.removeProperty('overflow')
-    sectionAnimating.value = { ...sectionAnimating.value, [kind]: false }
-    await nextTick()
-    resetExtraObserver()
+  indicatorStyle.value = {
+    width: `${active.offsetWidth}px`,
+    transform: `translateX(${active.offsetLeft}px)`,
   }
 }
 
-function markHorizontalIntent(kind: HorizontalKind, event: Event) {
-  if ((kind === 'works' && store.loadingWorks) || (kind === 'roles' && store.loadingVoiceRoles)) return
-  const now = Date.now()
-  if (event.type === 'wheel' && now - lastHorizontalIntentAt[kind] < 650) return
-  lastHorizontalIntentAt[kind] = now
-  horizontalIntentReady[kind] = true
-  // At the hard right edge a new wheel/keyboard gesture may not emit another scroll event.
-  // Reuse the same boundary check here so every deliberate gesture can request exactly one page.
-  onHorizontalTrackScroll(kind, event)
+function ensureTabData(next: PersonTab) {
+  if (next === 'works') void store.ensureWorks()
+  else if (next === 'voices') void store.ensureVoiceRoles()
+  else if (next === 'comments') void store.ensureComments()
 }
 
-function onHorizontalTrackScroll(kind: HorizontalKind, event: Event) {
-  if (typeof window === 'undefined' || !window.matchMedia('(max-width: 640px)').matches) return
-  const track = event.currentTarget as HTMLElement | null
-  if (!track) return
-  const remaining = track.scrollWidth - track.scrollLeft - track.clientWidth
-  if (remaining > Math.max(120, track.clientWidth * .35)) return
-  if (!horizontalIntentReady[kind]) return
-  horizontalIntentReady[kind] = false
-  if (kind === 'works') void store.loadMoreWorks()
-  else void store.loadMoreVoiceRoles()
+function selectTab(next: PersonTab) {
+  if (tab.value === next) return
+  if (!personTabs.value.some((item) => item.id === next)) return
+  tab.value = next
+  if (next !== 'profile') metaExpanded.value = false
+  ensureTabData(next)
+  void nextTick().then(() => {
+    updateTabIndicator()
+    resetExtraObserver()
+  })
 }
 
 function resetExtraObserver() {
   extraObserver?.disconnect()
   extraObserver = null
-  const root = document.querySelector('.person-scroll') as HTMLElement | null
+  const root = personScrollRef.value || document.querySelector('.person-scroll') as HTMLElement | null
   extraObserver = new IntersectionObserver((entries) => {
     if (entries.some((entry) => entry.isIntersecting) && root) {
       onPersonScroll({ currentTarget: root } as unknown as Event)
     }
-  }, { root, rootMargin: '120px 0px 120px 0px' })
+  }, { root, rootMargin: '160px 0px 160px 0px' })
   ;[worksSentinelRef.value, rolesSentinelRef.value, commentsSentinelRef.value]
     .filter((el): el is HTMLElement => Boolean(el))
     .forEach((el) => extraObserver?.observe(el))
@@ -468,6 +400,58 @@ function isNearScrollRoot(el: HTMLElement | null, root: HTMLElement | null) {
   return target.top < area.bottom + 180 && target.bottom > area.top - 40
 }
 
+function maybeLoadMore(
+  kind: 'works' | 'roles' | 'comments',
+  node: HTMLElement | null,
+  root: HTMLElement | null,
+  top: number,
+  action: () => void | Promise<void>,
+) {
+  if (!isNearScrollRoot(node, root)) return
+  if (userScrollEpoch <= lastExtraTriggerEpoch[kind]) return
+  if (Math.abs(top - lastExtraTriggerTop[kind]) <= 80) return
+  lastExtraTriggerTop[kind] = top
+  lastExtraTriggerEpoch[kind] = userScrollEpoch
+  void action()
+}
+
+async function loadMoreWorksWithEnter() {
+  if (store.loadingWorks || !store.detail?.worksHasMore) return
+  worksEnterFrom.value = works.value.length
+  await store.loadMoreWorks()
+  // Sentinel may still be in view after append; force another pass (same as anime detail).
+  await nextTick()
+  const root = personScrollRef.value
+  if (isNearScrollRoot(worksSentinelRef.value, root)) {
+    lastExtraTriggerEpoch.works = Math.max(0, lastExtraTriggerEpoch.works - 1)
+    void loadMoreWorksWithEnter()
+  }
+}
+
+async function loadMoreVoiceRolesWithEnter() {
+  if (store.loadingVoiceRoles || !store.detail?.voiceRolesHasMore) return
+  rolesEnterFrom.value = voiceRoles.value.length
+  await store.loadMoreVoiceRoles()
+  await nextTick()
+  const root = personScrollRef.value
+  if (isNearScrollRoot(rolesSentinelRef.value, root)) {
+    lastExtraTriggerEpoch.roles = Math.max(0, lastExtraTriggerEpoch.roles - 1)
+    void loadMoreVoiceRolesWithEnter()
+  }
+}
+
+async function loadMoreCommentsWithEnter() {
+  if (store.loadingComments || !store.detail?.commentsHasMore) return
+  commentsEnterFrom.value = comments.value.length
+  await store.loadMoreComments()
+  await nextTick()
+  const root = personScrollRef.value
+  if (isNearScrollRoot(commentsSentinelRef.value, root)) {
+    lastExtraTriggerEpoch.comments = Math.max(0, lastExtraTriggerEpoch.comments - 1)
+    void loadMoreCommentsWithEnter()
+  }
+}
+
 function onPersonScroll(event: Event) {
   const root = event.currentTarget as HTMLElement | null
   if (root && root.scrollHeight === lastObservedScrollHeight && Math.abs(root.scrollTop - lastObservedScrollTop) > 10) {
@@ -477,36 +461,31 @@ function onPersonScroll(event: Event) {
     lastObservedScrollTop = root.scrollTop
     lastObservedScrollHeight = root.scrollHeight
   }
-  const worksNode = worksSentinelRef.value || document.querySelector('.person-panel--works .person-load-more') as HTMLElement | null
-  const rolesNode = rolesSentinelRef.value || document.querySelector('.person-panel--voices .person-load-more') as HTMLElement | null
-  const commentsNode = commentsSentinelRef.value || document.querySelector('.person-panel--comments .person-load-more') as HTMLElement | null
   const top = root?.scrollTop || 0
-  if (
-    isNearScrollRoot(worksNode, root)
-    && userScrollEpoch > lastExtraTriggerEpoch.works
-    && Math.abs(top - lastExtraTriggerTop.works) > 80
-  ) {
-    lastExtraTriggerTop.works = top
-    lastExtraTriggerEpoch.works = userScrollEpoch
-    void store.loadMoreWorks()
-  }
-  if (
-    isNearScrollRoot(rolesNode, root)
-    && userScrollEpoch > lastExtraTriggerEpoch.roles
-    && Math.abs(top - lastExtraTriggerTop.roles) > 80
-  ) {
-    lastExtraTriggerTop.roles = top
-    lastExtraTriggerEpoch.roles = userScrollEpoch
-    void store.loadMoreVoiceRoles()
-  }
-  if (
-    isNearScrollRoot(commentsNode, root)
-    && userScrollEpoch > lastExtraTriggerEpoch.comments
-    && Math.abs(top - lastExtraTriggerTop.comments) > 80
-  ) {
-    lastExtraTriggerTop.comments = top
-    lastExtraTriggerEpoch.comments = userScrollEpoch
-    void store.loadMoreComments()
+  if (tab.value === 'works') {
+    maybeLoadMore(
+      'works',
+      worksSentinelRef.value || document.querySelector('.person-panel--works .person-infinite-sentinel') as HTMLElement | null,
+      root,
+      top,
+      loadMoreWorksWithEnter,
+    )
+  } else if (tab.value === 'voices') {
+    maybeLoadMore(
+      'roles',
+      rolesSentinelRef.value || document.querySelector('.person-panel--voices .person-infinite-sentinel') as HTMLElement | null,
+      root,
+      top,
+      loadMoreVoiceRolesWithEnter,
+    )
+  } else if (tab.value === 'comments') {
+    maybeLoadMore(
+      'comments',
+      commentsSentinelRef.value || document.querySelector('.person-panel--comments .person-infinite-sentinel') as HTMLElement | null,
+      root,
+      top,
+      loadMoreCommentsWithEnter,
+    )
   }
 }
 
@@ -521,15 +500,6 @@ function bindPersonScroll() {
   el.addEventListener('scroll', onPersonScroll, { passive: true })
   el.addEventListener('wheel', markUserScrollIntent, { passive: true })
   el.addEventListener('touchmove', markUserScrollIntent, { passive: true })
-}
-
-function startScrollPolling() {
-  if (scrollPollTimer) window.clearInterval(scrollPollTimer)
-  scrollPollTimer = window.setInterval(() => {
-    const root = personScrollRef.value
-    if (!store.open || !root) return
-    onPersonScroll({ currentTarget: root } as unknown as Event)
-  }, 450)
 }
 
 function thumbFromEvent(event?: Event): Element | null {
@@ -581,16 +551,46 @@ async function openVoiceRoleSubject(role: PersonVoiceRole, event?: Event) {
 watch(
   () => store.detail?.id,
   async () => {
-    summaryExpanded.value = false
-    worksExpanded.value = false
-    voiceRolesExpanded.value = false
-    sectionAnimating.value = { works: false, roles: false }
+    tab.value = 'profile'
+    metaExpanded.value = false
+    worksEnterFrom.value = 0
+    rolesEnterFrom.value = 0
+    commentsEnterFrom.value = 0
     resetTranslationState()
     resetExtraTriggerState()
     await nextTick()
+    updateTabIndicator()
     resetExtraObserver()
   },
 )
+
+// First paint of a tab: animate the whole first page once.
+watch(
+  () => [tab.value, works.value.length, voiceRoles.value.length, comments.value.length] as const,
+  ([nextTab, worksLen, rolesLen, commentsLen], prev) => {
+    if (nextTab === 'works' && worksLen > 0 && (prev?.[0] !== 'works' || prev?.[1] === 0)) {
+      worksEnterFrom.value = 0
+    }
+    if (nextTab === 'voices' && rolesLen > 0 && (prev?.[0] !== 'voices' || prev?.[2] === 0)) {
+      rolesEnterFrom.value = 0
+    }
+    if (nextTab === 'comments' && commentsLen > 0 && (prev?.[0] !== 'comments' || prev?.[3] === 0)) {
+      commentsEnterFrom.value = 0
+    }
+  },
+)
+
+watch(tab, async (next) => {
+  ensureTabData(next)
+  await nextTick()
+  updateTabIndicator()
+  resetExtraObserver()
+})
+
+watch(personTabs, (tabs) => {
+  if (!tabs.some((item) => item.id === tab.value)) tab.value = 'profile'
+  void nextTick().then(updateTabIndicator)
+})
 
 watch(
   () => [
@@ -600,12 +600,13 @@ watch(
     store.loading,
     works.value.length,
     voiceRoles.value.length,
+    comments.value.length,
+    tab.value,
   ] as const,
   async () => {
     await nextTick()
     if (store.open) {
       bindPersonScroll()
-      startScrollPolling()
       resetExtraObserver()
     }
   },
@@ -615,8 +616,6 @@ watch(
   () => store.open,
   async (open) => {
     if (!open) {
-      if (scrollPollTimer) window.clearInterval(scrollPollTimer)
-      scrollPollTimer = null
       if (personAnimTimer) {
         window.clearTimeout(personAnimTimer)
         personAnimTimer = null
@@ -628,8 +627,8 @@ watch(
     }
     await nextTick()
     bindPersonScroll()
-    startScrollPolling()
     resetExtraObserver()
+    updateTabIndicator()
   },
 )
 
@@ -782,8 +781,8 @@ onMounted(() => {
   }
   void nextTick().then(() => {
     bindPersonScroll()
-    startScrollPolling()
     resetExtraObserver()
+    updateTabIndicator()
   })
 })
 
@@ -792,7 +791,6 @@ onUnmounted(() => {
   personScrollRef.value?.removeEventListener('scroll', onPersonScroll)
   personScrollRef.value?.removeEventListener('wheel', markUserScrollIntent)
   personScrollRef.value?.removeEventListener('touchmove', markUserScrollIntent)
-  if (scrollPollTimer) window.clearInterval(scrollPollTimer)
   if (personAnimTimer) window.clearTimeout(personAnimTimer)
   extraObserver?.disconnect()
 })
@@ -946,12 +944,33 @@ onUnmounted(() => {
           <div
             v-else
             class="person-body"
-            :class="{
-              'has-secondary': store.kind === 'person' || display.source === 'bangumi',
-            }"
+            :class="{ 'is-meta-expanded': metaExpanded }"
           >
-            <!-- Main column: full profile -->
-            <section class="person-panel person-panel--profile" aria-labelledby="person-profile-title">
+            <!-- Same order as anime detail-content: main first, meta second; mobile reorders via CSS. -->
+            <div class="person-main">
+              <div ref="tabsRef" class="person-tabs sliding-tabs" role="tablist" aria-label="人物详情分区">
+                <button
+                  v-for="item in personTabs"
+                  :key="item.id"
+                  type="button"
+                  role="tab"
+                  :aria-selected="tab === item.id"
+                  :class="{ active: tab === item.id }"
+                  @click="selectTab(item.id)"
+                >
+                  {{ item.label }}
+                </button>
+                <span class="sliding-tabs__indicator" :style="indicatorStyle" aria-hidden="true" />
+              </div>
+
+            <Transition name="detail-soft" mode="out-in">
+            <div :key="personPanelKey" class="person-main__panel">
+            <!-- Profile tab -->
+            <section
+              v-if="tab === 'profile'"
+              class="person-panel person-panel--profile"
+              aria-labelledby="person-profile-title"
+            >
               <header class="person-panel__head">
                 <div>
                   <span>PROFILE</span>
@@ -979,28 +998,15 @@ onUnmounted(() => {
               </div>
 
               <template v-else-if="summaryParagraphs.length">
-                <div
-                  class="person-bio"
-                  :class="{ 'is-collapsed': summaryLong && !summaryExpanded }"
-                >
+                <div class="person-bio">
                   <p
-                    v-for="(para, idx) in summaryPreview"
+                    v-for="(para, idx) in summaryParagraphs"
                     :key="`${idx}-${para.slice(0, 12)}`"
                     class="person-bio__p"
                   >
                     {{ para }}
                   </p>
                 </div>
-                <button
-                  v-if="summaryLong"
-                  type="button"
-                  class="person-bio-toggle"
-                  :aria-expanded="summaryExpanded"
-                  @click="summaryExpanded = !summaryExpanded"
-                >
-                  {{ summaryExpanded ? '收起简介' : '展开全部简介' }}
-                  <PhCaretDown :size="14" weight="bold" :class="{ 'is-open': summaryExpanded }" />
-                </button>
                 <div v-if="summaryTranslation || summaryTranslateError" class="person-translation">
                   <p v-if="summaryTranslation">{{ summaryTranslation }}</p>
                   <p v-else class="person-translation__error">{{ summaryTranslateError }}</p>
@@ -1010,7 +1016,11 @@ onUnmounted(() => {
               <p v-else class="person-empty">{{ emptySummaryMessage }}</p>
             </section>
 
-            <section class="person-panel person-panel--works" aria-labelledby="person-works-title">
+            <section
+              v-else-if="tab === 'works'"
+              class="person-panel person-panel--works"
+              aria-labelledby="person-works-title"
+            >
               <header class="person-panel__head">
                 <div>
                   <span>{{ worksKicker }}</span>
@@ -1019,30 +1029,28 @@ onUnmounted(() => {
                 <p v-if="works.length" class="person-panel__count">{{ worksCountLabel }}</p>
               </header>
 
-              <div v-if="store.loading" class="person-card-skeleton" aria-hidden="true">
+              <div
+                v-if="(store.loading || store.loadingWorks) && !works.length"
+                class="person-card-skeleton"
+                aria-hidden="true"
+              >
                 <i /><i /><i />
               </div>
               <div
-                v-if="!store.loading && works.length"
+                v-else-if="works.length"
                 class="person-track-shell"
               >
                 <div
                   id="person-works-grid"
-                  ref="worksTrackRef"
-                  class="person-work-grid"
-                  :class="{ 'is-expanded': worksExpanded }"
-                  tabindex="0"
-                  :aria-label="`${worksHeading}横向列表`"
-                  @wheel.passive="markHorizontalIntent('works', $event)"
-                  @touchstart.passive="markHorizontalIntent('works', $event)"
-                  @pointerdown="markHorizontalIntent('works', $event)"
-                  @keydown="markHorizontalIntent('works', $event)"
-                  @scroll.passive="onHorizontalTrackScroll('works', $event)"
+                  class="person-work-grid is-expanded"
+                  :aria-label="worksHeading"
                 >
                   <article
-                    v-for="work in works"
+                    v-for="(work, idx) in works"
                     :key="work.id"
                     class="person-work-card"
+                    :class="{ 'person-extra-item': idx >= worksEnterFrom }"
+                    :style="idx >= worksEnterFrom ? { '--enter-i': (idx - worksEnterFrom) % EXTRA_ENTER_BATCH } : undefined"
                   >
                     <button
                       type="button"
@@ -1076,51 +1084,28 @@ onUnmounted(() => {
                       {{ dataTranslations[workTranslationKey(work)] || dataTranslateErrors[workTranslationKey(work)] }}
                     </p>
                   </article>
-                  <article v-if="store.loadingWorks" class="person-track-skeleton" aria-label="正在继续加载作品">
-                    <i /><span><i /><i /><i /></span>
-                  </article>
-                  <button
-                    v-if="store.detail?.worksHasMore"
-                    type="button"
-                    class="person-track-more"
-                    :disabled="store.loadingWorks"
-                    @click="store.loadMoreWorks"
-                  >
-                    {{ store.loadingWorks ? '加载中…' : '继续滑动加载' }}
-                  </button>
+                </div>
+                <div
+                  v-if="store.detail?.worksHasMore"
+                  ref="worksSentinelRef"
+                  class="person-infinite-sentinel"
+                  aria-hidden="true"
+                />
+                <div
+                  v-if="store.loadingWorks && works.length"
+                  class="person-card-skeleton person-card-skeleton--append"
+                  aria-hidden="true"
+                >
+                  <i /><i /><i />
                 </div>
               </div>
-              <button
-                v-if="!store.loading && worksCanCollapse"
-                type="button"
-                class="person-section-toggle"
-                :aria-expanded="worksExpanded"
-                :aria-busy="sectionAnimating.works"
-                :disabled="sectionAnimating.works"
-                aria-controls="person-works-grid"
-                @click="toggleWorksExpanded"
-              >
-                {{ worksToggleLabel }}
-                <PhCaretDown :size="15" weight="bold" :class="{ 'is-open': worksExpanded }" />
-              </button>
-              <button
-                v-if="store.detail?.worksHasMore && worksExpanded"
-                ref="worksSentinelRef"
-                type="button"
-                class="person-load-more"
-                :aria-busy="store.loadingWorks"
-                :disabled="store.loadingWorks"
-                @click="store.loadMoreWorks"
-              >
-                {{ store.loadingWorks ? '正在继续加载…' : '向下滚动加载更多' }}
-              </button>
-              <p v-if="!store.loading && !works.length" class="person-empty">
+              <p v-else-if="!store.loading && !store.loadingWorks" class="person-empty">
                 暂无{{ worksHeading }}资料。
               </p>
             </section>
 
             <section
-              v-if="store.kind === 'person' && (store.loading || voiceRoles.length)"
+              v-else-if="tab === 'voices'"
               class="person-panel person-panel--voices"
               aria-labelledby="person-voices-title"
             >
@@ -1132,30 +1117,28 @@ onUnmounted(() => {
                 <p v-if="voiceRoles.length" class="person-panel__count">{{ voiceRolesCountLabel }}</p>
               </header>
 
-              <div v-if="store.loading" class="person-card-skeleton" aria-hidden="true">
+              <div
+                v-if="(store.loading || store.loadingVoiceRoles) && !voiceRoles.length"
+                class="person-card-skeleton"
+                aria-hidden="true"
+              >
                 <i /><i /><i />
               </div>
               <div
-                v-if="!store.loading && voiceRoles.length"
+                v-else-if="voiceRoles.length"
                 class="person-track-shell"
               >
                 <div
                   id="person-roles-grid"
-                  ref="rolesTrackRef"
-                  class="person-role-grid"
-                  :class="{ 'is-expanded': voiceRolesExpanded }"
-                  tabindex="0"
-                  aria-label="演出角色横向列表"
-                  @wheel.passive="markHorizontalIntent('roles', $event)"
-                  @touchstart.passive="markHorizontalIntent('roles', $event)"
-                  @pointerdown="markHorizontalIntent('roles', $event)"
-                  @keydown="markHorizontalIntent('roles', $event)"
-                  @scroll.passive="onHorizontalTrackScroll('roles', $event)"
+                  class="person-role-grid is-expanded"
+                  aria-label="演出角色"
                 >
                   <article
-                    v-for="role in voiceRoles"
+                    v-for="(role, idx) in voiceRoles"
                     :key="`${role.id}-${role.subjectId || ''}`"
                     class="person-role"
+                    :class="{ 'person-extra-item': idx >= rolesEnterFrom }"
+                    :style="idx >= rolesEnterFrom ? { '--enter-i': (idx - rolesEnterFrom) % EXTRA_ENTER_BATCH } : undefined"
                   >
                   <button type="button" class="person-role__main" @click="openVoiceRole(role, $event)">
                     <span class="person-role__media">
@@ -1207,49 +1190,26 @@ onUnmounted(() => {
                     {{ dataTranslations[roleTranslationKey(role)] || dataTranslateErrors[roleTranslationKey(role)] }}
                   </p>
                   </article>
-                  <article v-if="store.loadingVoiceRoles" class="person-track-skeleton" aria-label="正在继续加载角色">
-                    <i /><span><i /><i /><i /></span>
-                  </article>
-                  <button
-                    v-if="store.detail?.voiceRolesHasMore"
-                    type="button"
-                    class="person-track-more"
-                    :disabled="store.loadingVoiceRoles"
-                    @click="store.loadMoreVoiceRoles"
-                  >
-                    {{ store.loadingVoiceRoles ? '加载中…' : '继续滑动加载' }}
-                  </button>
+                </div>
+                <div
+                  v-if="store.detail?.voiceRolesHasMore"
+                  ref="rolesSentinelRef"
+                  class="person-infinite-sentinel"
+                  aria-hidden="true"
+                />
+                <div
+                  v-if="store.loadingVoiceRoles && voiceRoles.length"
+                  class="person-card-skeleton person-card-skeleton--append"
+                  aria-hidden="true"
+                >
+                  <i /><i /><i />
                 </div>
               </div>
-              <button
-                v-if="!store.loading && voiceRolesCanCollapse"
-                type="button"
-                class="person-section-toggle"
-                :aria-expanded="voiceRolesExpanded"
-                :aria-busy="sectionAnimating.roles"
-                :disabled="sectionAnimating.roles"
-                aria-controls="person-roles-grid"
-                @click="toggleVoiceRolesExpanded"
-              >
-                {{ voiceRolesToggleLabel }}
-                <PhCaretDown :size="15" weight="bold" :class="{ 'is-open': voiceRolesExpanded }" />
-              </button>
-              <button
-                v-if="store.detail?.voiceRolesHasMore && voiceRolesExpanded"
-                ref="rolesSentinelRef"
-                type="button"
-                class="person-load-more"
-                :aria-busy="store.loadingVoiceRoles"
-                :disabled="store.loadingVoiceRoles"
-                @click="store.loadMoreVoiceRoles"
-              >
-                {{ store.loadingVoiceRoles ? '正在继续加载…' : '向下滚动加载更多' }}
-              </button>
-              <p v-if="!store.loading && !voiceRoles.length" class="person-empty">暂无演出角色资料。</p>
+              <p v-else-if="!store.loading && !store.loadingVoiceRoles" class="person-empty">暂无演出角色资料。</p>
             </section>
 
             <section
-              v-if="display.source === 'bangumi'"
+              v-else-if="tab === 'comments'"
               class="person-panel person-panel--comments"
               aria-labelledby="person-comments-title"
             >
@@ -1281,7 +1241,11 @@ onUnmounted(() => {
                   v-for="(comment, index) in comments"
                   :key="comment.id"
                   class="person-comment"
-                  :class="index % 2 === 0 ? 'is-left' : 'is-right'"
+                  :class="[
+                    index % 2 === 0 ? 'is-left' : 'is-right',
+                    { 'person-extra-item': index >= commentsEnterFrom },
+                  ]"
+                  :style="index >= commentsEnterFrom ? { '--enter-i': (index - commentsEnterFrom) % EXTRA_ENTER_BATCH } : undefined"
                 >
                   <header class="person-comment__head">
                     <strong>{{ comment.author }}</strong>
@@ -1340,6 +1304,12 @@ onUnmounted(() => {
                 </article>
               </div>
               <div
+                v-if="store.detail?.commentsHasMore"
+                ref="commentsSentinelRef"
+                class="person-infinite-sentinel"
+                aria-hidden="true"
+              />
+              <div
                 v-if="store.loadingComments && comments.length"
                 class="person-comment-skeletons person-comment-skeletons--append"
                 aria-label="正在继续加载 Bangumi 吐槽"
@@ -1353,63 +1323,70 @@ onUnmounted(() => {
                   </span>
                 </article>
               </div>
-              <button
-                v-if="store.detail?.commentsHasMore && !store.loadingComments"
-                ref="commentsSentinelRef"
-                type="button"
-                class="person-load-more"
-                :aria-busy="store.loadingComments"
-                @click="store.loadMoreComments"
-              >
-                继续加载吐槽（每次 20 条）
-              </button>
               <p v-if="!store.loading && !store.loadingComments && !comments.length" class="person-empty">暂时没有抓到用户吐槽。</p>
             </section>
+            </div>
+            </Transition>
+            </div>
 
             <!-- Side rail: structured facts (mirrors anime detail meta board) -->
-            <aside class="person-panel person-panel--meta" aria-label="基本资料">
-              <header class="person-panel__head">
-                <span>META</span>
-                <h2>基本资料</h2>
-              </header>
+            <div class="person-meta" :class="{ 'is-expanded': metaExpanded }" aria-label="基本资料">
+              <button
+                type="button"
+                class="person-meta__toggle"
+                :aria-expanded="metaExpanded"
+                @click="metaExpanded = !metaExpanded"
+              >
+                <span>基本资料</span>
+                <em v-for="chip in facts.slice(0, 2)" :key="`meta-chip-${chip.label}`">{{ chip.value }}</em>
+                <PhCaretDown class="person-meta__caret" :size="16" weight="bold" />
+              </button>
+              <div class="person-meta__panel">
+                <aside class="person-panel person-panel--meta">
+                  <header class="person-panel__head person-meta__head">
+                    <span>META</span>
+                    <h2>基本资料</h2>
+                  </header>
 
-              <div v-if="store.loading" class="person-meta-skeleton" aria-hidden="true">
-                <i /><i /><i /><i />
+                  <div v-if="store.loading" class="person-meta-skeleton" aria-hidden="true">
+                    <i /><i /><i /><i />
+                  </div>
+
+                  <dl v-else class="person-meta-list">
+                    <div v-for="fact in facts" :key="fact.label" class="person-meta-row">
+                      <dt>
+                        <PhUser v-if="fact.icon === 'user'" :size="14" />
+                        <PhCalendarBlank v-else-if="fact.icon === 'calendar'" :size="14" />
+                        <PhDrop v-else-if="fact.icon === 'drop'" :size="14" />
+                        <PhIdentificationCard v-else-if="fact.icon === 'id'" :size="14" />
+                        <PhBriefcase v-else :size="14" />
+                        {{ fact.label }}
+                      </dt>
+                      <dd>
+                        <span>{{ fact.value }}</span>
+                        <button
+                          v-if="shouldTranslateFact(fact.label, fact.value)"
+                          type="button"
+                          class="person-translate person-translate--meta"
+                          :disabled="dataTranslating[`fact:${fact.label}`]"
+                          @click="translateData(`fact:${fact.label}`, fact.value)"
+                        >
+                          <PhTranslate :size="12" weight="bold" />
+                          {{ dataTranslating[`fact:${fact.label}`] ? '翻译中' : dataTranslations[`fact:${fact.label}`] ? '隐藏翻译' : '翻译' }}
+                        </button>
+                        <small
+                          v-if="dataTranslations[`fact:${fact.label}`] || dataTranslateErrors[`fact:${fact.label}`]"
+                          class="person-meta-translation"
+                          :class="{ 'is-error': dataTranslateErrors[`fact:${fact.label}`] }"
+                        >
+                          {{ dataTranslations[`fact:${fact.label}`] || dataTranslateErrors[`fact:${fact.label}`] }}
+                        </small>
+                      </dd>
+                    </div>
+                  </dl>
+                </aside>
               </div>
-
-              <dl v-else class="person-meta-list">
-                <div v-for="fact in facts" :key="fact.label" class="person-meta-row">
-                  <dt>
-                    <PhUser v-if="fact.icon === 'user'" :size="14" />
-                    <PhCalendarBlank v-else-if="fact.icon === 'calendar'" :size="14" />
-                    <PhDrop v-else-if="fact.icon === 'drop'" :size="14" />
-                    <PhIdentificationCard v-else-if="fact.icon === 'id'" :size="14" />
-                    <PhBriefcase v-else :size="14" />
-                    {{ fact.label }}
-                  </dt>
-                  <dd>
-                    <span>{{ fact.value }}</span>
-                    <button
-                      v-if="shouldTranslateFact(fact.label, fact.value)"
-                      type="button"
-                      class="person-translate person-translate--meta"
-                      :disabled="dataTranslating[`fact:${fact.label}`]"
-                      @click="translateData(`fact:${fact.label}`, fact.value)"
-                    >
-                      <PhTranslate :size="12" weight="bold" />
-                      {{ dataTranslating[`fact:${fact.label}`] ? '翻译中' : dataTranslations[`fact:${fact.label}`] ? '隐藏翻译' : '翻译' }}
-                    </button>
-                    <small
-                      v-if="dataTranslations[`fact:${fact.label}`] || dataTranslateErrors[`fact:${fact.label}`]"
-                      class="person-meta-translation"
-                      :class="{ 'is-error': dataTranslateErrors[`fact:${fact.label}`] }"
-                    >
-                      {{ dataTranslations[`fact:${fact.label}`] || dataTranslateErrors[`fact:${fact.label}`] }}
-                    </small>
-                  </dd>
-                </div>
-              </dl>
-            </aside>
+            </div>
           </div>
         </div>
       </div>

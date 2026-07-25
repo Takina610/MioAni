@@ -626,10 +626,18 @@ function extractCommentReplyTo(html: string): string | undefined {
   return name || undefined
 }
 
+/** Bangumi emoji placeholders like (bgm39) from img alt or plain text. */
+function stripBangumiEmojiTokens(value: string): string {
+  return value
+    .replace(/\(\s*bgm\d+\s*\)/gi, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
+}
+
 /**
  * Plain-text cleanup after HTML quote nodes are gone.
  * - Drop "删除了回复"
  * - Drop leftover "回复 X：… 说: …" quote headers (markdown / failed strip)
+ * - Drop Bangumi emoji tokens (bgmN); empty-after-strip comments are discarded
  * - Normalize newlines: collapse 3+ blank lines; keep intentional paragraph breaks
  */
 function cleanCommentText(value: string): string {
@@ -638,16 +646,16 @@ function cleanCommentText(value: string): string {
     .replace(/^\s*>+\s?/gm, '')
     .split('\n')
     .map((raw) => {
-      const line = raw.replace(/[ \t]+/g, ' ').trim()
+      let line = stripBangumiEmojiTokens(raw.replace(/[ \t]+/g, ' ')).trim()
       if (!line || /^删除了回复$/.test(line)) return ''
 
       // Reply-quote chrome (JS \b is ASCII-only — do not use it after CJK).
       if (/^(?:回复|Re:)\s/iu.test(line) && /说[：:]/u.test(line)) {
         const parts = line.split(/说[：:]/u)
-        const body = (parts[parts.length - 1] || '').trim()
+        const body = stripBangumiEmojiTokens(parts[parts.length - 1] || '').trim()
         if (!body) return ''
         const beforeLast = parts.slice(0, -1).join('说:')
-        const quotedTail = beforeLast.split(/[：:]/u).pop()?.trim()
+        const quotedTail = stripBangumiEmojiTokens(beforeLast.split(/[：:]/u).pop() || '').trim()
         // Echo quote only — real body after "说:" that differs is kept.
         if (quotedTail && quotedTail === body) return ''
         return body
@@ -663,16 +671,26 @@ function cleanCommentText(value: string): string {
 
   const text = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
   if (!text || /^删除了回复$/.test(text)) return ''
+  // Pure emoji / whitespace floors should not render.
+  if (!stripBangumiEmojiTokens(text).trim()) return ''
   return text
 }
 
-/** Comment HTML → text: double <br> = paragraph; single <br> = soft break (space). */
+/**
+ * Comment HTML → text.
+ * Bangumi often inserts a single <br> between short lines; with pre-wrap that looks like
+ * an oversized blank. Treat one <br> as a space; only 2+ <br> (or </p><p>) become paragraphs.
+ * Emoji imgs (alt="(bgmN)") are dropped rather than kept as (bgmN) tokens.
+ */
 function commentHtmlToText(html: string): string {
   const prepared = html
     .replace(/(?:<br\s*\/?>\s*){2,}/gi, '\n\n')
-    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, ' ')
     .replace(/<\/p\s*>\s*<p\b[^>]*>/gi, '\n\n')
-    .replace(/<\/p\s*>/gi, '\n')
+    .replace(/<\/p\s*>/gi, '\n\n')
+    // Drop emoji images entirely (open-project keeps (bgmN); we hide them in this UI).
+    .replace(/<img\b[^>]*\balt=(["'])\s*\(bgm\d+\)\s*\1[^>]*>/gis, ' ')
+    .replace(/<img\b[^>]*\bsrc=(["'])[^"']*\/smile[^"']*\1[^>]*>/gis, ' ')
     .replace(/<img\b[^>]*\balt=(["'])(.*?)\1[^>]*>/gis, ' $2 ')
     .replace(/<[^>]+>/g, '')
   return cleanCommentText(decodeHtmlText(prepared))
@@ -1137,13 +1155,11 @@ function bangumiCoreFields(
 }
 
 async function fetchBangumiCharacter(rawId: string, id: string, contextRole?: string): Promise<PersonDetail> {
-  const [res, worksPage] = await Promise.all([
-    fetchWithHardTimeout(
-      `${apiConfig.bangumiBase}/v0/characters/${encodeURIComponent(rawId)}`,
-      { headers: bangumiHeaders() },
-    ).catch(() => new Response('', { status: 504 })),
-    fetchPersonWorksPage(id, 1).catch(() => ({ items: [], page: 1, total: 0, hasMore: false })),
-  ])
+  // Works load lazily when the user opens the works tab.
+  const res = await fetchWithHardTimeout(
+    `${apiConfig.bangumiBase}/v0/characters/${encodeURIComponent(rawId)}`,
+    { headers: bangumiHeaders() },
+  ).catch(() => new Response('', { status: 504 }))
   const { item, fallback, facts } = await resolveBangumiProfile(res, 'character', rawId)
   return {
     id,
@@ -1151,22 +1167,15 @@ async function fetchBangumiCharacter(rawId: string, id: string, contextRole?: st
     source: 'bangumi',
     ...bangumiCoreFields(item, fallback, facts, '角色'),
     contextRole,
-    works: worksPage.items,
-    worksPage: worksPage.page,
-    worksTotal: worksPage.total,
-    worksHasMore: worksPage.hasMore,
   }
 }
 
 async function fetchBangumiPerson(rawId: string, id: string, contextRole?: string): Promise<PersonDetail> {
-  const [res, worksPage, voiceRolesPage] = await Promise.all([
-    fetchWithHardTimeout(
-      `${apiConfig.bangumiBase}/v0/persons/${encodeURIComponent(rawId)}`,
-      { headers: bangumiHeaders() },
-    ).catch(() => new Response('', { status: 504 })),
-    fetchPersonWorksPage(id, 1).catch(() => ({ items: [], page: 1, total: 0, hasMore: false })),
-    fetchPersonVoiceRolesPage(id, 1).catch(() => ({ items: [], page: 1, total: 0, hasMore: false })),
-  ])
+  // Works / voice roles load lazily per tab.
+  const res = await fetchWithHardTimeout(
+    `${apiConfig.bangumiBase}/v0/persons/${encodeURIComponent(rawId)}`,
+    { headers: bangumiHeaders() },
+  ).catch(() => new Response('', { status: 504 }))
   const { item, fallback, facts } = await resolveBangumiProfile(res, 'person', rawId)
   const careers = formatBangumiCareers(item.career)
   return {
@@ -1176,14 +1185,6 @@ async function fetchBangumiPerson(rawId: string, id: string, contextRole?: strin
     ...bangumiCoreFields(item, fallback, facts, '人物'),
     careers: careers.length ? careers : undefined,
     contextRole,
-    works: worksPage.items,
-    worksPage: worksPage.page,
-    worksTotal: worksPage.total,
-    worksHasMore: worksPage.hasMore,
-    voiceRoles: voiceRolesPage.items,
-    voiceRolesPage: voiceRolesPage.page,
-    voiceRolesTotal: voiceRolesPage.total,
-    voiceRolesHasMore: voiceRolesPage.hasMore,
   }
 }
 
@@ -1204,7 +1205,6 @@ async function fetchAniListCharacter(rawId: string, id: string, contextRole?: st
   const data = await aniListRequest(query, { id: Number(rawId) })
   const node = data.Character
   if (!node) throw new Error('角色不存在')
-  const worksPage = await fetchPersonWorksPage(id, 1).catch(() => ({ items: [], page: 1, total: 0, hasMore: false }))
   return {
     id,
     kind: 'character',
@@ -1219,10 +1219,6 @@ async function fetchAniListCharacter(rawId: string, id: string, contextRole?: st
     birthday: formatAniListBirthday(node.dateOfBirth),
     bloodType: node.bloodType || undefined,
     contextRole,
-    works: worksPage.items,
-    worksPage: worksPage.page,
-    worksTotal: worksPage.total,
-    worksHasMore: worksPage.hasMore,
   }
 }
 
@@ -1244,10 +1240,6 @@ async function fetchAniListStaff(rawId: string, id: string, contextRole?: string
   const data = await aniListRequest(query, { id: Number(rawId) })
   const node = data.Staff
   if (!node) throw new Error('人物不存在')
-  const [worksPage, voiceRolesPage] = await Promise.all([
-    fetchPersonWorksPage(id, 1).catch(() => ({ items: [], page: 1, total: 0, hasMore: false })),
-    fetchPersonVoiceRolesPage(id, 1).catch(() => ({ items: [], page: 1, total: 0, hasMore: false })),
-  ])
   const careers = Array.isArray(node.primaryOccupations)
     ? node.primaryOccupations.filter((c: unknown): c is string => typeof c === 'string' && Boolean(c))
     : []
@@ -1266,14 +1258,6 @@ async function fetchAniListStaff(rawId: string, id: string, contextRole?: string
     bloodType: node.bloodType || undefined,
     careers: careers.length ? careers : undefined,
     contextRole,
-    works: worksPage.items,
-    worksPage: worksPage.page,
-    worksTotal: worksPage.total,
-    worksHasMore: worksPage.hasMore,
-    voiceRoles: voiceRolesPage.items,
-    voiceRolesPage: voiceRolesPage.page,
-    voiceRolesTotal: voiceRolesPage.total,
-    voiceRolesHasMore: voiceRolesPage.hasMore,
   }
 }
 

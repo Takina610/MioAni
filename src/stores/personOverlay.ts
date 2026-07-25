@@ -148,25 +148,26 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
       contextRole: opts.contextRole,
     }
 
-    // Bangumi comments use the same public HTML as profile enrichment, but they
-    // must start immediately instead of waiting for every profile/list request.
-    if (parsed.source === 'bangumi') startInitialComments(parsed.id, seq)
-
+    // Comments / works / voice roles load when their tabs are first opened.
     try {
       const result = await fetchPersonDetail(opts.id, { contextRole: opts.contextRole })
       if (seq !== loadSeq) return true
       const current = detail.value?.id === result.id ? detail.value : null
-      const commentState = current?.comments !== undefined
-        ? {
-            comments: current.comments,
-            commentsPage: current.commentsPage,
-            commentsTotal: current.commentsTotal,
-            commentsHasMore: current.commentsHasMore,
-          }
-        : {}
       detail.value = {
         ...result,
-        ...commentState,
+        // Preserve any tab data already loaded for the same person.
+        works: current?.works,
+        worksPage: current?.worksPage,
+        worksTotal: current?.worksTotal,
+        worksHasMore: current?.worksHasMore,
+        voiceRoles: current?.voiceRoles,
+        voiceRolesPage: current?.voiceRolesPage,
+        voiceRolesTotal: current?.voiceRolesTotal,
+        voiceRolesHasMore: current?.voiceRolesHasMore,
+        comments: current?.comments,
+        commentsPage: current?.commentsPage,
+        commentsTotal: current?.commentsTotal,
+        commentsHasMore: current?.commentsHasMore,
         // Keep seed image first so flight/handoff never blanks.
         image: result.image || opts.image || current?.image,
         contextRole: opts.contextRole || result.contextRole,
@@ -177,7 +178,6 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
         startProfileEnrichment(result.id, seq)
       } else {
         loadingProfile.value = false
-        loadingComments.value = false
       }
       return true
     } catch (reason) {
@@ -187,6 +187,79 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
       loadingProfile.value = false
       return false
     }
+  }
+
+  async function ensureWorks() {
+    const d = detail.value
+    if (!d?.id || loadingWorks.value || loading.value) return
+    if (d.works !== undefined) return
+    loadingWorks.value = true
+    const seq = loadSeq
+    const id = d.id
+    try {
+      const page = await fetchPersonWorksPage(id, 1)
+      if (seq !== loadSeq || !detail.value || detail.value.id !== id) return
+      detail.value = {
+        ...detail.value,
+        works: page.items,
+        worksPage: page.page,
+        worksTotal: page.total,
+        worksHasMore: page.hasMore,
+      }
+      seed.value = { ...seed.value, ...detail.value }
+    } catch {
+      if (seq === loadSeq && detail.value?.id === id) {
+        detail.value = {
+          ...detail.value,
+          works: detail.value.works || [],
+          worksPage: 1,
+          worksTotal: detail.value.worksTotal || 0,
+          worksHasMore: false,
+        }
+      }
+    } finally {
+      if (seq === loadSeq) loadingWorks.value = false
+    }
+  }
+
+  async function ensureVoiceRoles() {
+    const d = detail.value
+    if (!d?.id || d.kind !== 'person' || loadingVoiceRoles.value || loading.value) return
+    if (d.voiceRoles !== undefined) return
+    loadingVoiceRoles.value = true
+    const seq = loadSeq
+    const id = d.id
+    try {
+      const page = await fetchPersonVoiceRolesPage(id, 1)
+      if (seq !== loadSeq || !detail.value || detail.value.id !== id) return
+      detail.value = {
+        ...detail.value,
+        voiceRoles: page.items,
+        voiceRolesPage: page.page,
+        voiceRolesTotal: page.total,
+        voiceRolesHasMore: page.hasMore,
+      }
+      seed.value = { ...seed.value, ...detail.value }
+    } catch {
+      if (seq === loadSeq && detail.value?.id === id) {
+        detail.value = {
+          ...detail.value,
+          voiceRoles: detail.value.voiceRoles || [],
+          voiceRolesPage: 1,
+          voiceRolesTotal: detail.value.voiceRolesTotal || 0,
+          voiceRolesHasMore: false,
+        }
+      }
+    } finally {
+      if (seq === loadSeq) loadingVoiceRoles.value = false
+    }
+  }
+
+  async function ensureComments() {
+    const d = detail.value
+    if (!d?.id || d.source !== 'bangumi' || loadingComments.value) return
+    if (d.comments !== undefined) return
+    startInitialComments(d.id, loadSeq)
   }
 
   function mergeById<T extends { id: string }>(current: T[] | undefined, incoming: T[]): T[] {
@@ -334,6 +407,9 @@ export const usePersonOverlayStore = defineStore('personOverlay', () => {
     markOpen,
     beginCollapse,
     finishClose,
+    ensureWorks,
+    ensureVoiceRoles,
+    ensureComments,
     loadMoreWorks,
     loadMoreVoiceRoles,
     loadMoreComments,

@@ -901,6 +901,12 @@ function loadMoreExtra() {
     visibleByTab.value[section] = Math.min(visibleByTab.value[section] + EXTRA_BATCH, allLen)
     loadingMoreExtra.value = false
     extraLoadTimer = null
+    // IO only fires on edge transitions. If the sentinel stays in view after a batch,
+    // re-check so scrolling (and tall viewports) keep loading. Opening DevTools
+    // used to "fix" this by forcing a layout/intersection change.
+    void nextTick().then(() => {
+      if (isExtraSentinelInView(getDetailScrollRoot())) loadMoreExtra()
+    })
   }, 160)
 }
 
@@ -924,6 +930,18 @@ function getDetailScrollRoot(): Element | null {
     || null
 }
 
+function isExtraSentinelInView(root: Element | null): boolean {
+  const sentinel = extraSentinelRef.value
+  if (!sentinel) return false
+  const s = sentinel.getBoundingClientRect()
+  if (root) {
+    const r = root.getBoundingClientRect()
+    return s.top < r.bottom + 160 && s.bottom > r.top - 40
+  }
+  const vh = window.innerHeight || 0
+  return s.top < vh + 160 && s.bottom > -40
+}
+
 function setupExtraObserver() {
   extraObserver?.disconnect()
   extraObserver = null
@@ -933,9 +951,13 @@ function setupExtraObserver() {
     (entries) => {
       if (entries.some((entry) => entry.isIntersecting)) loadMoreExtra()
     },
-    { root: root || null, rootMargin: '80px 0px', threshold: 0 },
+    { root: root || null, rootMargin: '160px 0px', threshold: 0 },
   )
   extraObserver.observe(extraSentinelRef.value)
+  // First paint / tab switch: if sentinel already in view, IO may not emit.
+  void nextTick().then(() => {
+    if (isExtraSentinelInView(root)) loadMoreExtra()
+  })
 }
 
 // Only reset tab when a NEW layer is expanding (list card / related push).

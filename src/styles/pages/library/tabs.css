@@ -55,8 +55,9 @@
     transform .32s var(--ease),
     width .32s var(--ease);
 }
-/* Detail tabs measure on open; keep motion enabled after first paint */
-.detail-tabs .sliding-tabs__indicator {
+/* Detail / person tabs measure on open; keep motion enabled after first paint */
+.detail-tabs .sliding-tabs__indicator,
+.person-tabs .sliding-tabs__indicator {
   transition:
     transform .32s var(--ease),
     width .32s var(--ease);

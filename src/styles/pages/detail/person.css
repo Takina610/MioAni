@@ -358,14 +358,59 @@
 .person-hero-skeleton__lead i:nth-child(2) { width: 91%; }
 .person-hero-skeleton__lead i:nth-child(3) { width: 68%; }
 
-/* ── Body: profile + meta rail ────────────────────── */
+/* ── Body: meta rail + tabbed main (mirrors anime .detail-content) ── */
 .person-body {
   display: grid;
-  grid-template-columns: minmax(220px, 260px) repeat(2, minmax(0, 1fr));
-  gap: 20px 22px;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  gap: 18px 28px;
   align-items: start;
   max-width: min(1500px, calc(100vw - 88px));
   margin: 0 auto;
+}
+
+.person-main {
+  min-width: 0;
+  order: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.person-main__panel {
+  min-width: 0;
+}
+.person-extra-item {
+  animation: detail-extra-in .55s var(--ease) both;
+  animation-delay: calc(var(--enter-i, 0) * 28ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .person-extra-item {
+    animation: none;
+  }
+}
+.person-infinite-sentinel {
+  height: 1px;
+  width: 100%;
+  margin-top: 8px;
+  pointer-events: none;
+}
+.person-card-skeleton--append {
+  margin-top: 14px;
+}
+
+/* Match anime .detail-tabs spacing */
+.person-tabs {
+  margin: 0 0 18px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  width: fit-content;
+  max-width: 100%;
+}
+.person-tabs button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: var(--type-small);
+  min-height: 34px;
+  padding: 0 12px;
 }
 
 .person-panel {
@@ -374,31 +419,32 @@
   background: rgba(18, 21, 19, .62);
   padding: 18px 18px 20px;
 }
-.person-panel--profile {
-  min-width: 0;
-  grid-column: 2 / 4;
-}
-.person-panel--works {
-  grid-column: 2 / 4;
-  min-width: 0;
-}
-.person-panel--comments {
-  grid-column: 2 / 4;
-  min-width: 0;
-}
+.person-panel--profile,
+.person-panel--works,
+.person-panel--comments,
 .person-panel--voices {
-  grid-column: 2 / 4;
   min-width: 0;
+  grid-column: auto;
 }
-.person-body:not(.has-secondary) .person-panel--profile,
-.person-body:not(.has-secondary) .person-panel--works {
-  grid-column: 2 / 4;
+/* Desktop: left rail (like .detail-meta). Mobile: collapsible bar (like .detail-meta toggle). */
+.person-meta {
+  min-width: 0;
+  order: 1;
+  align-self: start;
 }
 .person-panel--meta {
-  grid-column: 1;
-  grid-row: 1 / span 4;
   position: static;
   align-self: start;
+}
+/* Desktop: no collapse chrome */
+.person-meta__toggle {
+  display: none;
+}
+.person-meta__head {
+  display: block;
+}
+.person-meta__panel {
+  display: block;
 }
 
 .person-panel__head {
@@ -817,50 +863,6 @@
   color: var(--accent);
 }
 
-.person-work-grid:not(.is-expanded) > .person-work-card:nth-child(n + 9),
-.person-role-grid:not(.is-expanded) > .person-role:nth-child(n + 9) {
-  display: none;
-}
-
-.person-section-toggle {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 7px;
-  min-height: 42px;
-  margin-top: 14px;
-  padding: 0 14px;
-  border: 1px solid rgba(228, 237, 230, .12);
-  border-radius: 12px;
-  background: rgba(18, 21, 19, .72);
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 650;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color .18s ease, background .18s ease, transform .18s ease;
-}
-.person-section-toggle:hover {
-  transform: translateY(-1px);
-  border-color: rgba(184, 240, 95, .38);
-  background: rgba(24, 30, 26, .82);
-}
-.person-section-toggle:disabled {
-  cursor: wait;
-  opacity: .72;
-  transform: none;
-}
-.person-section-toggle svg {
-  flex: 0 0 auto;
-  color: var(--muted);
-  transition: transform .22s ease;
-}
-.person-section-toggle svg.is-open {
-  transform: rotate(180deg);
-}
-
-.person-track-more,
 .person-track-skeleton {
   display: none;
 }
@@ -918,31 +920,7 @@
   gap: 14px;
 }
 
-.person-load-more {
-  width: 100%;
-  display: grid;
-  place-items: center;
-  min-height: 48px;
-  margin-top: 12px;
-  border: 1px dashed rgba(184, 240, 95, .18);
-  border-radius: 12px;
-  background: rgba(184, 240, 95, .045);
-  color: rgba(184, 240, 95, .78);
-  font-size: 12px;
-  font-weight: 750;
-  cursor: pointer;
-  transition: border-color .18s ease, background .18s ease, color .18s ease;
-}
-.person-load-more:hover {
-  border-color: rgba(184, 240, 95, .32);
-  background: rgba(184, 240, 95, .08);
-  color: var(--accent);
-}
-.person-load-more:disabled,
-.person-track-more:disabled {
-  cursor: wait;
-  opacity: .68;
-}
+
 
 /*
   Forum-style comment layout (name + time inline, body, indented replies).
@@ -997,9 +975,11 @@
   margin: 0;
   color: rgba(242, 245, 241, .8);
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1.65;
   word-break: break-word;
   white-space: pre-wrap;
+  /* Tighten visual gap when a real paragraph break (\n\n) is present. */
+  overflow-wrap: anywhere;
 }
 
 /* Nested replies: indent only — no accent/green rail. */
@@ -1124,26 +1104,11 @@
   cursor: pointer;
 }
 
-/* ── Responsive ───────────────────────────────────── */
+/* ── Responsive (aligned with anime detail-motion breakpoints) ── */
 @media (max-width: 1240px) {
   .person-hero,
   .person-body {
     max-width: min(1120px, calc(100vw - 48px));
-  }
-  .person-body {
-    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
-  }
-  .person-panel--profile,
-  .person-panel--works,
-  .person-panel--voices,
-  .person-panel--comments,
-  .person-body:not(.has-secondary) .person-panel--profile,
-  .person-body:not(.has-secondary) .person-panel--works {
-    grid-column: 2;
-  }
-  .person-panel--meta {
-    grid-column: 1;
-    grid-row: 1 / span 4;
   }
 }
 
@@ -1154,27 +1119,103 @@
   }
   .person-portrait { width: 160px; }
   .person-body {
+    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+    gap: 18px 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  .person-hero {
     grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+    margin-bottom: 22px;
+  }
+  /* Exact same single-column stack as anime .detail-content */
+  .person-body {
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
   }
-  .person-panel--profile,
-  .person-panel--works,
-  .person-panel--voices,
-  .person-panel--comments,
-  .person-panel--meta,
-  .person-body:not(.has-secondary) .person-panel--profile,
-  .person-body:not(.has-secondary) .person-panel--works {
-    grid-column: 1;
-    grid-row: auto;
+  .person-meta {
+    order: 1;
   }
-  .person-panel--profile { order: 1; }
-  .person-panel--meta {
-    position: static;
+  .person-main {
     order: 2;
   }
-  .person-panel--works { order: 3; }
-  .person-panel--voices { order: 4; }
-  .person-panel--comments { order: 5; }
+  /* Clone of .detail-meta__toggle */
+  .person-meta__toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 42px;
+    margin: 0;
+    padding: 0 14px;
+    border: 1px solid rgba(228, 237, 230, .12);
+    border-radius: 12px;
+    background: rgba(18, 21, 19, .72);
+    color: var(--ink);
+    font-size: var(--type-small);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .person-meta__toggle span {
+    margin-right: auto;
+  }
+  .person-meta__toggle em {
+    color: var(--muted);
+    font: 600 11px/1 monospace;
+    font-style: normal;
+    max-width: 28vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .person-meta__caret {
+    color: var(--muted);
+    transition: transform .32s var(--ease);
+  }
+  .person-meta.is-expanded .person-meta__caret {
+    transform: rotate(180deg);
+  }
+  /* Same expand/collapse as .detail-meta__panel (grid 0fr → 1fr). */
+  .person-meta__panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows .38s var(--ease);
+  }
+  .person-meta.is-expanded .person-meta__panel {
+    grid-template-rows: 1fr;
+  }
+  .person-meta__panel > .person-panel--meta {
+    min-height: 0 !important;
+    overflow: hidden;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    /* Zero box so collapsed 0fr truly collapses (no padding residual). */
+    padding: 0 !important;
+    margin: 0;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition:
+      opacity .28s ease,
+      transform .34s var(--ease),
+      margin-top .38s var(--ease);
+  }
+  .person-meta.is-expanded .person-meta__panel > .person-panel--meta {
+    opacity: 1;
+    transform: translateY(0);
+    margin-top: 10px;
+  }
+  .person-meta__head {
+    display: none;
+  }
+  /* Align fact text with toggle label (toggle uses padding-inline 14px). */
+  .person-meta .person-meta-list,
+  .person-meta .person-meta-skeleton {
+    padding-inline: 14px;
+  }
   .person-meta-list {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1186,15 +1227,6 @@
   }
   .person-comments {
     grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 640px) {
-  .person-hero {
-    grid-template-columns: 1fr;
-    justify-items: center;
-    text-align: center;
-    margin-bottom: 22px;
   }
   .person-portrait { width: min(188px, 54vw); }
   .person-hero__body { text-align: center; width: 100%; }
@@ -1228,67 +1260,6 @@
   }
   .person-card-skeleton {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .person-panel--works,
-  .person-panel--voices {
-    overflow: hidden;
-  }
-  .person-track-shell {
-    width: calc(100% + 32px);
-    margin-inline: -16px;
-  }
-  .person-work-grid,
-  .person-role-grid {
-    width: 100%;
-    margin-inline: 0;
-    padding: 2px 16px 12px;
-    display: grid;
-    grid-template-columns: none;
-    grid-auto-flow: column;
-    grid-auto-columns: clamp(154px, 42vw, 188px);
-    gap: 10px;
-    align-items: stretch;
-    overflow-x: auto;
-    overflow-y: hidden;
-    overscroll-behavior-inline: contain;
-    scroll-snap-type: x mandatory;
-    scroll-padding-inline: 16px;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(184, 240, 95, .22) transparent;
-    touch-action: pan-x;
-  }
-  .person-role-grid {
-    grid-auto-columns: clamp(148px, 40vw, 180px);
-  }
-  .person-work-grid:not(.is-expanded) > .person-work-card:nth-child(n + 9) {
-    display: block;
-  }
-  .person-role-grid:not(.is-expanded) > .person-role:nth-child(n + 9) {
-    display: grid;
-  }
-  .person-work-card,
-  .person-role,
-  .person-track-more,
-  .person-track-skeleton {
-    scroll-snap-align: start;
-  }
-  .person-section-toggle,
-  .person-panel--works > .person-load-more,
-  .person-panel--voices > .person-load-more {
-    display: none;
-  }
-  .person-track-more {
-    display: grid;
-    place-items: center;
-    min-height: 112px;
-    padding: 16px;
-    border: 1px dashed rgba(184, 240, 95, .24);
-    border-radius: 13px;
-    background: rgba(184, 240, 95, .06);
-    color: var(--accent);
-    font-size: 12px;
-    font-weight: 750;
-    cursor: pointer;
   }
   .person-track-skeleton {
     min-height: 112px;

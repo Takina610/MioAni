@@ -204,7 +204,7 @@ Markdown Content:
       id: '30',
       author: '新用户',
       time: '2025-01-02 09:30',
-      text: '最新评论\n第二行',
+      text: '最新评论 第二行',
       replies: [{
         id: '31',
         author: '回复者',
@@ -287,7 +287,7 @@ Markdown Content:
 
     const comments = parseBangumiMonoHtmlComments(html)
     expect(comments.map((c) => c.id)).toEqual(['5', '2', '1'])
-    expect(comments[0]?.text).toBe('かくや过来的\n她歌声很辽阔啊 那几首歌她唱得很有感觉')
+    expect(comments[0]?.text).toBe('かくや过来的 她歌声很辽阔啊 那几首歌她唱得很有感觉')
     expect(comments[1]).toMatchObject({
       id: '2',
       author: '夏実',
@@ -304,6 +304,49 @@ Markdown Content:
     expect(comments[2]?.text).toBe(
       '写真集很色很文艺，甚至有雪天泳衣骑马，敬业啊\n\n另外公式照有点像另外一个名字里带优的人',
     )
+  })
+
+  it('strips Bangumi emoji tokens and drops emoji-only floors', () => {
+    const html = `
+<div id="comment_list">
+  <div class="commentList">
+    <div id="post_1" class="row row_reply clearit">
+      <div class="action"><small><a>#1</a> - 2026-1-01 10:00</small></div>
+      <div class="inner">
+        <strong><a class="l">用户A</a></strong>
+        <div class="reply_content">
+          <div class="message clearit">来点全年龄音声哦<img alt="(bgm87)" src="/img/smiles/bgm/87.gif"></div>
+        </div>
+      </div>
+    </div>
+    <div id="post_2" class="row row_reply clearit">
+      <div class="action"><small><a>#2</a> - 2026-1-02 10:00</small></div>
+      <div class="inner">
+        <strong><a class="l">用户B</a></strong>
+        <div class="reply_content">
+          <div class="message clearit"><img alt="(bgm39)" src="/img/smiles/bgm/39.gif"></div>
+        </div>
+      </div>
+    </div>
+    <div id="post_3" class="row row_reply clearit">
+      <div class="action"><small><a>#3</a> - 2026-1-03 10:00</small></div>
+      <div class="inner">
+        <strong><a class="l">用户C</a></strong>
+        <div class="reply_content"><div class="message clearit">(bgm39) (bgm12)</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="footer"></div>
+`
+    const comments = parseBangumiMonoHtmlComments(html)
+    expect(comments).toHaveLength(1)
+    expect(comments[0]).toMatchObject({
+      id: '1',
+      author: '用户A',
+      text: '来点全年龄音声哦',
+    })
+    expect(comments[0]?.text).not.toMatch(/bgm/i)
   })
 
   it('cleans markdown reply quote noise without dropping real floors', () => {
@@ -392,7 +435,7 @@ Markdown Content:
     })
   })
 
-  it('starts Bangumi comments while the main profile request is still loading', async () => {
+  it('lazy-loads Bangumi comments only when the comments tab is requested', async () => {
     const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds))
     const html = `
       <div id="headerSubject"><h1 class="nameSingle"><a title="并行人物">並行人物</a></h1></div>
@@ -407,7 +450,6 @@ Markdown Content:
       const url = String(input)
       if (url.includes('r.jina.ai')) return new Response(html, { status: 200 })
       if (url.endsWith('/v0/persons/987652')) {
-        await wait(100)
         return Response.json({
           name: '並行人物',
           summary: '',
@@ -422,14 +464,13 @@ Markdown Content:
     setActivePinia(createPinia())
     const store = usePersonOverlayStore()
 
-    const opening = store.openPerson({ id: 'bgm-person-987652' })
-    await wait(20)
-
-    expect(store.loading).toBe(true)
-    expect(store.detail?.comments?.map((comment) => comment.text)).toEqual(['立即加载的吐槽'])
-
-    await opening
+    await store.openPerson({ id: 'bgm-person-987652' })
     expect(store.loading).toBe(false)
+    expect(store.detail?.comments).toBeUndefined()
+
+    await store.ensureComments()
+    await wait(20)
+    expect(store.detail?.comments?.map((comment) => comment.text)).toEqual(['立即加载的吐槽'])
     expect(store.detail?.commentsTotal).toBe(1)
     store.close()
   })
