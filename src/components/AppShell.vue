@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { PhCompass, PhHouse, PhBooks, PhMagnifyingGlass, PhDownloadSimple } from '@phosphor-icons/vue'
+import { PhCompass, PhHouse, PhBooks, PhCalendarBlank, PhMagnifyingGlass, PhDownloadSimple } from '@phosphor-icons/vue'
 import ImportModal from './ImportModal.vue'
 import AnimeDetailOverlay from './AnimeDetailOverlay.vue'
 import PersonDetailOverlay from './PersonDetailOverlay.vue'
@@ -11,8 +11,9 @@ import { usePersonOverlayStore } from '../stores/personOverlay'
 import HomeView from '../views/HomeView.vue'
 import DiscoverView from '../views/DiscoverView.vue'
 import LibraryView from '../views/LibraryView.vue'
+import ScheduleView from '../views/ScheduleView.vue'
 
-type ListKey = 'home' | 'discover' | 'library'
+type ListKey = 'home' | 'discover' | 'schedule' | 'library'
 
 const importOpen = ref(false)
 const mobileOpen = ref(false)
@@ -29,6 +30,7 @@ const activeList = shallowRef<ListKey>('home')
 const mountedLists = reactive<Record<ListKey, boolean>>({
   home: false,
   discover: false,
+  schedule: false,
   library: false,
 })
 /** Scroll Y frozen when entering detail; restored only after overlay fully closes. */
@@ -36,6 +38,7 @@ const scrollY = ref(0)
 const scrollByList = reactive<Record<ListKey, number>>({
   home: 0,
   discover: 0,
+  schedule: 0,
   library: 0,
 })
 /** Soft topbar re-entry when leaving anime detail for a list page. */
@@ -53,14 +56,20 @@ function markReturningFromDetail() {
 
 function listKeyFromRouteName(name: unknown): ListKey {
   if (name === 'discover') return 'discover'
+  if (name === 'schedule') return 'schedule'
   if (name === 'library') return 'library'
   return 'home'
 }
 
 function listKeyFromPath(path: string): ListKey {
   if (path.includes('/library')) return 'library'
+  if (path.includes('/schedule')) return 'schedule'
   if (path.includes('/discover')) return 'discover'
   return 'home'
+}
+
+function isListRouteName(name: unknown): boolean {
+  return name === 'home' || name === 'discover' || name === 'schedule' || name === 'library'
 }
 
 function ensureMounted(key: ListKey) {
@@ -94,7 +103,7 @@ function unlockListScroll() {
 watch(
   () => route.name,
   (name, prev) => {
-    if (name === 'home' || name === 'discover' || name === 'library') {
+    if (isListRouteName(name)) {
       // While overlay is still closing after browser back, keep underlay list fixed.
       if (!(detailOverlay.open && prev === 'anime-detail')) {
         showList(listKeyFromRouteName(name))
@@ -127,7 +136,7 @@ watch(
 
     // Leave anime detail via browser back to a list page only (not person).
     if (prev === 'anime-detail' && !DETAIL_ROUTES.has(String(name))) {
-      if (name === 'home' || name === 'discover' || name === 'library') {
+      if (isListRouteName(name)) {
         ensureMounted(listKeyFromRouteName(name))
         activeList.value = listKeyFromRouteName(name)
       }
@@ -168,7 +177,7 @@ watch(
 onMounted(() => {
   if (route.name === 'anime-detail') {
     showList(listKeyFromPath(detailOverlay.returnPath || '/'))
-  } else if (route.name === 'home' || route.name === 'discover' || route.name === 'library') {
+  } else if (isListRouteName(route.name)) {
     showList(listKeyFromRouteName(route.name))
   } else {
     ensureMounted('home')
@@ -200,6 +209,7 @@ onUnmounted(() => {
         <div class="main-nav__panel">
           <RouterLink to="/" @click="mobileOpen = false"><PhHouse :size="18" />首页</RouterLink>
           <RouterLink to="/discover" @click="mobileOpen = false"><PhCompass :size="18" />发现</RouterLink>
+          <RouterLink to="/schedule" @click="mobileOpen = false"><PhCalendarBlank :size="18" />时间表</RouterLink>
           <RouterLink to="/library" @click="mobileOpen = false"><PhBooks :size="18" />追番库</RouterLink>
         </div>
       </nav>
@@ -241,6 +251,14 @@ onUnmounted(() => {
         :aria-hidden="activeList !== 'discover'"
       >
         <DiscoverView v-if="mountedLists.discover" />
+      </div>
+      <div
+        class="list-layer"
+        data-list="schedule"
+        :class="{ 'is-active': activeList === 'schedule' }"
+        :aria-hidden="activeList !== 'schedule'"
+      >
+        <ScheduleView v-if="mountedLists.schedule" />
       </div>
       <div
         class="list-layer"

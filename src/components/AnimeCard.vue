@@ -34,8 +34,14 @@ let revealObserver: IntersectionObserver | null = null
 const isActiveExpand = computed(() => {
   if (!detailOverlay.open) return false
   const returnId = detailOverlay.returnCardId
-  if (!returnId) return false
-  return returnId === props.anime.id
+  if (!returnId || returnId !== props.anime.id) return false
+  // Only the active list underlay owns the shared-element source.
+  // Home stays mounted under schedule; do not hide a home card when open from /schedule.
+  const root = rootRef.value
+  if (!root) return true
+  const layer = root.closest('.list-layer')
+  if (!layer) return true
+  return layer.classList.contains('is-active')
 })
 
 const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [

@@ -25,6 +25,10 @@ export interface Anime {
   tags: string[]
   summary: string
   airDay?: string
+  /** Local display time `HH:mm` when known. */
+  airTime?: string
+  /** JS weekday: 0=Sun … 6=Sat (`Date.getDay()`). */
+  airWeekday?: number
   airDate?: string
   nextEpisode?: string
   popularity?: number

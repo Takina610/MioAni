@@ -11,6 +11,7 @@
 /* Home */
 @import './styles/pages/home/hero.css';
 @import './styles/pages/home/sections.css';
+@import './styles/pages/home/schedule.css';
 
 /* Shared cards (originally mid-home) */
 @import './styles/components/anime-card.css';

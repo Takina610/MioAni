@@ -1,0 +1,531 @@
+.season-schedule {
+  width: min(1520px, 100%);
+  margin: 0 auto;
+  padding: 0 clamp(24px, 5vw, 84px) 130px;
+}
+
+.season-schedule--page {
+  width: 100%;
+  padding: 0 0 80px;
+}
+
+.schedule-page {
+  position: relative;
+  isolation: isolate;
+  min-height: 60vh;
+}
+
+.schedule-masthead {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, .8fr);
+  align-items: end;
+  gap: clamp(28px, 4vw, 56px);
+  padding: 56px clamp(24px, 5vw, 84px) 40px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--surface), var(--bg));
+}
+
+.schedule-identity > span {
+  display: block;
+  margin-bottom: 12px;
+  color: var(--accent);
+  font: 600 var(--type-micro)/1 monospace;
+  letter-spacing: .08em;
+}
+
+.schedule-identity h1 {
+  margin: 0;
+  font-size: clamp(34px, 4.8vw, 56px);
+  line-height: 1.08;
+  letter-spacing: -.02em;
+}
+
+.schedule-identity p {
+  max-width: 48ch;
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: var(--type-body);
+  line-height: 1.7;
+}
+
+.schedule-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.schedule-stats div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.schedule-stats svg {
+  grid-row: 1 / span 2;
+  color: var(--accent);
+}
+
+.schedule-stats strong {
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.schedule-stats span {
+  grid-column: 2;
+  color: var(--muted);
+  font: 600 var(--type-micro)/1 monospace;
+  letter-spacing: .04em;
+}
+
+.schedule-page__body {
+  width: min(1520px, 100%);
+  margin: 0 auto;
+  padding: 32px clamp(24px, 5vw, 84px) 40px;
+}
+
+.schedule-page__state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 220px;
+  padding: 32px 20px;
+  color: var(--muted);
+  font-size: var(--type-body);
+  text-align: center;
+}
+
+.schedule-page__state--error {
+  color: var(--ink);
+  flex-direction: column;
+}
+
+.schedule-page__state--error svg {
+  color: var(--accent);
+}
+
+/* Day rail */
+.schedule-rail-wrap {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.schedule-rail__nav {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.schedule-rail__nav:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.schedule-rail__nav:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.schedule-rail {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px;
+  scrollbar-width: none;
+}
+
+.schedule-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.schedule-rail__day {
+  position: relative;
+  flex: 1 0 auto;
+  min-width: 68px;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 12px 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.schedule-rail__day:hover {
+  color: var(--ink);
+}
+
+.schedule-rail__day.is-active {
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.schedule-rail__day.is-today:not(.is-active) {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.schedule-rail__day:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.schedule-rail__label {
+  font: 700 var(--type-small)/1 monospace;
+  letter-spacing: .08em;
+}
+
+.schedule-rail__count {
+  font-size: 18px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.schedule-rail__dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.schedule-rail__day.is-active .schedule-rail__dot {
+  background: var(--accent-ink);
+}
+
+/* Stage / timeline */
+.schedule-stage {
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius-md) + 4px);
+  background: var(--surface);
+  min-height: 280px;
+  overflow: hidden;
+}
+
+.schedule-stage__head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.schedule-stage__kicker {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font: 600 var(--type-micro)/1 monospace;
+  letter-spacing: .1em;
+}
+
+.schedule-stage__title {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: clamp(22px, 2.6vw, 30px);
+  line-height: 1.1;
+  letter-spacing: -.02em;
+}
+
+.schedule-stage__badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 700 var(--type-micro)/1 monospace;
+  letter-spacing: .06em;
+}
+
+.schedule-stage__meta {
+  margin: 0;
+  color: var(--muted);
+  font: 600 var(--type-small)/1.4 monospace;
+  letter-spacing: .04em;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.schedule-flow__track {
+  position: relative;
+  padding: 10px 16px 24px 24px;
+}
+
+.schedule-flow__spine {
+  position: absolute;
+  left: 35px;
+  top: 20px;
+  bottom: 24px;
+  width: 2px;
+  background: var(--line);
+  pointer-events: none;
+}
+
+.schedule-flow__item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 12px;
+  padding: 6px 0;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 108px;
+}
+
+/* Day switch only (after first paint): light CSS stagger, no blur/filter */
+.schedule-flow.is-ready .schedule-flow__item {
+  animation: schedule-item-in .28s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 28ms);
+}
+
+@keyframes schedule-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.schedule-flow__node {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  padding-top: 26px;
+}
+
+.schedule-flow__ring {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--bg);
+}
+
+.schedule-flow__item.is-pending .schedule-flow__ring {
+  border-color: var(--muted);
+}
+
+.schedule-flow__card {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 68px 60px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.schedule-flow__card:hover {
+  border-color: var(--accent);
+}
+
+.schedule-flow__card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.schedule-flow__time {
+  font: 800 17px/1 monospace;
+  letter-spacing: .04em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.schedule-flow__time.is-pending {
+  color: var(--muted);
+  font-size: var(--type-small);
+  font-weight: 700;
+  letter-spacing: .1em;
+}
+
+.schedule-flow__cover {
+  width: 60px;
+  height: 80px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  flex-shrink: 0;
+}
+
+.schedule-flow__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Hide list poster while shared-element flyer owns the art (same as AnimeCard). */
+.schedule-flow__item.is-expanding .schedule-flow__cover img,
+.schedule-flow__item.is-expanding .schedule-flow__cover-fallback {
+  opacity: 0;
+}
+
+.schedule-flow__cover-fallback {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--surface-2);
+}
+
+.schedule-flow__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.schedule-flow__name {
+  font-size: clamp(15px, 1.5vw, 17px);
+  font-weight: 650;
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.schedule-flow__sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: var(--type-small);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-flow__index {
+  color: var(--muted);
+  opacity: .55;
+  font: 700 13px/1 monospace;
+  letter-spacing: .08em;
+  align-self: start;
+  padding-top: 4px;
+}
+
+.schedule-flow__empty {
+  margin: 0;
+  padding: 64px 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: var(--type-body);
+}
+
+@media (max-width: 960px) {
+  .schedule-masthead {
+    grid-template-columns: 1fr;
+    align-items: start;
+    padding: 40px 20px 28px;
+  }
+
+  .schedule-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-stage__head {
+    flex-direction: column;
+    align-items: start;
+  }
+
+  .schedule-stage__meta {
+    text-align: left;
+  }
+}
+
+@media (max-width: 760px) {
+  .season-schedule {
+    padding: 0 20px 90px;
+  }
+
+  .season-schedule--page {
+    padding: 0 0 60px;
+  }
+
+  .schedule-page__body {
+    padding: 24px 16px 24px;
+  }
+
+  .schedule-rail__nav {
+    width: 36px;
+    height: 36px;
+  }
+
+  .schedule-rail__day {
+    min-width: 60px;
+    padding: 10px 8px 12px;
+  }
+
+  .schedule-flow__track {
+    padding: 8px 12px 20px 16px;
+  }
+
+  .schedule-flow__spine {
+    left: 26px;
+  }
+
+  .schedule-flow__item {
+    grid-template-columns: 20px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .schedule-flow__card {
+    grid-template-columns: 52px 48px minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .schedule-flow__index {
+    display: none;
+  }
+
+  .schedule-flow__cover {
+    width: 48px;
+    height: 64px;
+  }
+
+  .schedule-flow__time {
+    font-size: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .schedule-flow.is-ready .schedule-flow__item {
+    animation: none;
+  }
+}

@@ -1130,6 +1130,12 @@ onUnmounted(() => {
         <TransitionGroup name="list" tag="div" class="catalog-grid directory-grid">
           <AnimeCard v-for="(anime, index) in hotAnime" :key="anime.id" :anime="anime" :index="index + 1" />
         </TransitionGroup>
+        <div class="directory-foot">
+          <RouterLink class="directory-foot__link" to="/schedule">
+            查看番剧时间表
+            <PhArrowRight :size="16" />
+          </RouterLink>
+        </div>
       </section>
 
       <section class="closing-band reveal-section">

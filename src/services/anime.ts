@@ -26,6 +26,16 @@ import type {
   DiscoverPageResult,
   DiscoverSource,
 } from '../types/discover'
+import type { ScheduleDay, ScheduleSourceItem } from '../types/schedule'
+import { fetchOnAirMap, pickOnAirSlot, type OnAirEntry } from './onair'
+import {
+  bangumiWeekdayToJs,
+  buildScheduleFromAniList,
+  buildWeekSchedule,
+  emptyWeekSchedule,
+  formatAirTime,
+  weekdayLabel,
+} from './schedule'
 
 export {
   aniListStatus,
@@ -93,7 +103,7 @@ function mapAniList(media: any, entry?: any): Anime {
   }
 }
 
-const mediaFields = `id title { romaji native english } coverImage { extraLarge } bannerImage averageScore popularity seasonYear season episodes genres nextAiringEpisode { episode timeUntilAiring }`
+const mediaFields = `id title { romaji native english } coverImage { extraLarge } bannerImage averageScore popularity seasonYear season episodes genres nextAiringEpisode { episode timeUntilAiring airingAt }`
 
 function currentSeason() {
   const month = new Date().getMonth() + 1
@@ -103,11 +113,169 @@ function currentSeason() {
   return 'FALL'
 }
 
-export async function fetchAniListSeasonal(limit = 50): Promise<Anime[]> {
-  const query = `query ($perPage: Int, $season: MediaSeason, $year: Int) { Page(page: 1, perPage: $perPage) { media(type: ANIME, season: $season, seasonYear: $year, sort: TRENDING_DESC, isAdult: false) { ${mediaFields} } } }`
-  const data = await aniListRequest(query, { perPage: limit, season: currentSeason(), year: new Date().getFullYear() })
-  return data.Page.media.map((media: any) => mapAniList(media))
+export type AniListSeasonalResult = {
+  items: Anime[]
+  /** `airingAt` unix seconds by anime id (`anilist-…`). */
+  airingAtById: Map<string, number>
 }
+
+export async function fetchAniListSeasonal(limit = 50): Promise<Anime[]> {
+  const result = await fetchAniListSeasonalDetailed(limit)
+  return result.items
+}
+
+export async function fetchAniListSeasonalDetailed(limit = 50): Promise<AniListSeasonalResult> {
+  // AniList Page.perPage max is 50; page until we hit `limit` for schedule time matching.
+  const query = `query ($page: Int, $perPage: Int, $season: MediaSeason, $year: Int) {
+    Page(page: $page, perPage: $perPage) {
+      pageInfo { hasNextPage }
+      media(type: ANIME, season: $season, seasonYear: $year, sort: TRENDING_DESC, isAdult: false) {
+        ${mediaFields}
+      }
+    }
+  }`
+  const season = currentSeason()
+  const year = new Date().getFullYear()
+  const perPage = Math.min(50, Math.max(1, limit))
+  const mediaList: any[] = []
+  let page = 1
+  while (mediaList.length < limit) {
+    const data = await aniListRequest(query, { page, perPage, season, year })
+    const batch: any[] = data.Page?.media ?? []
+    mediaList.push(...batch)
+    if (!batch.length || !data.Page?.pageInfo?.hasNextPage) break
+    page += 1
+    if (page > 6) break
+  }
+
+  const airingAtById = new Map<string, number>()
+  const items = mediaList.slice(0, limit).map((media: any) => {
+    const anime = mapAniList(media)
+    const airingAt = Number(media.nextAiringEpisode?.airingAt)
+    if (Number.isFinite(airingAt) && airingAt > 0) {
+      airingAtById.set(anime.id, airingAt)
+      const date = new Date(airingAt * 1000)
+      if (!Number.isNaN(date.getTime())) {
+        anime.airWeekday = date.getDay()
+        anime.airDay = weekdayLabel(date.getDay())
+        anime.airTime = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+      }
+    }
+    return anime
+  })
+  return { items, airingAtById }
+}
+
+function currentQuarterWindow(now = new Date()) {
+  const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3
+  const quarterStart = new Date(now.getFullYear(), quarterStartMonth, 1)
+  const quarterEnd = new Date(now.getFullYear(), quarterStartMonth + 3, 1)
+  return { quarterStart, quarterEnd }
+}
+
+function isInCurrentQuarter(airDateRaw: string | undefined, now = new Date()): boolean {
+  if (!airDateRaw) return false
+  const airDate = new Date(`${airDateRaw}T00:00:00`)
+  if (Number.isNaN(airDate.getTime())) return false
+  const { quarterStart, quarterEnd } = currentQuarterWindow(now)
+  return airDate >= quarterStart && airDate < quarterEnd
+}
+
+export type BangumiCalendarResult = {
+  /** Flat quarter-filtered list for hero + hot grid (popularity desc). */
+  flat: Anime[]
+  /** Week schedule sources (weekday preserved; times may be empty). */
+  scheduleSources: ScheduleSourceItem[]
+  schedule: ScheduleDay[]
+}
+
+/**
+ * One `/calendar` request feeds both the flat hot list and the week schedule.
+ * Optional onAir merge is soft-fail (CORS/network never block catalog load).
+ */
+export async function fetchBangumiCalendarDetailed(
+  options: { mergeOnAir?: boolean; now?: Date } = {},
+): Promise<BangumiCalendarResult> {
+  const now = options.now ?? new Date()
+  const mergeOnAir = options.mergeOnAir !== false
+
+  const emptyOnAir = () => new Map<string, OnAirEntry>()
+  const onAirPromise = mergeOnAir
+    ? Promise.race([
+        fetchOnAirMap(),
+        // Soft timeout: AniList enrichment covers missing times if CDN is slow/empty.
+        new Promise<Map<string, OnAirEntry>>((resolve) => {
+          setTimeout(() => resolve(emptyOnAir()), 2500)
+        }),
+      ]).catch(emptyOnAir)
+    : Promise.resolve(emptyOnAir())
+
+  const response = await fetch(`${apiConfig.bangumiBase}/calendar`, { headers: bangumiHeaders() })
+  if (!response.ok) throw new Error('Bangumi 放送数据暂时不可用')
+  const [days, onAirMap] = await Promise.all([response.json(), onAirPromise])
+
+  const scheduleSources: ScheduleSourceItem[] = []
+  const quarterUnique = new Map<string, Anime>()
+
+  for (const day of Array.isArray(days) ? days : []) {
+    // Bangumi weekday.id: 1=Mon … 7=Sun → JS getDay() 0=Sun … 6=Sat
+    const dayJsWeekday = bangumiWeekdayToJs(Number(day?.weekday?.id) || 1)
+
+    for (const item of day?.items ?? []) {
+      if (item?.id == null) continue
+      const airDate = item.air_date || item.date
+      if (!isInCurrentQuarter(airDate, now)) continue
+
+      const subjectId = String(item.id)
+      const onAir = pickOnAirSlot(onAirMap.get(subjectId))
+      const airTime = formatAirTime(onAir.timeRaw)
+      // Prefer calendar day bucket for weekday grouping; only override when onAir
+      // provides a real time (and optional weekday). Empty weekDayCN:0 must not
+      // force everything to Sunday.
+      const jsWeekday =
+        airTime && onAir.bangumiWeekday != null
+          ? bangumiWeekdayToJs(onAir.bangumiWeekday)
+          : dayJsWeekday
+
+      const anime = mapBangumi(item)
+      anime.airWeekday = jsWeekday
+      anime.airDay = weekdayLabel(jsWeekday)
+      if (airTime) anime.airTime = airTime
+
+      if (!quarterUnique.has(subjectId)) {
+        quarterUnique.set(subjectId, anime)
+      }
+
+      scheduleSources.push({
+        anime,
+        airWeekday: jsWeekday,
+        airTime,
+      })
+    }
+  }
+
+  const flat = [...quarterUnique.values()].sort(
+    (a, b) => (b.popularity || 0) - (a.popularity || 0),
+  )
+  const schedule = buildWeekSchedule(scheduleSources, now)
+  return { flat, scheduleSources, schedule }
+}
+
+export async function fetchBangumiCalendar(): Promise<Anime[]> {
+  const result = await fetchBangumiCalendarDetailed()
+  return result.flat
+}
+
+/** Build AniList-derived week schedule (used when Bangumi calendar is empty). */
+export function scheduleFromAniListSeasonal(
+  items: Anime[],
+  airingAtById: Map<string, number>,
+  now: Date = new Date(),
+): ScheduleDay[] {
+  return buildScheduleFromAniList(items, airingAtById, now)
+}
+
+export { emptyWeekSchedule }
 
 export async function importAniList(username: string): Promise<ImportResult> {
   const query = `query ($name: String) { MediaListCollection(userName: $name, type: ANIME) { lists { entries { status progress score media { ${mediaFields} } } } } }`
@@ -228,23 +396,6 @@ function hardFilterAniListLanguage(items: Anime[], country: string | null): Anim
     if (!origin) return code === 'JP'
     return origin === code
   })
-}
-
-export async function fetchBangumiCalendar(): Promise<Anime[]> {
-  const response = await fetch(`${apiConfig.bangumiBase}/calendar`, { headers: bangumiHeaders() })
-  if (!response.ok) throw new Error('Bangumi 放送数据暂时不可用')
-  const days = await response.json()
-  const now = new Date()
-  const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3
-  const quarterStart = new Date(now.getFullYear(), quarterStartMonth, 1)
-  const quarterEnd = new Date(now.getFullYear(), quarterStartMonth + 3, 1)
-  const currentQuarter = days.flatMap((day: any) => day.items).filter((item: any) => {
-    const airDate = item.air_date ? new Date(`${item.air_date}T00:00:00`) : null
-    return airDate && airDate >= quarterStart && airDate < quarterEnd
-  })
-  const quarterUnique = new Map<string, Anime>()
-  currentQuarter.forEach((item: any) => quarterUnique.set(String(item.id), mapBangumi(item)))
-  return [...quarterUnique.values()].sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
 }
 
 export async function importBangumi(username: string): Promise<ImportResult> {

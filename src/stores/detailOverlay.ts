@@ -356,12 +356,31 @@ export const useDetailOverlayStore = defineStore('detailOverlay', () => {
     return activeId.value === id
   }
 
+  /**
+   * Live poster rect for close flight.
+   * Prefer the active list underlay (home/discover/schedule/library) so a show
+   * that also exists on the still-mounted home grid does not steal the target
+   * when the user opened detail from the schedule page.
+   */
   function resolveCloseOrigin(): ExpandRect | null {
     const id = returnCardId.value
     if (id) {
-      const el = document.querySelector(`[data-anime-id="${CSS.escape(id)}"] .poster-wrap`)
-      const live = captureRect(el)
-      if (live) return live
+      const safeId = CSS.escape(id)
+      const scopes = [
+        document.querySelector('.list-layer.is-active'),
+        document.querySelector('.list-stage'),
+        document,
+      ]
+      for (const scope of scopes) {
+        if (!scope) continue
+        const root = scope.querySelector(`[data-anime-id="${safeId}"]`)
+        if (!root) continue
+        const poster =
+          root.querySelector('.poster-wrap, [data-anime-poster], .schedule-flow__cover')
+          || root
+        const live = captureRect(poster)
+        if (live && live.width > 2 && live.height > 2) return live
+      }
     }
     return returnOriginRect.value || originRect.value
   }

@@ -13,3 +13,24 @@
 }
 .section-heading > a { display: inline-flex; align-items: center; gap: 7px; color: var(--accent); font-size: var(--type-small); }
 .catalog-grid { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 34px 18px; }
+.directory-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 28px;
+}
+.directory-foot__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-size: var(--type-small);
+  font-weight: 600;
+  text-decoration: none;
+  transition: opacity .18s var(--ease);
+}
+.directory-foot__link:hover { opacity: .82; }
+.directory-foot__link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
