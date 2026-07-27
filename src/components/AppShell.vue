@@ -5,6 +5,7 @@ import { PhCompass, PhHouse, PhBooks, PhCalendarBlank, PhMagnifyingGlass, PhDown
 import ImportModal from './ImportModal.vue'
 import AnimeDetailOverlay from './AnimeDetailOverlay.vue'
 import PersonDetailOverlay from './PersonDetailOverlay.vue'
+import GridTrailBackground from './GridTrailBackground.vue'
 import brandLogo from '../assets/MioAni2.png'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
 import { usePersonOverlayStore } from '../stores/personOverlay'
@@ -17,9 +18,15 @@ type ListKey = 'home' | 'discover' | 'schedule' | 'library'
 
 const importOpen = ref(false)
 const mobileOpen = ref(false)
+/** Floating capsule chrome after page scroll (desktop + mobile). */
+const topbarCompact = ref(false)
 const route = useRoute()
 const detailOverlay = useDetailOverlayStore()
 const personOverlay = usePersonOverlayStore()
+
+const COMPACT_ON = 56
+const COMPACT_OFF = 20
+let compactRaf = 0
 
 const PERSON_ROUTES = new Set(['character-detail', 'person-detail'])
 const DETAIL_ROUTES = new Set(['anime-detail', 'character-detail', 'person-detail'])
@@ -97,6 +104,7 @@ function unlockListScroll() {
   const y = scrollByList[activeList.value] || scrollY.value || 0
   requestAnimationFrame(() => {
     window.scrollTo({ top: y, behavior: 'instant' as ScrollBehavior })
+    syncTopbarCompact()
   })
 }
 
@@ -174,6 +182,23 @@ watch(
   },
 )
 
+function syncTopbarCompact() {
+  compactRaf = 0
+  if (document.body.classList.contains('detail-scroll-lock')) return
+  const y = window.scrollY
+  if (!topbarCompact.value && y >= COMPACT_ON) {
+    topbarCompact.value = true
+    mobileOpen.value = false
+  } else if (topbarCompact.value && y <= COMPACT_OFF) {
+    topbarCompact.value = false
+  }
+}
+
+function onWindowScroll() {
+  if (compactRaf) return
+  compactRaf = requestAnimationFrame(syncTopbarCompact)
+}
+
 onMounted(() => {
   if (route.name === 'anime-detail') {
     showList(listKeyFromPath(detailOverlay.returnPath || '/'))
@@ -182,12 +207,16 @@ onMounted(() => {
   } else {
     ensureMounted('home')
   }
+  syncTopbarCompact()
+  window.addEventListener('scroll', onWindowScroll, { passive: true })
 })
 
 onUnmounted(() => {
   document.body.classList.remove('detail-scroll-lock')
   document.body.style.top = ''
   if (returnChromeTimer) clearTimeout(returnChromeTimer)
+  window.removeEventListener('scroll', onWindowScroll)
+  if (compactRaf) cancelAnimationFrame(compactRaf)
 })
 </script>
 
@@ -197,42 +226,46 @@ onUnmounted(() => {
     :class="{
       'has-detail-overlay': detailOverlay.open || personOverlay.open || DETAIL_ROUTES.has(String(route.name)),
       'is-returning-from-detail': returningFromDetail,
+      'has-compact-topbar': topbarCompact,
     }"
   >
+    <GridTrailBackground />
     <a class="skip-link" href="#main-content">跳到主要内容</a>
-    <header class="topbar">
-      <RouterLink class="brand" to="/" aria-label="MioAni 首页">
-        <img class="brand-logo" :src="brandLogo" alt="MioAni" height="56" />
-      </RouterLink>
+    <div class="topbar-slot" :class="{ 'is-compact': topbarCompact }">
+      <header class="topbar" :class="{ 'is-compact': topbarCompact }">
+        <RouterLink class="brand" to="/" aria-label="MioAni 首页">
+          <img class="brand-logo" :src="brandLogo" alt="MioAni" height="56" />
+        </RouterLink>
 
-      <nav :class="['main-nav', { 'is-open': mobileOpen }]" aria-label="主导航">
-        <div class="main-nav__panel">
-          <RouterLink to="/" @click="mobileOpen = false"><PhHouse :size="18" />首页</RouterLink>
-          <RouterLink to="/discover" @click="mobileOpen = false"><PhCompass :size="18" />发现</RouterLink>
-          <RouterLink to="/schedule" @click="mobileOpen = false"><PhCalendarBlank :size="18" />时间表</RouterLink>
-          <RouterLink to="/library" @click="mobileOpen = false"><PhBooks :size="18" />追番库</RouterLink>
+        <nav :class="['main-nav', { 'is-open': mobileOpen }]" aria-label="主导航">
+          <div class="main-nav__panel">
+            <RouterLink to="/" @click="mobileOpen = false"><PhHouse :size="18" />首页</RouterLink>
+            <RouterLink to="/discover" @click="mobileOpen = false"><PhCompass :size="18" />发现</RouterLink>
+            <RouterLink to="/schedule" @click="mobileOpen = false"><PhCalendarBlank :size="18" />时间表</RouterLink>
+            <RouterLink to="/library" @click="mobileOpen = false"><PhBooks :size="18" />追番库</RouterLink>
+          </div>
+        </nav>
+
+        <div class="top-actions">
+          <RouterLink class="search-shortcut" to="/discover"><PhMagnifyingGlass :size="18" /><span>搜索</span><kbd>/</kbd></RouterLink>
+          <button class="import-button" type="button" @click="importOpen = true"><PhDownloadSimple :size="18" />导入</button>
+          <button
+            class="menu-button"
+            type="button"
+            :class="{ 'is-open': mobileOpen }"
+            :aria-expanded="mobileOpen"
+            :aria-label="mobileOpen ? '关闭菜单' : '打开菜单'"
+            @click="mobileOpen = !mobileOpen"
+          >
+            <span class="menu-button__icon" aria-hidden="true">
+              <i class="menu-button__line menu-button__line--top" />
+              <i class="menu-button__line menu-button__line--mid" />
+              <i class="menu-button__line menu-button__line--bot" />
+            </span>
+          </button>
         </div>
-      </nav>
-
-      <div class="top-actions">
-        <RouterLink class="search-shortcut" to="/discover"><PhMagnifyingGlass :size="18" /><span>搜索</span><kbd>/</kbd></RouterLink>
-        <button class="import-button" type="button" @click="importOpen = true"><PhDownloadSimple :size="18" />导入</button>
-        <button
-          class="menu-button"
-          type="button"
-          :class="{ 'is-open': mobileOpen }"
-          :aria-expanded="mobileOpen"
-          :aria-label="mobileOpen ? '关闭菜单' : '打开菜单'"
-          @click="mobileOpen = !mobileOpen"
-        >
-          <span class="menu-button__icon" aria-hidden="true">
-            <i class="menu-button__line menu-button__line--top" />
-            <i class="menu-button__line menu-button__line--mid" />
-            <i class="menu-button__line menu-button__line--bot" />
-          </span>
-        </button>
-      </div>
-    </header>
+      </header>
+    </div>
 
     <main id="main-content" class="list-stage">
       <!-- Visited list pages stay mounted; CSS opacity crossfade on switch. -->

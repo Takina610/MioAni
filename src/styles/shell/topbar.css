@@ -1,26 +1,91 @@
-.topbar {
+/* Layout reserve so compact floating bar does not collapse page offset */
+.topbar-slot {
   position: sticky;
   top: 0;
   z-index: 30;
   height: 72px;
+  pointer-events: none;
+}
+
+/*
+  Always fixed + left/right insets (never absolute↔fixed, never width+translate centering).
+  Expand = both sides push outward; middle grows via height.
+*/
+.topbar {
+  pointer-events: auto;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  height: 72px;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  /* Sides only in flow; nav is absolutely centered so expand does not reflow mid text */
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr 1fr;
   align-items: center;
+  column-gap: 0;
   padding: 0 clamp(18px, 4vw, 68px);
-  border-bottom: 1px solid var(--line);
-  background: rgba(11,13,12,.78);
-  backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid transparent;
+  border-bottom-color: rgba(184, 240, 95, .12);
+  border-radius: 0;
+  background:
+    linear-gradient(180deg, rgba(184, 240, 95, .06), transparent 70%),
+    rgba(11, 13, 12, .42);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  box-shadow:
+    0 1px 0 rgba(242, 245, 241, .04) inset,
+    0 12px 40px rgba(0, 0, 0, .18);
   opacity: 1;
-  transform: translateY(0);
+  transform: translate3d(0, 0, 0);
+  transform-origin: 50% 0;
+  /* Avoid subpixel thrash on text while shell animates */
+  -webkit-font-smoothing: antialiased;
+  will-change: left, right, top, height, border-radius, box-shadow;
   transition:
+    top .52s var(--ease),
+    left .56s var(--ease),
+    right .56s var(--ease),
+    height .48s var(--ease),
+    padding .48s var(--ease),
+    border-radius .52s var(--ease),
+    border-color .4s ease,
+    background .4s ease,
+    box-shadow .48s var(--ease),
     opacity .42s var(--ease),
     transform .48s var(--ease),
     visibility 0s linear 0s;
 }
+
+/* Floating capsule: inset from both sides (symmetric shrink/expand) */
+.topbar.is-compact {
+  top: max(10px, env(safe-area-inset-top, 0px));
+  left: max(14px, calc(50% - 480px));
+  right: max(14px, calc(50% - 480px));
+  height: 54px;
+  /* Symmetric padding — asymmetric L/R was shifting mid content */
+  padding: 0 16px;
+  border-color: rgba(184, 240, 95, .16);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(184, 240, 95, .09), rgba(184, 240, 95, .02) 55%, transparent),
+    rgba(11, 13, 12, .55);
+  -webkit-backdrop-filter: blur(32px) saturate(190%);
+  backdrop-filter: blur(32px) saturate(190%);
+  box-shadow:
+    0 1px 0 rgba(242, 245, 241, .06) inset,
+    0 10px 36px rgba(0, 0, 0, .38),
+    0 0 0 1px rgba(0, 0, 0, .2);
+  transform: translate3d(0, 0, 0);
+}
+
 /* Hide under detail; fade back in when returning to list pages. */
 .app-shell.has-detail-overlay .topbar {
   opacity: 0;
-  transform: translateY(-10px);
+  transform: translate3d(0, -10px, 0);
   pointer-events: none;
   visibility: hidden;
   transition:
@@ -28,30 +93,164 @@
     transform .28s ease,
     visibility 0s linear .28s;
 }
+.app-shell.has-detail-overlay .topbar.is-compact {
+  transform: translate3d(0, -14px, 0);
+}
 .app-shell.is-returning-from-detail .topbar {
   opacity: 1;
-  transform: translateY(0);
+  transform: translate3d(0, 0, 0);
   pointer-events: auto;
   visibility: visible;
   transition:
+    top .52s var(--ease),
+    left .56s var(--ease),
+    right .56s var(--ease),
+    height .48s var(--ease),
+    padding .48s var(--ease),
+    border-radius .52s var(--ease),
+    border-color .4s ease,
+    background .4s ease,
+    box-shadow .48s var(--ease),
     opacity .5s var(--ease) .06s,
     transform .55s var(--ease) .06s,
     visibility 0s linear 0s;
 }
-.brand { display: flex; width: fit-content; align-items: center; }
-.brand-logo { height: 56px; width: auto; display: block; object-fit: contain; }
-.main-nav { display: flex; align-items: center; gap: 4px; }
-.main-nav__panel { display: flex; align-items: center; gap: 4px; }
-.main-nav a { display: flex; align-items: center; gap: 7px; padding: 10px 13px; border-radius: var(--radius-sm); color: var(--muted); font-size: 12px; font-weight: 600; transition: color .2s ease, background .2s ease, transform .2s ease; }
-.main-nav a:hover { color: var(--ink); transform: translateY(-1px); }
+
+.brand {
+  grid-column: 1;
+  justify-self: start;
+  z-index: 1;
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  min-width: 0;
+}
+.brand-logo {
+  height: 56px;
+  width: auto;
+  display: block;
+  object-fit: contain;
+  transition: height .45s var(--ease);
+}
+.topbar.is-compact .brand-logo { height: 40px; }
+
+/*
+  Pin nav to geometric center of the bar.
+  Independent of logo / actions width changes → no mid-text jitter on expand.
+*/
+.main-nav {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transform: translate3d(-50%, -50%, 0);
+  backface-visibility: hidden;
+}
+.main-nav__panel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.main-nav a {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  /* Same metrics expanded/compact — padding tween was a major jitter source */
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: color .2s ease, background .2s ease;
+}
+.main-nav a:hover { color: var(--ink); }
 .main-nav a.router-link-active { background: var(--surface-2); color: var(--ink); }
-.top-actions { justify-self: end; display: flex; align-items: center; gap: 8px; }
-.search-shortcut { display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 10px; color: var(--muted); font-size: 11px; }
+.topbar.is-compact .main-nav a.router-link-active {
+  background: rgba(184, 240, 95, .14);
+  color: var(--ink);
+}
+
+.top-actions {
+  grid-column: 2;
+  justify-self: end;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.topbar.is-compact .top-actions { gap: 6px; }
+
+.search-shortcut {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+  border-radius: 999px;
+  transition: color .2s ease, background .2s ease, height .35s var(--ease);
+}
 .search-shortcut:hover { color: var(--ink); }
-.search-shortcut kbd { display: grid; place-items: center; min-width: 21px; height: 21px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); font: var(--type-micro)/1 monospace; }
-.import-button, .api-error button, .error-state button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 40px; padding: 0 15px; border: 0; border-radius: var(--radius-sm); background: var(--accent); color: var(--accent-ink); font-size: var(--type-small); font-weight: 700; cursor: pointer; transition: transform .25s var(--ease), box-shadow .25s ease; }
-.import-button:hover, .api-error button:hover, .error-state button:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(184,240,95,.18); }
+.search-shortcut kbd {
+  display: grid;
+  place-items: center;
+  min-width: 21px;
+  height: 21px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  font: var(--type-micro)/1 monospace;
+}
+.topbar.is-compact .search-shortcut {
+  height: 34px;
+  padding: 0 10px;
+  background: rgba(242, 245, 241, .04);
+}
+/* Keep label in layout (invisible) so actions width does not pop mid-animation */
+.topbar.is-compact .search-shortcut span {
+  width: 0;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.import-button, .api-error button, .error-state button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 15px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--type-small);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .25s var(--ease), box-shadow .25s ease, height .35s var(--ease), border-radius .35s var(--ease), padding .35s var(--ease);
+}
+.import-button:hover, .api-error button:hover, .error-state button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px rgba(184,240,95,.18);
+}
 .import-button:active { transform: scale(.97); }
+.topbar.is-compact .import-button {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
 .menu-button {
   display: none;
   place-items: center;
@@ -62,6 +261,13 @@
   background: transparent;
   cursor: pointer;
   color: var(--ink);
+  transition: width .35s var(--ease), height .35s var(--ease), border-radius .35s var(--ease);
+}
+.topbar.is-compact .menu-button {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(242, 245, 241, .05);
 }
 .menu-button__icon {
   position: relative;
@@ -69,7 +275,6 @@
   width: 20px;
   height: 14px;
 }
-/* Transform-only morph: all bars share the same center, no animating top/left */
 .menu-button__line {
   position: absolute;
   left: 0;
@@ -88,7 +293,6 @@
 .menu-button__line--top { transform: translate3d(0, -6px, 0); }
 .menu-button__line--mid { transform: translate3d(0, 0, 0); opacity: 1; }
 .menu-button__line--bot { transform: translate3d(0, 6px, 0); }
-/* ☰ → ✕ : mid fades, top/bot converge + rotate (single continuous motion) */
 .menu-button.is-open .menu-button__line--top {
   transform: translate3d(0, 0, 0) rotate(45deg);
 }
@@ -98,4 +302,15 @@
 }
 .menu-button.is-open .menu-button__line--bot {
   transform: translate3d(0, 0, 0) rotate(-45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar,
+  .brand-logo,
+  .main-nav a,
+  .import-button,
+  .menu-button,
+  .search-shortcut {
+    transition-duration: .01ms !important;
+  }
 }

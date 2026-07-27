@@ -12,7 +12,7 @@ body { margin: 0; min-width: 320px; min-height: 100dvh; overflow-x: hidden; back
   display: none;
 }
 body.intro-active { overflow: hidden; }
-body::before { content: ''; position: fixed; inset: 0; z-index: 40; pointer-events: none; opacity: .025; background-image: repeating-radial-gradient(circle at 0 0, transparent 0, #fff 1px, transparent 1.4px, transparent 4px); }
+body::before { content: ''; position: fixed; inset: 0; z-index: 40; pointer-events: none; opacity: .015; background-image: repeating-radial-gradient(circle at 0 0, transparent 0, #fff 1px, transparent 1.4px, transparent 4px); }
 button, input { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button { color: inherit; }

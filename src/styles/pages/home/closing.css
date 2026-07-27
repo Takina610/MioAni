@@ -6,9 +6,10 @@
   place-items: center;
   padding: 90px clamp(20px, 5vw, 72px);
   overflow: hidden;
+  /* Transparent so global GridTrail shows through; orbs/beam stay local. */
   background:
     radial-gradient(ellipse 70% 60% at 50% 0%, rgba(184,240,95,.08), transparent 55%),
-    linear-gradient(180deg, #0d100e 0%, #121513 50%, #0b0d0c 100%);
+    linear-gradient(180deg, rgba(13,16,14,.42) 0%, rgba(18,21,19,.28) 50%, rgba(11,13,12,.18) 100%);
   border-top: 1px solid var(--line);
 }
 .closing-band__bg {
@@ -37,14 +38,8 @@
   background: radial-gradient(circle, rgba(95,180,240,.12), transparent 70%);
 }
 .closing-band__grid {
-  position: absolute;
-  inset: 0;
-  opacity: .28;
-  background-image:
-    linear-gradient(rgba(228,237,230,.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(228,237,230,.045) 1px, transparent 1px);
-  background-size: 42px 42px;
-  mask-image: radial-gradient(ellipse 70% 65% at 50% 45%, #000 10%, transparent 75%);
+  /* Local line grid retired — site GridTrail is the lattice under this band. */
+  display: none;
 }
 .closing-band__beam {
   position: absolute;

@@ -1,7 +1,8 @@
-.app-shell { min-height: 100dvh; }
+.app-shell { min-height: 100dvh; position: relative; }
 /* Stack list pages so home/discover/library can crossfade without remount */
 .list-stage {
   position: relative;
+  z-index: 1;
   min-height: calc(100dvh - 72px);
   overflow: clip;
 }

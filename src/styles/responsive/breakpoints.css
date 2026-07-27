@@ -33,10 +33,23 @@
   .manga-slash { top: 50%; }
   .intro-manga .intro-scene-copy { top: 70%; gap: 9px; }
   .intro-manga .intro-scene-copy strong { font-size: 11px; }
-  .topbar { height: 64px; grid-template-columns: 1fr auto; padding: 0 15px; }
+  .topbar-slot { height: 64px; }
+  .topbar {
+    height: 64px;
+    grid-template-columns: 1fr auto;
+    padding: 0 15px;
+  }
+  /* Narrow centered capsule — full-bleed +10px looked almost same as expanded */
+  .topbar.is-compact {
+    left: max(20px, calc(50% - 138px));
+    right: max(20px, calc(50% - 138px));
+    height: 48px;
+    padding: 0 10px 0 12px;
+  }
   .search-shortcut { display: none; }
   .brand-logo { height: 44px; width: auto; }
-  /* Mobile topbar dropdown — open/close both animate (no link opacity snap on close) */
+  .topbar.is-compact .brand-logo { height: 34px; }
+  /* Mobile topbar dropdown — override desktop absolute center pin */
   .main-nav {
     position: fixed;
     top: 64px;
@@ -47,8 +60,12 @@
     max-height: 0;
     overflow: hidden;
     border-bottom: 1px solid transparent;
-    background: rgba(11,13,12,.96);
-    backdrop-filter: blur(18px);
+    /* Solid enough that hero posters never punch through link labels */
+    background:
+      linear-gradient(180deg, rgba(184, 240, 95, .08), transparent 55%),
+      rgba(11, 13, 12, .96);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    backdrop-filter: blur(24px) saturate(160%);
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
@@ -79,11 +96,37 @@
       visibility 0s linear 0s,
       border-color .28s ease;
   }
+  /* Compact floating bar: dropdown stays near full width under the narrow pill */
+  .topbar.is-compact .main-nav {
+    top: calc(max(10px, env(safe-area-inset-top, 0px)) + 48px + 8px);
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    border-radius: 18px;
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, rgba(184, 240, 95, .1), transparent 50%),
+      rgba(12, 15, 13, .97);
+    border: 1px solid rgba(184, 240, 95, .14);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, .55);
+  }
+  .topbar.is-compact .import-button {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+  .topbar.is-compact .main-nav.is-open {
+    border-bottom-color: rgba(184, 240, 95, .14);
+  }
   .main-nav a {
     padding: 13px 8px;
-    /* Keep links fully opaque while panel clips — close no longer snaps text away first */
     opacity: 1;
     transform: none;
+    color: var(--ink);
+  }
+  .main-nav a.router-link-active {
+    background: rgba(184, 240, 95, .12);
   }
   .menu-button { display: grid; }
   .import-button { height: 38px; padding: 0 11px; }
@@ -345,6 +388,7 @@
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .topbar, .modal-backdrop { backdrop-filter: none; }
+  .topbar, .modal-backdrop { backdrop-filter: none; -webkit-backdrop-filter: none; }
   .topbar { background: var(--bg); }
+  .topbar.is-compact { background: var(--surface); }
 }
