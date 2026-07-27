@@ -111,10 +111,21 @@
     border: 1px solid rgba(184, 240, 95, .14);
     box-shadow: 0 18px 48px rgba(0, 0, 0, .55);
   }
+  /* Same metrics expanded/compact — height tween caused vertical jitter */
   .topbar.is-compact .import-button {
-    height: 32px;
-    padding: 0 10px;
+    height: 30px;
+    padding: 0 9px;
     font-size: 11px;
+    gap: 5px;
+    border-radius: 999px;
+  }
+  .topbar.is-compact .import-button svg {
+    width: 15px;
+    height: 15px;
+  }
+  .topbar.is-compact .menu-button {
+    width: 30px;
+    height: 30px;
   }
   .topbar.is-compact .main-nav.is-open {
     border-bottom-color: rgba(184, 240, 95, .14);
@@ -128,8 +139,30 @@
   .main-nav a.router-link-active {
     background: rgba(184, 240, 95, .12);
   }
-  .menu-button { display: grid; }
-  .import-button { height: 38px; padding: 0 11px; }
+  .menu-button {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+  }
+  .import-button {
+    height: 30px;
+    padding: 0 9px;
+    font-size: 11px;
+    gap: 5px;
+    border-radius: 999px;
+    line-height: 1;
+    /* No height/padding/radius tween on mobile — kills vertical jitter */
+    transition: box-shadow .2s ease, background .2s ease, color .2s ease;
+  }
+  .import-button:hover {
+    transform: none;
+  }
+  .import-button svg {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+  }
   .hero-carousel {
     --hero-pad-x: 20px;
     --hero-pad-top: 78px;
@@ -254,9 +287,30 @@
     white-space: normal;
     max-width: 28ch;
   }
-  .closing-band__actions { width: 100%; flex-direction: column; }
-  .closing-band__primary,
-  .closing-band__ghost { width: 100%; justify-content: center; }
+  .closing-band__actions {
+    width: min(100%, 28ch);
+    flex-direction: column;
+    gap: 36px;
+    box-sizing: border-box;
+  }
+  .closing-band__cta,
+  .closing-band__send {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    justify-content: center;
+  }
+  .closing-band__cta {
+    padding: 12px 20px;
+    font-size: 14px;
+    box-shadow: 5px 5px 0 rgba(60, 90, 28, .85);
+  }
+  .closing-band__cta:hover {
+    box-shadow: 8px 8px 0 rgba(196, 232, 130, .92);
+  }
+  .closing-band__cta:hover .closing-band__cta-arrows {
+    margin-right: 28px;
+  }
   .closing-band__stats { gap: 8px; }
   .progress-row { grid-template-columns: 58px 1fr; }
   .progress-row > img, .row-poster-missing { width: 58px; height: 70px; }

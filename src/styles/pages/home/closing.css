@@ -92,45 +92,146 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 12px;
+  align-items: center;
+  gap: 48px;
   margin-top: 8px;
 }
-.closing-band__primary {
+/* Uiverse-style skewed CTA — From Uiverse.io by mobinkakei (accent themed) */
+.closing-band__cta {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  height: 46px;
-  padding: 0 20px;
-  border-radius: 999px;
-  background: var(--accent);
+  padding: 12px 28px;
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: .02em;
   color: var(--accent-ink);
+  background: var(--accent);
+  transition: box-shadow .5s ease, transform .2s ease;
+  box-shadow: 6px 6px 0 rgba(60, 90, 28, .85);
+  transform: skewX(-15deg);
+  border: none;
+  cursor: pointer;
+}
+.closing-band__cta:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+.closing-band__cta:hover {
+  transition: box-shadow .5s ease;
+  box-shadow: 10px 10px 0 rgba(196, 232, 130, .92);
+}
+.closing-band__cta-label {
+  transform: skewX(15deg);
+  white-space: nowrap;
+}
+.closing-band__cta-arrows {
+  width: 20px;
+  margin-left: 22px;
+  position: relative;
+  top: 8%;
+  color: var(--accent-ink);
+  transition: margin-right .5s ease;
+  margin-right: 0;
+  flex-shrink: 0;
+  line-height: 0;
+}
+.closing-band__cta:hover .closing-band__cta-arrows {
+  margin-right: 36px;
+}
+.closing-band__cta-arrows svg {
+  display: block;
+  width: 42px;
+  height: 16px;
+  overflow: visible;
+}
+.closing-band__cta-arr {
+  transition: transform .4s ease, fill .4s ease;
+  fill: currentColor;
+}
+.closing-band__cta-arr--one {
+  transform: translateX(-60%);
+  transition-duration: .4s;
+}
+.closing-band__cta-arr--two {
+  transform: translateX(-30%);
+  transition-duration: .5s;
+}
+.closing-band__cta:hover .closing-band__cta-arr--three {
+  animation: closing-cta-flash 1s infinite .2s;
+}
+.closing-band__cta:hover .closing-band__cta-arr--one {
+  transform: translateX(0%);
+  animation: closing-cta-flash 1s infinite .6s;
+}
+.closing-band__cta:hover .closing-band__cta-arr--two {
+  transform: translateX(0%);
+  animation: closing-cta-flash 1s infinite .4s;
+}
+@keyframes closing-cta-flash {
+  0% { fill: #11170c; }
+  50% { fill: #d8f59a; }
+  100% { fill: #11170c; }
+}
+/* Uiverse-style send CTA — transparent shell, accent ink (From Uiverse.io by adamgiebl) */
+.closing-band__send {
+  font-family: inherit;
   font-size: var(--type-small);
   font-weight: 700;
-  transition: transform .25s var(--ease), box-shadow .25s ease, gap .25s var(--ease);
-}
-.closing-band__primary:hover {
-  transform: translateY(-2px);
-  gap: 14px;
-  box-shadow: 0 12px 32px rgba(184,240,95,.22);
-}
-.closing-band__ghost {
+  background: transparent;
+  color: var(--accent);
+  padding: 0 20px 0 16px;
+  height: 46px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 46px;
-  padding: 0 16px;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(184, 240, 95, .35);
   border-radius: 999px;
-  color: var(--ink);
-  font-size: var(--type-small);
-  font-weight: 600;
-  background: rgba(11,13,12,.35);
-  transition: border-color .2s ease, color .2s ease, gap .25s var(--ease);
+  overflow: hidden;
+  transition: transform .2s ease, border-color .2s ease, background .2s ease;
+  cursor: pointer;
+  box-shadow: none;
 }
-.closing-band__ghost:hover {
-  border-color: rgba(184,240,95,.4);
+.closing-band__send-icon-wrap {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.closing-band__send-icon {
+  display: block;
+}
+.closing-band__send-label {
+  display: block;
+  margin-left: 0.35em;
+  white-space: nowrap;
+  transition: transform .35s ease-in-out, opacity .28s ease;
+}
+.closing-band__send svg {
+  display: block;
   color: var(--accent);
-  gap: 12px;
+  transform-origin: center center;
+  transition: transform .3s ease-in-out;
+}
+.closing-band__send:hover {
+  border-color: rgba(184, 240, 95, .55);
+  background: rgba(184, 240, 95, .06);
+}
+.closing-band__send:hover .closing-band__send-icon {
+  animation: closing-send-fly 0.6s ease-in-out infinite alternate;
+}
+.closing-band__send:hover svg {
+  transform: translateX(1.35em) rotate(45deg) scale(1.08);
+}
+/* Fully clear the chip — Chinese label is wider than original "Send" */
+.closing-band__send:hover .closing-band__send-label {
+  transform: translateX(calc(100% + 2.5em));
+  opacity: 0;
+}
+.closing-band__send:active {
+  transform: scale(0.97);
+}
+@keyframes closing-send-fly {
+  from { transform: translateY(0.1em); }
+  to { transform: translateY(-0.1em); }
 }
 .closing-band__stats {
   display: grid;
@@ -138,8 +239,7 @@
   gap: 12px;
   width: min(100%, 520px);
   margin-top: 10px;
-  padding-top: 18px;
-  border-top: 1px solid rgba(228,237,230,.1);
+  padding-top: 8px;
 }
 .closing-band__stats > div {
   display: grid;
@@ -157,4 +257,25 @@
   font: 600 10px/1 monospace;
   letter-spacing: .08em;
   text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .closing-band__send:hover .closing-band__send-icon {
+    animation: none;
+  }
+  .closing-band__send:hover svg,
+  .closing-band__send:hover .closing-band__send-label {
+    transform: none;
+  }
+  .closing-band__cta,
+  .closing-band__cta-arrows,
+  .closing-band__cta-arr {
+    transition: none !important;
+  }
+  .closing-band__cta:hover .closing-band__cta-arr--one,
+  .closing-band__cta:hover .closing-band__cta-arr--two,
+  .closing-band__cta:hover .closing-band__cta-arr--three {
+    animation: none;
+    transform: none;
+  }
 }
