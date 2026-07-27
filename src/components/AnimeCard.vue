@@ -197,47 +197,65 @@ onUnmounted(() => {
           <PhPlus v-else :size="17" weight="bold" />
           <PhCaretDown class="poster-action__caret" :size="10" weight="bold" />
         </button>
-
-        <Transition name="status-menu">
-          <div v-if="menuOpen" class="poster-status-menu" role="menu" aria-label="选择追番状态">
-            <p class="poster-status-menu__title">{{ inLibrary ? '修改状态' : '加入到' }}</p>
-            <button
-              v-for="opt in STATUS_OPTIONS"
-              :key="opt.value"
-              type="button"
-              role="menuitemradio"
-              :aria-checked="libraryItem?.status === opt.value"
-              :class="{ active: libraryItem?.status === opt.value }"
-              @click="pickStatus(opt.value, $event)"
-            >
-              <span>{{ opt.label }}</span>
-              <PhCheck v-if="libraryItem?.status === opt.value" :size="14" weight="bold" />
-            </button>
-            <button
-              v-if="inLibrary"
-              type="button"
-              class="poster-status-menu__remove"
-              role="menuitem"
-              @pointerdown.stop.prevent="removeFromLibrary"
-              @click.stop.prevent="removeFromLibrary"
-            >
-              <span>从列表删除</span>
-              <PhTrash :size="14" weight="bold" />
-            </button>
-          </div>
-        </Transition>
       </div>
 
       <Transition name="card-toast">
         <div v-if="feedback" class="card-toast" role="status">{{ feedback }}</div>
       </Transition>
     </div>
+
+    <!-- Outside poster-wrap so the menu can extend over anime-meta without overflow clip. -->
+    <Transition name="status-menu">
+      <div
+        v-if="menuOpen"
+        class="poster-status-menu"
+        role="menu"
+        aria-label="选择追番状态"
+        @click.stop
+      >
+        <p class="poster-status-menu__title">{{ inLibrary ? '修改状态' : '加入到' }}</p>
+        <button
+          v-for="opt in STATUS_OPTIONS"
+          :key="opt.value"
+          type="button"
+          role="menuitemradio"
+          :aria-checked="libraryItem?.status === opt.value"
+          :class="{ active: libraryItem?.status === opt.value }"
+          @click="pickStatus(opt.value, $event)"
+        >
+          <span>{{ opt.label }}</span>
+          <PhCheck v-if="libraryItem?.status === opt.value" :size="14" weight="bold" />
+        </button>
+        <button
+          v-if="inLibrary"
+          type="button"
+          class="poster-status-menu__remove"
+          role="menuitem"
+          @pointerdown.stop.prevent="removeFromLibrary"
+          @click.stop.prevent="removeFromLibrary"
+        >
+          <span>从列表删除</span>
+          <PhTrash :size="14" weight="bold" />
+        </button>
+      </div>
+    </Transition>
+
     <div class="anime-meta">
       <h3 :title="anime.title">{{ anime.title }}</h3>
       <p>
         <span class="source-label">{{ anime.source }}</span>
         <span>{{ anime.year || '待定' }}</span>
-        <span v-if="anime.episodes">{{ anime.episodes }}话</span>
+        <span
+          v-if="anime.episodes"
+          class="anime-meta__eps"
+          :data-digits="String(anime.episodes).replace(/\D/g, '').length >= 5
+            ? 5
+            : String(anime.episodes).replace(/\D/g, '').length >= 4
+              ? 4
+              : String(anime.episodes).replace(/\D/g, '').length >= 3
+                ? 3
+                : 0"
+        >{{ anime.episodes }}话</span>
       </p>
     </div>
   </article>

@@ -8,9 +8,6 @@ import HomeSchedulePreview from '../components/HomeSchedulePreview.vue'
 import { useCatalogStore } from '../stores/catalog'
 import { useLibraryStore } from '../stores/library'
 import type { Anime } from '../types/anime'
-import mangaPanelAnimePortrait from '../assets/manga-intro/panel-anime-portrait.png'
-import mangaPanelAnimeBeach from '../assets/manga-intro/panel-anime-beach.jpg'
-import mangaPanelMangaFigure from '../assets/manga-intro/panel-manga-figure.jpg'
 
 const INTRO_COPY = [
   'INKING FRAME 01',
@@ -26,11 +23,11 @@ const INTRO_WAIT_COPY = [
 ] as const
 const INTRO_WAIT_PROGRESS_LIMIT = 98.4
 const INTRO_WAIT_STATUS_INTERVAL = 2200
-// Free anime/manga-style panels from Wikimedia Commons (CC BY-SA) so the intro never waits on the catalog API.
+// Fixed public/ paths (see index.html preload). WebP keeps intro off the JS critical path.
 const MANGA_INTRO_PANELS = [
-  { src: mangaPanelAnimePortrait, label: 'ANIME / PORTRAIT' },
-  { src: mangaPanelAnimeBeach, label: 'ANIME / SUMMER FRAME' },
-  { src: mangaPanelMangaFigure, label: 'MANGA / FIGURE' },
+  { src: '/intro/panel-anime-portrait.webp', label: 'ANIME / PORTRAIT' },
+  { src: '/intro/panel-anime-beach.webp', label: 'ANIME / SUMMER FRAME' },
+  { src: '/intro/panel-manga-figure.webp', label: 'MANGA / FIGURE' },
 ] as const
 const INTRO_CRITICAL_ASSETS = MANGA_INTRO_PANELS.map((item) => item.src)
 
@@ -959,6 +956,8 @@ onUnmounted(() => {
             <img
               :src="item.src"
               alt=""
+              width="600"
+              height="900"
               decoding="async"
               fetchpriority="high"
               loading="eager"

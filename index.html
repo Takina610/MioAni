@@ -8,6 +8,18 @@
     <meta name="theme-color" content="#0b0d0c" />
     <meta name="description" content="MioAni，浏览季度新番并同步 Bangumi、AniList 追番记录。" />
     <title>MioAni | Follow your season</title>
+    <!-- Intro panels: fixed public URLs so HTML can preload before the JS bundle. -->
+    <link rel="preload" as="image" type="image/webp" href="/intro/panel-anime-portrait.webp" fetchpriority="high" />
+    <link rel="preload" as="image" type="image/webp" href="/intro/panel-anime-beach.webp" fetchpriority="high" />
+    <link rel="preload" as="image" type="image/webp" href="/intro/panel-manga-figure.webp" fetchpriority="high" />
+    <script>
+      // Warm cache in parallel with module download (older browsers / no preload).
+      ;['/intro/panel-anime-portrait.webp', '/intro/panel-anime-beach.webp', '/intro/panel-manga-figure.webp'].forEach(function (src) {
+        var img = new Image()
+        img.decoding = 'async'
+        img.src = src
+      })
+    </script>
   </head>
   <body>
     <div id="app"></div>

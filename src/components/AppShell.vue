@@ -6,7 +6,7 @@ import ImportModal from './ImportModal.vue'
 import AnimeDetailOverlay from './AnimeDetailOverlay.vue'
 import PersonDetailOverlay from './PersonDetailOverlay.vue'
 import GridTrailBackground from './GridTrailBackground.vue'
-import brandLogo from '../assets/MioAni2.png'
+import brandLogo from '../assets/MioAni2.webp'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
 import { usePersonOverlayStore } from '../stores/personOverlay'
 import HomeView from '../views/HomeView.vue'
@@ -234,7 +234,7 @@ onUnmounted(() => {
     <div class="topbar-slot" :class="{ 'is-compact': topbarCompact }">
       <header class="topbar" :class="{ 'is-compact': topbarCompact }">
         <RouterLink class="brand" to="/" aria-label="MioAni 首页">
-          <img class="brand-logo" :src="brandLogo" alt="MioAni" height="56" />
+          <img class="brand-logo" :src="brandLogo" alt="MioAni" height="56" width="99" decoding="async" fetchpriority="low" />
         </RouterLink>
 
         <nav :class="['main-nav', { 'is-open': mobileOpen }]" aria-label="主导航">

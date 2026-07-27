@@ -204,7 +204,6 @@
   height: 21px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: var(--surface);
   font: var(--type-micro)/1 monospace;
 }
 .topbar.is-compact .search-shortcut {
@@ -267,7 +266,6 @@
   width: 34px;
   height: 34px;
   border-radius: 999px;
-  background: rgba(242, 245, 241, .05);
 }
 .menu-button__icon {
   position: relative;
