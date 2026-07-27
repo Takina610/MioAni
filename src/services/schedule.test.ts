@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import type { Anime } from '../types/anime'
 import {
+  addLocalDays,
   bangumiWeekdayToJs,
   buildScheduleFromAniList,
   buildWeekSchedule,
   emptyWeekSchedule,
   enrichScheduleWithAiringTimes,
   formatAirTime,
+  formatScheduleMonthDay,
+  isSameLocalDay,
+  itemsForWeekday,
   scheduleHasContent,
+  sliceScheduleWindow,
+  startOfLocalDay,
   weekdayLabel,
 } from './schedule'
 
@@ -157,6 +163,55 @@ describe('buildScheduleFromAniList', () => {
       now,
     )
     expect(scheduleHasContent(days)).toBe(false)
+  })
+})
+
+describe('schedule window helpers', () => {
+  it('startOfLocalDay zeros time', () => {
+    const d = new Date(2026, 6, 25, 15, 30, 45, 123)
+    const start = startOfLocalDay(d)
+    expect(start.getFullYear()).toBe(2026)
+    expect(start.getMonth()).toBe(6)
+    expect(start.getDate()).toBe(25)
+    expect(start.getHours()).toBe(0)
+    expect(start.getMinutes()).toBe(0)
+    expect(start.getSeconds()).toBe(0)
+  })
+
+  it('addLocalDays crosses month boundaries', () => {
+    const start = startOfLocalDay(new Date(2026, 6, 30))
+    const next = addLocalDays(start, 2)
+    expect(next.getFullYear()).toBe(2026)
+    expect(next.getMonth()).toBe(7)
+    expect(next.getDate()).toBe(1)
+  })
+
+  it('sliceScheduleWindow returns consecutive midnights', () => {
+    const start = startOfLocalDay(new Date(2026, 6, 25))
+    const window = sliceScheduleWindow(start, 4)
+    expect(window).toHaveLength(4)
+    expect(window.map((d) => d.getDate())).toEqual([25, 26, 27, 28])
+    expect(window.every((d) => d.getHours() === 0)).toBe(true)
+  })
+
+  it('itemsForWeekday maps template days', () => {
+    const now = new Date(2026, 6, 22)
+    const days = buildWeekSchedule(
+      [{ anime: anime({ id: 'bgm-1', title: 'Mon' }), airWeekday: 1, airTime: '12:00' }],
+      now,
+    )
+    expect(itemsForWeekday(days, 1)).toHaveLength(1)
+    expect(itemsForWeekday(days, 2)).toHaveLength(0)
+    expect(itemsForWeekday(days, 99)).toHaveLength(0)
+  })
+
+  it('isSameLocalDay and formatScheduleMonthDay', () => {
+    const a = new Date(2026, 6, 25, 8, 0, 0)
+    const b = new Date(2026, 6, 25, 23, 59, 0)
+    const c = new Date(2026, 6, 26, 0, 0, 0)
+    expect(isSameLocalDay(a, b)).toBe(true)
+    expect(isSameLocalDay(a, c)).toBe(false)
+    expect(formatScheduleMonthDay(a)).toBe('7/25')
   })
 })
 

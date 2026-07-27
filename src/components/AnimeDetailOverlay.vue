@@ -634,7 +634,7 @@ function resetSurfaceToOpen() {
  * Buried shells are incomplete (header only), so we never circle-collapse the whole surface.
  * Instead: swap to parent UI immediately (preserved snapshot), flyer alone returns to origin.
  */
-async function popDetailStack(opts: { fromBrowserBack?: boolean } = {}) {
+async function popDetailStack(_opts: { fromBrowserBack?: boolean } = {}) {
   if (!store.canPopDetail || closing) return
 
   closing = true
@@ -711,7 +711,6 @@ async function popDetailStack(opts: { fromBrowserBack?: boolean } = {}) {
     closing = false
     store.phase = 'open'
     store.expandMode = store.layers.length > 1 ? 'stack' : 'list'
-    const id = store.activeId
 
     restoreLayerUi(store.topLayer?.key, { posterFallback: parentArt })
     if (parentArt) posterSrc.value = parentArt

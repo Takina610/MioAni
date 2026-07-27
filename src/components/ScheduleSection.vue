@@ -1,9 +1,33 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PhCaretLeft, PhCaretRight, PhStar } from '@phosphor-icons/vue'
 import type { ScheduleDay, ScheduleItem } from '../types/schedule'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
+import {
+  addLocalDays,
+  formatScheduleMonthDay,
+  isSameLocalDay,
+  itemsForWeekday,
+  sliceScheduleWindow,
+  startOfLocalDay,
+  weekdayLabel,
+} from '../services/schedule'
+
+/** Match discover `catalog-grid` density: 6 desktop / 3 mobile. */
+const DESKTOP_COLUMNS = 6
+const NARROW_COLUMNS = 3
+const COLUMN_MQ = '(min-width: 760px)'
+
+export type ScheduleColumn = {
+  key: string
+  date: Date
+  weekday: number
+  label: string
+  monthDay: string
+  isToday: boolean
+  items: ScheduleItem[]
+}
 
 const props = withDefaults(defineProps<{
   days: ScheduleDay[]
@@ -16,46 +40,42 @@ const detailOverlay = useDetailOverlayStore()
 const router = useRouter()
 const route = useRoute()
 
-const selectedWeekday = ref(0)
+function initialColumnCount(): number {
+  if (typeof window === 'undefined') return DESKTOP_COLUMNS
+  return window.matchMedia(COLUMN_MQ).matches ? DESKTOP_COLUMNS : NARROW_COLUMNS
+}
+
+const windowStart = ref(startOfLocalDay(new Date()))
+const columnCount = ref(initialColumnCount())
 const rowRefs = ref<Record<string, HTMLElement | null>>({})
-const railRef = ref<HTMLElement | null>(null)
-/** Skip first paint animation + scrollIntoView (enter page must stay snappy). */
+/** Skip first paint animation (enter page must stay snappy). */
 const ready = ref(false)
 
-const dayIndex = computed(() => {
-  const i = props.days.findIndex((d) => d.weekday === selectedWeekday.value)
-  return i >= 0 ? i : 0
+let mediaQuery: MediaQueryList | null = null
+
+const visibleColumns = computed((): ScheduleColumn[] => {
+  const dates = sliceScheduleWindow(windowStart.value, columnCount.value)
+  const now = new Date()
+  return dates.map((date) => {
+    const weekday = date.getDay()
+    return {
+      key: `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`,
+      date,
+      weekday,
+      label: weekdayLabel(weekday),
+      monthDay: formatScheduleMonthDay(date),
+      isToday: isSameLocalDay(date, now),
+      items: itemsForWeekday(props.days, weekday),
+    }
+  })
 })
 
-const activeDay = computed(() => props.days[dayIndex.value] || props.days[0])
-
-const timedCount = computed(() => {
-  const items = activeDay.value?.items
-  if (!items?.length) return 0
-  let n = 0
-  for (const item of items) if (item.timed) n += 1
-  return n
-})
-
-const pendingCount = computed(() => {
-  const items = activeDay.value?.items
-  if (!items?.length) return 0
-  return items.length - timedCount.value
-})
-
-function defaultWeekday(days: ScheduleDay[]): number {
-  return days.find((d) => d.isToday)?.weekday ?? days[0]?.weekday ?? 1
+function syncColumnCount() {
+  columnCount.value = mediaQuery?.matches ? DESKTOP_COLUMNS : NARROW_COLUMNS
 }
 
-function selectDay(weekday: number) {
-  if (weekday === selectedWeekday.value) return
-  selectedWeekday.value = weekday
-}
-
-function stepDay(delta: number) {
-  if (!props.days.length) return
-  const next = (dayIndex.value + delta + props.days.length) % props.days.length
-  selectDay(props.days[next].weekday)
+function stepWindow(delta: number) {
+  windowStart.value = startOfLocalDay(addLocalDays(windowStart.value, delta))
 }
 
 function setRowRef(id: string, el: unknown) {
@@ -65,7 +85,7 @@ function setRowRef(id: string, el: unknown) {
 
 async function openItem(item: ScheduleItem) {
   const row = rowRefs.value[item.anime.id]
-  const poster = row?.querySelector('.schedule-flow__cover') || row || null
+  const poster = row?.querySelector('.schedule-poster-card__cover') || row || null
   const fromPath = route.fullPath
   await detailOverlay.openFromCard(item.anime, poster, fromPath)
   if (route.name !== 'anime-detail' || route.params.id !== item.anime.id) {
@@ -78,33 +98,22 @@ function onKeydown(e: KeyboardEvent) {
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
   if (e.key === 'ArrowLeft') {
     e.preventDefault()
-    stepDay(-1)
+    stepWindow(-1)
   } else if (e.key === 'ArrowRight') {
     e.preventDefault()
-    stepDay(1)
+    stepWindow(1)
   }
 }
 
-watch(
-  () => props.days,
-  (days) => {
-    if (!days.length) return
-    if (!days.some((d) => d.weekday === selectedWeekday.value)) {
-      selectedWeekday.value = defaultWeekday(days)
-    }
-  },
-  { immediate: true },
-)
-
-watch(selectedWeekday, () => {
-  if (!ready.value) return
-  const active = railRef.value?.querySelector<HTMLElement>('.schedule-rail__day.is-active')
-  active?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
-})
+function onMediaChange() {
+  syncColumnCount()
+}
 
 onMounted(() => {
-  selectedWeekday.value = defaultWeekday(props.days)
-  // Defer "ready" so first paint is static (no enter animation jank).
+  windowStart.value = startOfLocalDay(new Date())
+  mediaQuery = window.matchMedia(COLUMN_MQ)
+  syncColumnCount()
+  mediaQuery.addEventListener('change', onMediaChange)
   requestAnimationFrame(() => {
     ready.value = true
   })
@@ -112,6 +121,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  mediaQuery?.removeEventListener('change', onMediaChange)
   window.removeEventListener('keydown', onKeydown)
 })
 </script>
@@ -120,6 +130,7 @@ onUnmounted(() => {
   <section
     class="season-schedule schedule-flow"
     :class="{ 'season-schedule--page': page, 'is-ready': ready }"
+    :style="{ '--schedule-cols': columnCount }"
     :aria-labelledby="page ? undefined : 'schedule-heading'"
   >
     <div v-if="!page" class="directory-head directory-head--solo">
@@ -127,115 +138,108 @@ onUnmounted(() => {
         <span>SCHEDULE</span>
         <h2 id="schedule-heading">番剧时间表</h2>
       </div>
-      <p class="directory-count">本周放送 · 按时间流</p>
+      <p class="directory-count">本周放送 · 六日窗口</p>
     </div>
 
     <div class="schedule-rail-wrap">
-      <button type="button" class="schedule-rail__nav" aria-label="上一天" @click="stepDay(-1)">
+      <button type="button" class="schedule-rail__nav" aria-label="向前一天" @click="stepWindow(-1)">
         <PhCaretLeft :size="18" weight="bold" />
       </button>
 
-      <div ref="railRef" class="schedule-rail" role="tablist" aria-label="选择星期">
-        <button
-          v-for="day in days"
-          :key="day.weekday"
-          type="button"
-          role="tab"
-          class="schedule-rail__day"
-          :class="{
-            'is-active': day.weekday === selectedWeekday,
-            'is-today': day.isToday,
-          }"
-          :aria-selected="day.weekday === selectedWeekday"
-          :aria-label="`${day.label}${day.isToday ? '，今天' : ''}，${day.items.length} 部`"
-          @click="selectDay(day.weekday)"
+      <div
+        class="schedule-window-heads"
+        role="group"
+        :aria-label="`放送窗口，${columnCount} 日`"
+      >
+        <div
+          v-for="col in visibleColumns"
+          :key="col.key"
+          class="schedule-window-head"
+          :class="{ 'is-today': col.isToday }"
         >
-          <span class="schedule-rail__label">{{ day.label.replace('周', '') }}</span>
-          <strong class="schedule-rail__count">{{ day.items.length }}</strong>
-          <span v-if="day.isToday" class="schedule-rail__dot" aria-hidden="true" />
-        </button>
+          <span class="schedule-window-head__label">{{ col.label }}</span>
+          <span class="schedule-window-head__date">{{ col.monthDay }}</span>
+        </div>
       </div>
 
-      <button type="button" class="schedule-rail__nav" aria-label="下一天" @click="stepDay(1)">
+      <button type="button" class="schedule-rail__nav" aria-label="向后一天" @click="stepWindow(1)">
         <PhCaretRight :size="18" weight="bold" />
       </button>
     </div>
 
-    <div class="schedule-stage">
-      <header class="schedule-stage__head">
-        <div>
-          <p class="schedule-stage__kicker">TIME STREAM</p>
-          <h3 class="schedule-stage__title">
-            {{ activeDay?.label || '—' }}
-            <span v-if="activeDay?.isToday" class="schedule-stage__badge">今天</span>
-          </h3>
-        </div>
-        <p class="schedule-stage__meta">
-          <span>{{ activeDay?.items.length || 0 }} 部</span>
-          <span v-if="timedCount"> · {{ timedCount }} 有时刻</span>
-          <span v-if="pendingCount"> · {{ pendingCount }} 待定</span>
-        </p>
-      </header>
+    <div
+      class="schedule-columns"
+      role="list"
+      aria-label="放送日程"
+    >
+      <div
+        v-for="col in visibleColumns"
+        :key="col.key"
+        class="schedule-col"
+        :class="{ 'is-today': col.isToday }"
+        role="listitem"
+        :aria-label="`${col.label} ${col.monthDay}`"
+      >
+        <header class="schedule-col__head">
+          <h3 class="schedule-col__title">{{ col.label }}</h3>
+          <p class="schedule-col__date">{{ col.monthDay }}</p>
+        </header>
 
-      <div v-if="activeDay?.items.length" class="schedule-flow__track">
-        <div class="schedule-flow__spine" aria-hidden="true" />
-
-        <article
-          v-for="(item, index) in activeDay.items"
-          :key="item.anime.id"
-          class="schedule-flow__item"
-          :class="{
-            'is-pending': !item.timed,
-            'is-expanding': detailOverlay.open && detailOverlay.returnCardId === item.anime.id,
-          }"
-          :data-anime-id="item.anime.id"
-          :style="ready ? { '--i': Math.min(index, 12) } : undefined"
-          :ref="(el) => setRowRef(item.anime.id, el)"
-        >
-          <div class="schedule-flow__node" aria-hidden="true">
-            <span class="schedule-flow__ring" />
-          </div>
-
-          <button
-            type="button"
-            class="schedule-flow__card"
-            :aria-label="`查看 ${item.anime.title}`"
-            @click="openItem(item)"
+        <div v-if="col.items.length" class="schedule-col__track">
+          <article
+            v-for="(item, index) in col.items"
+            :key="`${col.key}-${item.anime.id}`"
+            class="schedule-poster-card"
+            :class="{
+              'is-pending': !item.timed,
+              'is-expanding': detailOverlay.open && detailOverlay.returnCardId === item.anime.id,
+            }"
+            :data-anime-id="item.anime.id"
+            :style="ready ? { '--i': Math.min(index, 12) } : undefined"
+            :ref="(el) => setRowRef(item.anime.id, el)"
           >
-            <time class="schedule-flow__time" :class="{ 'is-pending': !item.timed }">
-              {{ item.timed ? item.airTime : '待定' }}
-            </time>
-            <span class="schedule-flow__cover" data-anime-poster aria-hidden="true">
-              <img
-                v-if="item.anime.image"
-                :src="item.anime.image"
-                alt=""
-                loading="lazy"
-                decoding="async"
-              />
-              <span v-else class="schedule-flow__cover-fallback" />
-            </span>
-            <span class="schedule-flow__body">
-              <span class="schedule-flow__name">{{ item.anime.title }}</span>
-              <span v-if="item.anime.score" class="schedule-flow__sub">
-                <PhStar :size="12" weight="fill" />
-                {{ item.anime.score.toFixed(1) }}
+            <button
+              type="button"
+              class="schedule-poster-card__btn"
+              :aria-label="`查看 ${item.anime.title}`"
+              @click="openItem(item)"
+            >
+              <span class="schedule-poster-card__cover" data-anime-poster aria-hidden="true">
+                <img
+                  v-if="item.anime.image"
+                  :src="item.anime.image"
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                />
+                <span v-else class="schedule-poster-card__cover-fallback" />
+                <span
+                  v-if="item.anime.score"
+                  class="schedule-poster-card__score"
+                >
+                  <PhStar :size="11" weight="fill" />
+                  {{ item.anime.score.toFixed(1) }}
+                </span>
               </span>
+              <span class="schedule-poster-card__name">{{ item.anime.title }}</span>
               <span
-                v-else-if="item.anime.originalTitle && item.anime.originalTitle !== item.anime.title"
-                class="schedule-flow__sub"
+                v-if="item.anime.originalTitle && item.anime.originalTitle !== item.anime.title"
+                class="schedule-poster-card__original"
               >
                 {{ item.anime.originalTitle }}
               </span>
-            </span>
-            <span class="schedule-flow__index" aria-hidden="true">
-              {{ String(index + 1).padStart(2, '0') }}
-            </span>
-          </button>
-        </article>
-      </div>
+              <time
+                class="schedule-poster-card__time"
+                :class="{ 'is-pending': !item.timed }"
+              >
+                {{ item.timed ? item.airTime : '待定' }}
+              </time>
+            </button>
+          </article>
+        </div>
 
-      <p v-else class="schedule-flow__empty">这一天暂无放送</p>
+        <p v-else class="schedule-flow__empty schedule-col__empty">这一天暂无放送</p>
+      </div>
     </div>
   </section>
 </template>

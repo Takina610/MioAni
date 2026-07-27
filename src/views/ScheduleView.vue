@@ -29,7 +29,6 @@ onMounted(() => {
       <div class="schedule-identity">
         <span>WEEKLY AIRING</span>
         <h1>番剧时间表</h1>
-        <p>点选星期切换当日时间流。有可靠时刻显示 HH:mm，否则标为待定。左右方向键可切换日期。</p>
       </div>
       <div class="schedule-stats" aria-hidden="true">
         <div>

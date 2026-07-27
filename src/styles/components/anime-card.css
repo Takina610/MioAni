@@ -199,7 +199,105 @@
 }
 .anime-meta { padding: 12px 2px 0; }
 .anime-meta h3 { overflow: hidden; margin: 0; font-size: var(--type-card-title); line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
-.anime-meta p { display: flex; align-items: center; gap: 8px; margin: 7px 0 0; color: var(--muted); font: var(--type-micro)/1 monospace; }
+.anime-meta p {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+  gap: 4px;
+  margin: 7px 0 0;
+  color: var(--muted);
+  font: var(--type-micro)/1 monospace;
+}
+.anime-meta p > span:nth-child(1) { justify-self: start; text-align: left; }
+.anime-meta p > span:nth-child(2) { justify-self: center; text-align: center; }
+.anime-meta p > span:nth-child(3) { justify-self: end; text-align: right; }
 .source-label { color: var(--accent); text-transform: uppercase; }
-.card-score { display: inline-flex; align-items: center; gap: 3px; color: var(--ink); }
+.card-score {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 7px;
+  border-radius: 5px;
+  background: rgba(11, 13, 12, .8);
+  color: var(--ink);
+  font: 700 13px/1 monospace;
+  letter-spacing: .02em;
+  backdrop-filter: blur(8px);
+}
 .card-score svg { color: var(--accent); }
+
+@media (max-width: 760px) {
+  .poster-add {
+    top: 6px;
+    right: 6px;
+  }
+  .poster-action {
+    min-width: 26px;
+    height: 26px;
+    padding: 0 5px;
+    gap: 1px;
+  }
+  .poster-action svg:first-child {
+    width: 13px;
+    height: 13px;
+  }
+  .poster-action__caret {
+    width: 8px;
+    height: 8px;
+  }
+  .poster-status-menu {
+    top: calc(100% + 5px);
+    width: 96px;
+    padding: 5px;
+    border-radius: 9px;
+  }
+  .poster-status-menu__title {
+    margin: 0 0 4px;
+    padding: 0 4px;
+    font-size: 9px;
+  }
+  .poster-status-menu button {
+    min-height: 26px;
+    padding: 0 6px;
+    gap: 4px;
+    border-radius: 6px;
+    font-size: 11px;
+  }
+  .poster-status-menu button svg {
+    width: 11px;
+    height: 11px;
+  }
+  .library-chip {
+    left: 6px;
+    top: 6px;
+    padding: 4px 6px;
+    font-size: 9px;
+  }
+  .card-score {
+    right: 5px;
+    bottom: 5px;
+    padding: 4px 5px;
+    font-size: 11px;
+  }
+  .rank-number {
+    left: 5px;
+    bottom: 5px;
+    padding: 4px 5px;
+    font-size: 11px;
+  }
+  .anime-meta {
+    padding: 8px 1px 0;
+  }
+  .anime-meta h3 {
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .anime-meta p {
+    margin: 5px 0 0;
+    font-size: 10px;
+  }
+}

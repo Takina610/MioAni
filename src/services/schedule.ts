@@ -50,6 +50,47 @@ export function weekdayLabel(weekday: number): string {
   return WEEKDAY_LABELS_CN[((weekday % 7) + 7) % 7] ?? '周日'
 }
 
+/** Local calendar midnight for `d` (time zeroed). */
+export function startOfLocalDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+/** Add `n` local calendar days to `d` (preserves time-of-day if not midnight). */
+export function addLocalDays(d: Date, n: number): Date {
+  const next = new Date(d.getTime())
+  next.setDate(next.getDate() + n)
+  return next
+}
+
+/** Inclusive window of local midnights: `start + 0..columns-1`. */
+export function sliceScheduleWindow(start: Date, columns: number): Date[] {
+  const base = startOfLocalDay(start)
+  const n = Math.max(0, Math.floor(columns))
+  const out: Date[] = []
+  for (let i = 0; i < n; i += 1) out.push(addLocalDays(base, i))
+  return out
+}
+
+/** Items from the week template matching JS weekday (0=Sun … 6=Sat). */
+export function itemsForWeekday(days: ScheduleDay[], weekday: number): ScheduleItem[] {
+  const day = days.find((d) => d.weekday === weekday)
+  return day?.items ?? []
+}
+
+/** True when both dates share the same local Y/M/D. */
+export function isSameLocalDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate()
+  )
+}
+
+/** Month/day label for column headers, e.g. `7/25`. */
+export function formatScheduleMonthDay(d: Date): string {
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
+
 function sortKeyTime(time?: string): number {
   if (!time) return Number.POSITIVE_INFINITY
   const [h, m] = time.split(':').map(Number)

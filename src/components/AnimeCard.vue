@@ -175,6 +175,9 @@ onUnmounted(() => {
       <div v-if="failed || !anime.image" class="poster-missing">暂无海报</div>
       <img v-else :src="anime.image" :alt="`${anime.title} 海报`" loading="lazy" @error="failed = true" />
       <span v-if="index" class="rank-number">{{ String(index).padStart(2, '0') }}</span>
+      <span v-if="anime.score" class="card-score">
+        <PhStar :size="12" weight="fill" />{{ anime.score.toFixed(1) }}
+      </span>
 
       <Transition name="status-chip">
         <span v-if="inLibrary" class="library-chip">{{ currentStatusLabel }}</span>
@@ -234,8 +237,7 @@ onUnmounted(() => {
       <p>
         <span class="source-label">{{ anime.source }}</span>
         <span>{{ anime.year || '待定' }}</span>
-        <span v-if="anime.episodes">{{ anime.episodes }} 话</span>
-        <span v-if="anime.score" class="card-score"><PhStar :size="12" weight="fill" />{{ anime.score.toFixed(1) }}</span>
+        <span v-if="anime.episodes">{{ anime.episodes }}话</span>
       </p>
     </div>
   </article>
