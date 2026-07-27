@@ -93,7 +93,7 @@ function mapAniList(media: any, entry?: any): Anime {
     score: media.averageScore ? media.averageScore / 10 : entry?.score || 0,
     year: media.seasonYear || 0,
     season: media.season || '',
-    episodes: media.episodes || 0,
+    episodes: resolveAniListEpisodes(media),
     watched: entry?.progress || 0,
     status: statusMap[entry?.status] ?? 'planned',
     tags: media.genres?.slice(0, 3) || [],
@@ -101,6 +101,19 @@ function mapAniList(media: any, entry?: any): Anime {
     nextEpisode: formatAiring(media.nextAiringEpisode?.timeUntilAiring),
     popularity: media.popularity || 0,
   }
+}
+
+/** Prefer last-aired guess from nextAiringEpisode, else catalog total. */
+function resolveAniListEpisodes(media: {
+  episodes?: number | null
+  nextAiringEpisode?: { episode?: number | null } | null
+}): number {
+  const nextEp = Number(media.nextAiringEpisode?.episode)
+  if (Number.isFinite(nextEp) && nextEp > 1) return nextEp - 1
+  const total = Number(media.episodes)
+  if (Number.isFinite(total) && total > 0) return total
+  if (Number.isFinite(nextEp) && nextEp === 1) return 0
+  return 0
 }
 
 const mediaFields = `id title { romaji native english } coverImage { extraLarge } bannerImage averageScore popularity seasonYear season episodes genres nextAiringEpisode { episode timeUntilAiring airingAt }`

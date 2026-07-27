@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import gsap from 'gsap'
 import { PhArrowRight, PhPause, PhPlay, PhSparkle, PhWarningCircle } from '@phosphor-icons/vue'
 import AnimeCard from '../components/AnimeCard.vue'
+import HomeSchedulePreview from '../components/HomeSchedulePreview.vue'
 import { useCatalogStore } from '../stores/catalog'
 import { useLibraryStore } from '../stores/library'
 import type { Anime } from '../types/anime'
@@ -1130,13 +1131,9 @@ onUnmounted(() => {
         <TransitionGroup name="list" tag="div" class="catalog-grid directory-grid">
           <AnimeCard v-for="(anime, index) in hotAnime" :key="anime.id" :anime="anime" :index="index + 1" />
         </TransitionGroup>
-        <div class="directory-foot">
-          <RouterLink class="directory-foot__link" to="/schedule">
-            查看番剧时间表
-            <PhArrowRight :size="16" />
-          </RouterLink>
-        </div>
       </section>
+
+      <HomeSchedulePreview :days="catalog.schedule" />
 
       <section class="closing-band reveal-section">
         <div class="closing-band__bg" aria-hidden="true">

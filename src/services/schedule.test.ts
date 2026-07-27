@@ -8,6 +8,7 @@ import {
   emptyWeekSchedule,
   enrichScheduleWithAiringTimes,
   formatAirTime,
+  flattenRecentSchedule,
   formatScheduleMonthDay,
   isSameLocalDay,
   itemsForWeekday,
@@ -213,6 +214,23 @@ describe('schedule window helpers', () => {
     expect(isSameLocalDay(a, c)).toBe(false)
     expect(formatScheduleMonthDay(a)).toBe('7/25')
   })
+
+  it('flattenRecentSchedule dedupes and limits', () => {
+    const now = new Date(2026, 6, 22)
+    const days = buildWeekSchedule(
+      [
+        { anime: anime({ id: 'a', title: 'A', popularity: 1 }), airWeekday: 1, airTime: '20:00' },
+        { anime: anime({ id: 'b', title: 'B', popularity: 99 }), airWeekday: 2, airTime: '10:00' },
+        { anime: anime({ id: 'c', title: 'C', popularity: 5 }), airWeekday: 3 },
+      ],
+      now,
+    )
+    const recent = flattenRecentSchedule(days, 2)
+    expect(recent).toHaveLength(2)
+    expect(recent[0].anime.id).toBe('b')
+    expect(recent[0].dayLabel).toBe('周二')
+    expect(recent.every((item) => item.dayLabel)).toBe(true)
+  })
 })
 
 describe('enrichScheduleWithAiringTimes', () => {
@@ -255,6 +273,47 @@ describe('enrichScheduleWithAiringTimes', () => {
     const item = enriched.find((d) => d.weekday === 3)!.items[0]
     expect(item.timed).toBe(true)
     expect(item.airTime).toBe('22:30')
+  })
+
+  it('fills missing episodes from AniList donor', () => {
+    const now = new Date(2026, 6, 22)
+    const base = buildWeekSchedule(
+      [
+        {
+          anime: anime({
+            id: 'bgm-ep',
+            source: 'bangumi',
+            title: '集数缺失',
+            originalTitle: 'Missing Eps',
+            titles: { cn: '集数缺失', native: 'Missing Eps' },
+            year: 2026,
+            episodes: 0,
+          }),
+          airWeekday: 1,
+          airTime: '12:00',
+        },
+      ],
+      now,
+    )
+    expect(base.find((d) => d.weekday === 1)!.items[0].anime.episodes).toBe(0)
+
+    const enriched = enrichScheduleWithAiringTimes(
+      base,
+      [
+        anime({
+          id: 'anilist-ep',
+          source: 'anilist',
+          title: 'Missing Eps',
+          originalTitle: 'Missing Eps',
+          titles: { native: 'Missing Eps', cn: '集数缺失' },
+          year: 2026,
+          episodes: 12,
+          airTime: '12:00',
+        }),
+      ],
+      now,
+    )
+    expect(enriched.find((d) => d.weekday === 1)!.items[0].anime.episodes).toBe(12)
   })
 
   it('keeps existing times and skips when no donor match', () => {

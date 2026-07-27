@@ -1,0 +1,672 @@
+.home-schedule {
+  width: min(1520px, 100%);
+  margin: 0 auto;
+  padding: 12px clamp(24px, 5vw, 84px) 110px;
+}
+
+.home-schedule__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px 24px;
+  margin-bottom: 28px;
+}
+
+.home-schedule__title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.home-schedule__icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.home-schedule__title {
+  margin: 0;
+  font-size: clamp(24px, 2.6vw, 34px);
+  line-height: 1.12;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+}
+
+.home-schedule__tabs {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  scrollbar-width: none;
+}
+
+.home-schedule__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.home-schedule__indicator {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  bottom: 4px;
+  z-index: 0;
+  width: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 28%, transparent);
+  pointer-events: none;
+  /* First paint: no transition; after measure, slide like library tabs */
+  transition: none;
+}
+
+.home-schedule__tabs.is-indicator-ready .home-schedule__indicator {
+  transition:
+    transform .32s var(--ease),
+    width .32s var(--ease);
+}
+
+.home-schedule__tab {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  height: 38px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: 600 var(--type-body)/1 'Noto Sans SC', sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color .22s var(--ease);
+}
+
+.home-schedule__tab:hover {
+  color: var(--ink);
+}
+
+.home-schedule__tab.is-active {
+  color: var(--accent-ink);
+}
+
+.home-schedule__tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.home-schedule__all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--type-body);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color .18s var(--ease), color .18s var(--ease);
+}
+
+.home-schedule__all:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.home-schedule__all:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.home-schedule__rail {
+  position: relative;
+  min-width: 0;
+  isolation: isolate;
+}
+
+/*
+ * True frosted glass on edges: blur whatever cards pass behind.
+ * Dual mask (X + Y) softens ALL panel edges so no hard L/T/B rectangle.
+ */
+.home-schedule__rail::before,
+.home-schedule__rail::after {
+  content: '';
+  position: absolute;
+  top: -16px;
+  bottom: -16px;
+  z-index: 3;
+  width: clamp(92px, 11vw, 150px);
+  pointer-events: none;
+  border: 0;
+  /* Frosted glass — blur cards underneath */
+  backdrop-filter: blur(26px) saturate(175%) brightness(1.03);
+  -webkit-backdrop-filter: blur(26px) saturate(175%) brightness(1.03);
+  /* Light tint like liquid glass, not solid wall */
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #fff 7%, transparent) 0%,
+      transparent 28%,
+      transparent 72%,
+      color-mix(in srgb, #000 10%, transparent) 100%
+    ),
+    color-mix(in srgb, var(--bg) 28%, transparent);
+}
+
+.home-schedule__rail::before {
+  left: -4px;
+  /* X: full glass near outer edge → fade inward; Y: soft top/bottom */
+  -webkit-mask-image:
+    linear-gradient(
+      90deg,
+      #000 0%,
+      #000 18%,
+      rgba(0, 0, 0, .75) 48%,
+      rgba(0, 0, 0, .3) 72%,
+      transparent 100%
+    ),
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      #000 12%,
+      #000 88%,
+      transparent 100%
+    );
+  mask-image:
+    linear-gradient(
+      90deg,
+      #000 0%,
+      #000 18%,
+      rgba(0, 0, 0, .75) 48%,
+      rgba(0, 0, 0, .3) 72%,
+      transparent 100%
+    ),
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      #000 12%,
+      #000 88%,
+      transparent 100%
+    );
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+
+.home-schedule__rail::after {
+  right: -4px;
+  -webkit-mask-image:
+    linear-gradient(
+      270deg,
+      #000 0%,
+      #000 18%,
+      rgba(0, 0, 0, .75) 48%,
+      rgba(0, 0, 0, .3) 72%,
+      transparent 100%
+    ),
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      #000 12%,
+      #000 88%,
+      transparent 100%
+    );
+  mask-image:
+    linear-gradient(
+      270deg,
+      #000 0%,
+      #000 18%,
+      rgba(0, 0, 0, .75) 48%,
+      rgba(0, 0, 0, .3) 72%,
+      transparent 100%
+    ),
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      #000 12%,
+      #000 88%,
+      transparent 100%
+    );
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+
+.home-schedule__track {
+  position: relative;
+  z-index: 0;
+  min-width: 0;
+  padding: 6px 0 4px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile / touch: native finger swipe + soft edge dissolve */
+.home-schedule__track:not(.is-marquee) {
+  display: block;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    rgba(0, 0, 0, .35) 32px,
+    #000 72px,
+    #000 calc(100% - 72px),
+    rgba(0, 0, 0, .35) calc(100% - 32px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    rgba(0, 0, 0, .35) 32px,
+    #000 72px,
+    #000 calc(100% - 72px),
+    rgba(0, 0, 0, .35) calc(100% - 32px),
+    transparent 100%
+  );
+}
+
+/*
+ * Soft-clip so overflow never hard-cuts under the glass.
+ */
+.home-schedule__track.is-marquee {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    rgba(0, 0, 0, .2) 40px,
+    rgba(0, 0, 0, .55) 80px,
+    #000 128px,
+    #000 calc(100% - 128px),
+    rgba(0, 0, 0, .55) calc(100% - 80px),
+    rgba(0, 0, 0, .2) calc(100% - 40px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    rgba(0, 0, 0, .2) 40px,
+    rgba(0, 0, 0, .55) 80px,
+    #000 128px,
+    #000 calc(100% - 128px),
+    rgba(0, 0, 0, .55) calc(100% - 80px),
+    rgba(0, 0, 0, .2) calc(100% - 40px),
+    transparent 100%
+  );
+}
+
+.home-schedule__track::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.home-schedule__marquee {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 20px;
+  width: max-content;
+  will-change: transform;
+  backface-visibility: hidden;
+  /* GSAP force3D; avoid layout thrash */
+  transform: translate3d(0, 0, 0);
+}
+
+.home-schedule__track:not(.is-marquee) .home-schedule__marquee {
+  transform: none !important;
+  will-change: auto;
+}
+
+.home-schedule__strip {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 20px;
+  flex: 0 0 auto;
+  width: max-content;
+}
+
+.home-schedule-card {
+  flex: 0 0 auto;
+  width: min(200px, 46vw);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 280px;
+}
+
+.home-schedule-card__btn {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-schedule-card__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 12px;
+}
+
+/* Time badge sits above the poster (not overlaid). */
+.home-schedule-card__badge {
+  display: inline-flex;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 6px 11px;
+  border-radius: 999px;
+  font: 700 12px/1 'Noto Sans SC', sans-serif;
+  letter-spacing: .02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--accent-ink);
+  background: color-mix(in srgb, var(--accent) 88%, #111 12%);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* Green-led weekday tints (JS weekday 0=Sun … 6=Sat). */
+.home-schedule-card__badge.is-day-0 {
+  background: color-mix(in srgb, var(--accent) 55%, #7dd3fc 45%);
+  color: #0b120e;
+}
+.home-schedule-card__badge.is-day-1 {
+  background: color-mix(in srgb, var(--accent) 92%, #111 8%);
+  color: var(--accent-ink);
+}
+.home-schedule-card__badge.is-day-2 {
+  background: color-mix(in srgb, var(--accent) 72%, #86efac 28%);
+  color: #0b120e;
+}
+.home-schedule-card__badge.is-day-3 {
+  background: color-mix(in srgb, var(--accent) 78%, #a3e635 22%);
+  color: #0b120e;
+}
+.home-schedule-card__badge.is-day-4 {
+  background: color-mix(in srgb, var(--accent) 68%, #fde047 32%);
+  color: #0b120e;
+}
+.home-schedule-card__badge.is-day-5 {
+  background: color-mix(in srgb, var(--accent) 62%, #fdba74 38%);
+  color: #0b120e;
+}
+.home-schedule-card__badge.is-day-6 {
+  background: color-mix(in srgb, var(--accent) 58%, #c4b5fd 42%);
+  color: #0b120e;
+}
+
+.home-schedule-card__cover {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: calc(var(--radius-md) + 2px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.home-schedule-card__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: saturate(.9);
+  transition: transform .45s var(--ease), filter .3s ease;
+}
+
+.home-schedule-card__btn:hover .home-schedule-card__cover img {
+  transform: scale(1.035);
+  filter: saturate(1.06);
+}
+
+.home-schedule-card.is-expanding .home-schedule-card__cover img,
+.home-schedule-card.is-expanding .home-schedule-card__cover-fallback {
+  opacity: 0;
+}
+
+.home-schedule-card__cover-fallback {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--surface-2);
+}
+
+.home-schedule-card__name {
+  font-size: clamp(14px, 1.2vw, 16px);
+  font-weight: 650;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-schedule-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 1.2em;
+}
+
+.home-schedule-card__meta {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--muted);
+  font: 600 var(--type-small)/1.2 'Noto Sans SC', sans-serif;
+  letter-spacing: .01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-schedule-card__score {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--ink);
+  font: 700 13px/1 monospace;
+}
+
+.home-schedule-card__score svg {
+  color: var(--accent);
+}
+
+.home-schedule__empty {
+  margin: 0;
+  padding: 56px 24px;
+  color: var(--muted);
+  font-size: var(--type-body);
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .home-schedule__head {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      'title all'
+      'tabs tabs';
+  }
+
+  .home-schedule__title-wrap { grid-area: title; }
+  .home-schedule__tabs { grid-area: tabs; }
+  .home-schedule__all { grid-area: all; }
+}
+
+@media (max-width: 760px) {
+  /* Narrower glass so more cards stay readable */
+  .home-schedule__rail::before,
+  .home-schedule__rail::after {
+    width: clamp(28px, 9vw, 48px);
+    top: -6px;
+    bottom: -6px;
+    backdrop-filter: blur(10px) saturate(140%);
+    -webkit-backdrop-filter: blur(10px) saturate(140%);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, #fff 5%, transparent) 0%,
+        transparent 30%,
+        transparent 70%,
+        color-mix(in srgb, #000 8%, transparent) 100%
+      ),
+      color-mix(in srgb, var(--bg) 22%, transparent);
+  }
+
+  .home-schedule__track:not(.is-marquee) {
+    -webkit-mask-image: linear-gradient(
+      90deg,
+      transparent 0,
+      rgba(0, 0, 0, .4) 16px,
+      #000 36px,
+      #000 calc(100% - 36px),
+      rgba(0, 0, 0, .4) calc(100% - 16px),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      90deg,
+      transparent 0,
+      rgba(0, 0, 0, .4) 16px,
+      #000 36px,
+      #000 calc(100% - 36px),
+      rgba(0, 0, 0, .4) calc(100% - 16px),
+      transparent 100%
+    );
+  }
+
+  .home-schedule__track.is-marquee {
+    -webkit-mask-image: linear-gradient(
+      90deg,
+      transparent 0,
+      rgba(0, 0, 0, .3) 14px,
+      rgba(0, 0, 0, .7) 28px,
+      #000 44px,
+      #000 calc(100% - 44px),
+      rgba(0, 0, 0, .7) calc(100% - 28px),
+      rgba(0, 0, 0, .3) calc(100% - 14px),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      90deg,
+      transparent 0,
+      rgba(0, 0, 0, .3) 14px,
+      rgba(0, 0, 0, .7) 28px,
+      #000 44px,
+      #000 calc(100% - 44px),
+      rgba(0, 0, 0, .7) calc(100% - 28px),
+      rgba(0, 0, 0, .3) calc(100% - 14px),
+      transparent 100%
+    );
+  }
+
+  .home-schedule {
+    padding: 4px 12px 72px;
+  }
+
+  .home-schedule__head {
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .home-schedule__icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .home-schedule__title {
+    font-size: 20px;
+  }
+
+  .home-schedule__tab {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+
+  .home-schedule__all {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+
+  .home-schedule-card {
+    width: min(118px, 32vw);
+  }
+
+  .home-schedule__marquee,
+  .home-schedule__strip {
+    gap: 10px;
+  }
+
+  .home-schedule-card__btn {
+    gap: 6px;
+  }
+
+  .home-schedule-card__badge {
+    padding: 4px 7px;
+    font-size: 10px;
+  }
+
+  .home-schedule-card__name {
+    font-size: 12px;
+  }
+
+  .home-schedule-card__meta {
+    font-size: 10px;
+  }
+
+  .home-schedule-card__score {
+    font-size: 11px;
+  }
+
+  .home-schedule-card__foot {
+    gap: 4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-schedule__track {
+    scroll-behavior: auto;
+  }
+
+  .home-schedule__rail::before,
+  .home-schedule__rail::after {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--bg) 75%, transparent),
+      transparent
+    );
+  }
+
+  .home-schedule__rail::after {
+    background: linear-gradient(
+      270deg,
+      color-mix(in srgb, var(--bg) 75%, transparent),
+      transparent
+    );
+  }
+}

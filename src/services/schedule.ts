@@ -91,6 +91,38 @@ export function formatScheduleMonthDay(d: Date): string {
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
+/** Week-template item plus day chrome for home preview rail. */
+export type SchedulePreviewItem = ScheduleItem & {
+  weekday: number
+  dayLabel: string
+}
+
+/**
+ * Flatten Mon→Sun template into a “最近更新” list:
+ * dedupe by anime id, timed first / time / popularity, then `limit`.
+ */
+export function flattenRecentSchedule(
+  days: ScheduleDay[],
+  limit = 14,
+): SchedulePreviewItem[] {
+  const seen = new Set<string>()
+  const out: SchedulePreviewItem[] = []
+  for (const day of days) {
+    for (const item of day.items) {
+      if (seen.has(item.anime.id)) continue
+      seen.add(item.anime.id)
+      out.push({
+        ...item,
+        weekday: day.weekday,
+        dayLabel: day.label,
+      })
+    }
+  }
+  out.sort(compareScheduleItems)
+  const n = Math.max(0, Math.floor(limit))
+  return out.slice(0, n)
+}
+
 function sortKeyTime(time?: string): number {
   if (!time) return Number.POSITIVE_INFINITY
   const [h, m] = time.split(':').map(Number)
@@ -98,7 +130,7 @@ function sortKeyTime(time?: string): number {
   return h * 60 + m
 }
 
-function compareScheduleItems(a: ScheduleItem, b: ScheduleItem): number {
+export function compareScheduleItems(a: ScheduleItem, b: ScheduleItem): number {
   if (a.timed !== b.timed) return a.timed ? -1 : 1
   if (a.timed && b.timed) {
     const byTime = sortKeyTime(a.airTime) - sortKeyTime(b.airTime)
@@ -184,9 +216,8 @@ export function scheduleHasContent(days: ScheduleDay[]): boolean {
 }
 
 /**
- * Fill missing HH:mm on Bangumi calendar rows using AniList `nextAiringEpisode`
- * (or any donor anime that already has airTime / airWeekday).
- * Bangumi `/calendar` has weekday only; onAir CDN is often stale for the current season.
+ * Fill missing HH:mm / episodes on Bangumi calendar rows using AniList donors
+ * (`nextAiringEpisode` time + episode progress, or any donor with airTime / episodes).
  */
 export function enrichScheduleWithAiringTimes(
   days: ScheduleDay[],
@@ -195,34 +226,40 @@ export function enrichScheduleWithAiringTimes(
 ): ScheduleDay[] {
   if (!scheduleHasContent(days) || !donors.length) return days
 
-  const timedDonors = donors.filter((d) => Boolean(formatAirTime(d.airTime)))
-  if (!timedDonors.length) return days
-
   const sources: ScheduleSourceItem[] = []
-  let enriched = 0
+  let changed = 0
 
   for (const day of days) {
     for (const item of day.items) {
       let airTime = formatAirTime(item.airTime) || formatAirTime(item.anime.airTime)
       let airWeekday = item.anime.airWeekday ?? day.weekday
+      let anime = item.anime
+      const match = donors.find((d) => isSameAnime(item.anime, d))
 
-      if (!airTime) {
-        const match = timedDonors.find((d) => isSameAnime(item.anime, d))
-        if (match) {
+      if (match) {
+        if (!airTime) {
           airTime = formatAirTime(match.airTime)
           if (match.airWeekday != null) airWeekday = match.airWeekday
-          if (airTime) enriched += 1
+          if (airTime) changed += 1
+        }
+        if (!(anime.episodes > 0) && match.episodes > 0) {
+          anime = { ...anime, episodes: match.episodes }
+          changed += 1
+        }
+        if (!(anime.score > 0) && match.score > 0) {
+          anime = { ...anime, score: match.score }
+          changed += 1
         }
       }
 
       sources.push({
-        anime: item.anime,
+        anime,
         airWeekday,
         airTime,
       })
     }
   }
 
-  if (!enriched) return days
+  if (!changed) return days
   return buildWeekSchedule(sources, now)
 }
