@@ -64,11 +64,16 @@ function formatAiring(seconds?: number): string | undefined {
   return `${hours} 小时后更新`
 }
 
-async function aniListRequest(query: string, variables: Record<string, unknown> = {}) {
+async function aniListRequest(
+  query: string,
+  variables: Record<string, unknown> = {},
+  signal?: AbortSignal,
+) {
   const response = await fetch(apiConfig.aniListBase, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...authHeaders(apiConfig.aniListToken) },
     body: JSON.stringify({ query, variables }),
+    signal,
   })
   const payload = await response.json().catch(() => null)
   if (!response.ok || payload?.errors) throw new Error(payload?.errors?.[0]?.message ?? 'AniList 服务暂时不可用')
@@ -137,7 +142,10 @@ export async function fetchAniListSeasonal(limit = 50): Promise<Anime[]> {
   return result.items
 }
 
-export async function fetchAniListSeasonalDetailed(limit = 50): Promise<AniListSeasonalResult> {
+export async function fetchAniListSeasonalDetailed(
+  limit = 50,
+  options?: { signal?: AbortSignal },
+): Promise<AniListSeasonalResult> {
   // AniList Page.perPage max is 50; page until we hit `limit` for schedule time matching.
   const query = `query ($page: Int, $perPage: Int, $season: MediaSeason, $year: Int) {
     Page(page: $page, perPage: $perPage) {
@@ -153,7 +161,7 @@ export async function fetchAniListSeasonalDetailed(limit = 50): Promise<AniListS
   const mediaList: any[] = []
   let page = 1
   while (mediaList.length < limit) {
-    const data = await aniListRequest(query, { page, perPage, season, year })
+    const data = await aniListRequest(query, { page, perPage, season, year }, options?.signal)
     const batch: any[] = data.Page?.media ?? []
     mediaList.push(...batch)
     if (!batch.length || !data.Page?.pageInfo?.hasNextPage) break
@@ -207,7 +215,7 @@ export type BangumiCalendarResult = {
  * Optional onAir merge is soft-fail (CORS/network never block catalog load).
  */
 export async function fetchBangumiCalendarDetailed(
-  options: { mergeOnAir?: boolean; now?: Date } = {},
+  options: { mergeOnAir?: boolean; now?: Date; signal?: AbortSignal } = {},
 ): Promise<BangumiCalendarResult> {
   const now = options.now ?? new Date()
   const mergeOnAir = options.mergeOnAir !== false
@@ -215,7 +223,7 @@ export async function fetchBangumiCalendarDetailed(
   const emptyOnAir = () => new Map<string, OnAirEntry>()
   const onAirPromise = mergeOnAir
     ? Promise.race([
-        fetchOnAirMap(),
+        fetchOnAirMap(options.signal),
         // Soft timeout: AniList enrichment covers missing times if CDN is slow/empty.
         new Promise<Map<string, OnAirEntry>>((resolve) => {
           setTimeout(() => resolve(emptyOnAir()), 2500)
@@ -223,7 +231,10 @@ export async function fetchBangumiCalendarDetailed(
       ]).catch(emptyOnAir)
     : Promise.resolve(emptyOnAir())
 
-  const response = await fetch(`${apiConfig.bangumiBase}/calendar`, { headers: bangumiHeaders() })
+  const response = await fetch(`${apiConfig.bangumiBase}/calendar`, {
+    headers: bangumiHeaders(),
+    signal: options.signal,
+  })
   if (!response.ok) throw new Error('Bangumi 放送数据暂时不可用')
   const [days, onAirMap] = await Promise.all([response.json(), onAirPromise])
 
