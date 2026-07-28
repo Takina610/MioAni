@@ -11,13 +11,16 @@ import {
   PhClock,
   PhCaretDown,
   PhTranslate,
+  PhPlay,
 } from '@phosphor-icons/vue'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
 import { usePersonOverlayStore } from '../stores/personOverlay'
 import { useLibraryStore } from '../stores/library'
 import { parsePersonId, personRouteName } from '../services/personIds'
 import { shouldOfferTranslation, translateToChinese } from '../services/translate'
+import { defaultEpisode, isPlaybackEnabled } from '../services/playback'
 import type { AnimeCharacter, AnimeRelation, AnimeStaff, WatchStatus } from '../types/anime'
+import AnimePlaybackTheater from './AnimePlaybackTheater.vue'
 
 const store = useDetailOverlayStore()
 const personOverlay = usePersonOverlayStore()
@@ -360,6 +363,21 @@ const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
   { value: 'completed', label: '看过' },
   { value: 'planned', label: '想看' },
 ]
+
+const playbackEnabled = isPlaybackEnabled()
+const showPlayback = ref(false)
+const playbackEpisode = ref(1)
+
+function openPlayback() {
+  if (!display.value || !playbackEnabled) return
+  const watched = libraryItem.value?.watched ?? display.value.watched ?? 0
+  playbackEpisode.value = defaultEpisode(watched, display.value.episodes || undefined)
+  showPlayback.value = true
+}
+
+function closePlayback() {
+  showPlayback.value = false
+}
 
 const sideFacts = computed(() => {
   const d = detail.value
@@ -884,10 +902,11 @@ watch(
 )
 
 function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && store.open) {
-    if (store.canPopDetail) void closeOverlay()
-    else void dismissToList()
-  }
+  if (event.key !== 'Escape' || !store.open) return
+  // Theater owns Escape while open.
+  if (showPlayback.value) return
+  if (store.canPopDetail) void closeOverlay()
+  else void dismissToList()
 }
 
 function setStatus(status: WatchStatus) {
@@ -1474,6 +1493,15 @@ onUnmounted(() => {
 
               <div class="detail-actions">
                 <button
+                  v-if="playbackEnabled"
+                  type="button"
+                  class="detail-action play-primary"
+                  @click="openPlayback"
+                >
+                  <PhPlay :size="15" weight="fill" />
+                  播放
+                </button>
+                <button
                   v-for="opt in STATUS_OPTIONS"
                   :key="opt.value"
                   type="button"
@@ -1795,4 +1823,11 @@ onUnmounted(() => {
       </div>
     </div>
   </Teleport>
+
+  <AnimePlaybackTheater
+    v-if="showPlayback && display"
+    :anime="display"
+    :initial-episode="playbackEpisode"
+    @close="closePlayback"
+  />
 </template>

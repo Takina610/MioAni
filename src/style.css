@@ -55,3 +55,6 @@
 @import './styles/pages/detail/relations.css';
 @import './styles/pages/detail/detail-motion.css';
 @import './styles/pages/detail/person.css';
+
+/* In-site playback theater */
+@import './styles/pages/playback/theater.css';
