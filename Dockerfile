@@ -9,8 +9,8 @@ ENV NODE_ENV=production \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 COPY package.json package-lock.json ./
-# tsx 在 devDependencies，运行 API 需要它
-RUN npm ci --include=dev --omit=optional
+# tsx 在 devDependencies，运行 API 需要它；lock 偶发不同步时用 install 更稳
+RUN npm install --include=dev --omit=optional --no-audit --no-fund
 
 COPY server ./server
 COPY tsconfig.json tsconfig.node.json ./
