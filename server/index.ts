@@ -13,12 +13,26 @@ import {
 
 const app = express()
 const PORT = Number(process.env.PORT || 8787)
+const IS_PROD = process.env.NODE_ENV === 'production'
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 
+/** Comma-separated allowlist; empty → reflect request origin (dev-friendly). */
+function resolveCorsOrigin(): boolean | string | string[] {
+  const raw = (process.env.CORS_ORIGIN || '').trim()
+  if (!raw) return true
+  const list = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (list.length === 0) return true
+  if (list.length === 1) return list[0]
+  return list
+}
+
 app.use(
   cors({
-    origin: true,
+    origin: resolveCorsOrigin(),
     credentials: true,
     methods: ['GET', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -32,6 +46,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
     service: 'mioani-api',
+    env: IS_PROD ? 'production' : 'development',
     time: new Date().toISOString(),
     playback: true,
   })
@@ -333,7 +348,7 @@ function proxyMediaUrl(absolute: string): string {
 }
 
 app.listen(PORT, () => {
-  console.log(`[mioani-api] http://localhost:${PORT}`)
+  console.log(`[mioani-api] listening on :${PORT} (${IS_PROD ? 'production' : 'development'})`)
   if (process.env.PLAYBACK_DEBUG === '1') {
     console.log('[mioani-api] PLAYBACK_DEBUG=1 (provider names in responses)')
   }

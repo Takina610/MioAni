@@ -1,0 +1,19 @@
+# Render Blueprint：Docker 部署播放 API
+# 文档：https://render.com/docs/infrastructure-as-code
+services:
+  - type: web
+    name: mioani-api
+    runtime: docker
+    plan: starter
+    region: singapore
+    healthCheckPath: /api/health
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PLAYBACK_DEBUG
+        value: '0'
+      # 可选：限制跨域，多个前端用逗号分隔
+      # - key: CORS_ORIGIN
+      #   value: https://ani.tak1na.cn

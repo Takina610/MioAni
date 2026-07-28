@@ -24,8 +24,10 @@ dist-ssr
 output
 *.local
 
-# 环境与文档
-.env.example
+# 环境与文档（提交 .env.example / .env.development / .env.production）
+.env
+.env.local
+.env.*.local
 *.md
 docs
 

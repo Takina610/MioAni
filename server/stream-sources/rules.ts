@@ -34,7 +34,10 @@ function resolveRulesDir(): string {
   if (process.env.PLAYBACK_RULES_DIR) {
     return path.resolve(process.env.PLAYBACK_RULES_DIR)
   }
+  // Prefer vendored rules (committed) so Docker / Render deploys work without .open-project.
   const candidates = [
+    path.resolve(process.cwd(), 'server/kazumi-rules'),
+    path.resolve(__dirname, '../kazumi-rules'),
     path.resolve(process.cwd(), '.open-project/KazumiRules'),
     path.resolve(__dirname, '../../.open-project/KazumiRules'),
   ]
