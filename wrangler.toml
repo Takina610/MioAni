@@ -1,14 +1,19 @@
-# Cloudflare Pages — frontend only (Vite dist).
-# API stays on Render/Docker (Playwright); do not deploy server/ as a Worker.
+# Cloudflare Pages — static frontend (Vite `dist/`).
+# API stays on Render/Docker (Playwright); do not deploy `server/` as a Worker.
 #
-# Deploy:
+# ── Git-connected Pages (Dashboard) ──────────────────────────────────
+# Build command:          npm run build
+# Build output directory: dist
+# Deploy command:         (leave EMPTY)
+#   Do NOT set "npx wrangler deploy" — that is for Workers and will fail.
+#   Pages uploads `dist` automatically after a successful build.
+#
+# Environment variables (Production, build-time):
+#   VITE_API_BASE, VITE_PLAYBACK, VITE_BANGUMI_*, VITE_ANILIST_*
+#
+# ── Local / CLI deploy ───────────────────────────────────────────────
 #   npm run build
 #   npx wrangler pages deploy dist --project-name=mioani
-# Or with this file (output dir must match pages_build_output_dir):
-#   npx wrangler pages deploy
-#
-# Build-time env (Dashboard → Pages → Settings → Environment variables):
-#   VITE_API_BASE, VITE_PLAYBACK, VITE_BANGUMI_*, VITE_ANILIST_*
 
 name = "mioani"
 compatibility_date = "2025-07-28"
