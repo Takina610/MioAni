@@ -3,6 +3,8 @@
 interface ImportMetaEnv {
   readonly VITE_API_BASE?: string
   readonly VITE_PLAYBACK?: string
+  /** Optional WebVTT sprite URL for progress-bar thumbnails (artplayer-plugin-vtt-thumbnail). */
+  readonly VITE_PLAYBACK_THUMB_VTT?: string
   readonly VITE_BANGUMI_API_BASE?: string
   readonly VITE_BANGUMI_ACCESS_TOKEN?: string
   readonly VITE_ANILIST_API_BASE?: string

@@ -370,8 +370,13 @@ const playbackEpisode = ref(1)
 
 function openPlayback() {
   if (!display.value || !playbackEnabled) return
-  const watched = libraryItem.value?.watched ?? display.value.watched ?? 0
-  playbackEpisode.value = defaultEpisode(watched, display.value.episodes || undefined)
+  // Only local library progress counts — catalog watched must not force ep 2.
+  const libraryWatched = libraryItem.value?.watched ?? 0
+  playbackEpisode.value = defaultEpisode(
+    libraryWatched,
+    display.value.episodes || undefined,
+    display.value.id,
+  )
   showPlayback.value = true
 }
 

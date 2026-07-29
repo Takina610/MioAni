@@ -6,6 +6,7 @@
   flex-direction: column;
   background: #000;
   color: var(--ink);
+  overflow: hidden;
 }
 
 .playback-theater-backdrop {
@@ -16,6 +17,8 @@
     #000;
   pointer-events: none;
 }
+
+/* ── Chrome (top bar) ─────────────────────────────────────────────── */
 
 .playback-theater-chrome {
   position: relative;
@@ -86,57 +89,6 @@
   justify-self: end;
 }
 
-.playback-theater-source {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.playback-theater-source-label {
-  font-size: var(--type-micro);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.playback-theater-source-select {
-  appearance: none;
-  max-width: 9.5rem;
-  height: 34px;
-  padding: 0 28px 0 10px;
-  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
-  border-radius: 999px;
-  background:
-    linear-gradient(45deg, transparent 50%, var(--muted) 50%) calc(100% - 14px) calc(50% - 2px) / 5px 5px no-repeat,
-    linear-gradient(135deg, var(--muted) 50%, transparent 50%) calc(100% - 9px) calc(50% - 2px) / 5px 5px no-repeat,
-    rgba(255, 255, 255, 0.06);
-  color: var(--ink);
-  font-size: var(--type-micro);
-  font-weight: 600;
-  cursor: pointer;
-  outline: none;
-  transition:
-    background 0.2s ease,
-    border-color 0.2s ease;
-}
-
-.playback-theater-source-select:hover:not(:disabled) {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-color: var(--line);
-}
-
-.playback-theater-source-select:disabled {
-  opacity: 0.55;
-  cursor: wait;
-}
-
-.playback-theater-source-select option {
-  color: #111;
-  background: #fff;
-}
-
 .playback-theater-status-text {
   font-size: var(--type-micro);
   font-weight: 600;
@@ -153,30 +105,61 @@
   color: color-mix(in srgb, var(--danger) 90%, var(--ink));
 }
 
-.playback-theater-stage {
+/* ── Body: main player + aside ────────────────────────────────────── */
+
+.playback-theater-body {
   position: relative;
   z-index: 1;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) min(320px, 28vw);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.playback-theater-main {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 clamp(8px, 2vw, 20px) 12px;
+}
+
+.playback-theater-stage {
+  position: relative;
   flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 0;
   width: 100%;
-  padding: 0 clamp(8px, 2vw, 24px) 8px;
+  height: 100%;
+  /* Size the player to the largest 16:9 box that fits the stage. */
+  container-type: size;
 }
 
 .playback-theater-player {
+  /* Fallback when container queries are unavailable. */
   width: 100%;
-  max-width: min(1600px, 100%);
-  height: min(calc(100dvh - 140px), calc((min(1600px, 100vw - 16px)) * 9 / 16));
-  max-height: calc(100dvh - 140px);
+  max-width: 100%;
+  max-height: 100%;
   aspect-ratio: 16 / 9;
+  height: auto;
   background: #000;
   border-radius: var(--radius-sm);
   overflow: hidden;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
   opacity: 0;
   pointer-events: none;
+}
+
+@supports (width: 1cqi) {
+  .playback-theater-player {
+    /* Largest 16:9 box that fits the stage (width- or height-limited). */
+    width: min(100cqi, calc(100cqb * 16 / 9));
+    height: min(100cqb, calc(100cqi * 9 / 16));
+  }
 }
 
 .playback-theater-player.is-visible {
@@ -282,29 +265,131 @@
   border-color: var(--line);
 }
 
-.playback-theater-episodes {
-  position: relative;
-  z-index: 2;
-  flex: 0 0 auto;
+/* ── Aside: 线路 + 选集 ───────────────────────────────────────────── */
+
+.playback-theater-aside {
   display: flex;
-  gap: 8px;
-  padding: 10px clamp(12px, 3vw, 28px) 16px;
-  overflow-x: auto;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px 14px 16px;
+  background: color-mix(in srgb, var(--surface-2) 42%, #0a0a0a);
+  border-left: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  overflow: hidden;
+}
+
+.playback-theater-aside-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.playback-theater-line-section {
+  flex: 0 0 auto;
+}
+
+.playback-theater-episodes-section {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.playback-theater-aside-title {
+  margin: 0;
+  font-size: var(--type-micro);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: none;
+  color: var(--muted);
+}
+
+.playback-theater-source {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.playback-theater-source-select {
+  appearance: none;
+  width: 100%;
+  max-width: 100%;
+  height: 36px;
+  padding: 0 32px 0 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: 10px;
+  background:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%) calc(100% - 14px) calc(50% - 2px) / 5px 5px no-repeat,
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%) calc(100% - 9px) calc(50% - 2px) / 5px 5px no-repeat,
+    rgba(255, 255, 255, 0.06);
+  color: var(--ink);
+  font-size: var(--type-small);
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.playback-theater-source-select:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: var(--line);
+}
+
+.playback-theater-source-select:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.playback-theater-source-select option {
+  color: #111;
+  background: #fff;
+}
+
+.playback-theater-active-line {
+  margin: 0;
+  font-size: var(--type-micro);
+  font-weight: 600;
+  color: color-mix(in srgb, var(--accent) 75%, var(--muted));
+  line-height: 1.3;
+}
+
+.playback-theater-episodes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: thin;
-  background: linear-gradient(0deg, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.35) 80%, transparent 100%);
+  padding-right: 2px;
+  max-height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-content: start;
 }
 
 .playback-ep-chip {
-  flex: 0 0 auto;
-  min-width: 40px;
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 40px;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 8px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.04);
   color: var(--muted);
   font-size: var(--type-small);
   font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
   transition: 0.15s ease;
 }
@@ -325,6 +410,7 @@
   cursor: not-allowed;
 }
 
+/* Detail overlay play CTA (shared with theater visual language) */
 .detail-action.play-primary {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   border-color: rgba(184, 240, 95, 0.45);
@@ -338,6 +424,63 @@
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-ink);
+}
+
+/* ── Narrow: stack player then aside ──────────────────────────────── */
+
+@media (max-width: 959px) {
+  .playback-theater {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .playback-theater-body {
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    min-height: 0;
+  }
+
+  .playback-theater-main {
+    flex: 0 0 auto;
+    height: auto;
+    padding: 0 0 8px;
+  }
+
+  .playback-theater-stage {
+    flex: 0 0 auto;
+    container-type: normal;
+    aspect-ratio: 16 / 9;
+    width: 100%;
+    height: auto;
+    max-height: min(56dvh, calc(100vw * 9 / 16));
+  }
+
+  .playback-theater-player {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    aspect-ratio: auto;
+    border-radius: 0;
+  }
+
+  .playback-theater-aside {
+    flex: 1 0 auto;
+    border-left: none;
+    border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+    overflow: visible;
+    padding: 14px clamp(12px, 3vw, 20px) 20px;
+  }
+
+  .playback-theater-episodes-section {
+    overflow: visible;
+  }
+
+  .playback-theater-episodes {
+    overflow: visible;
+    max-height: none;
+  }
 }
 
 @media (max-width: 640px) {
@@ -361,25 +504,19 @@
     display: none;
   }
 
-  .playback-theater-source-label {
-    display: none;
-  }
-
-  .playback-theater-source-select {
-    max-width: 7.5rem;
-    height: 32px;
-  }
-
-  .playback-theater-player {
-    max-height: calc(100dvh - 160px);
-    border-radius: 0;
-  }
-
-  .playback-theater-stage {
-    padding: 0 0 4px;
+  .playback-theater-aside {
+    padding: 12px 10px 18px;
+    gap: 14px;
   }
 
   .playback-theater-episodes {
-    padding: 8px 10px 14px;
+    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+    gap: 8px;
+  }
+
+  .playback-ep-chip {
+    min-height: 40px;
+    height: 40px;
+    padding: 0 8px;
   }
 }

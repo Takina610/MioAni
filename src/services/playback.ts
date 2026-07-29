@@ -30,10 +30,73 @@ export function pickPlaybackTitle(anime: Pick<Anime, 'title' | 'originalTitle' |
   return { title: primary, alt: [...new Set(extras)] }
 }
 
-export function defaultEpisode(watched: number, episodeCount?: number): number {
-  const next = Math.max(1, Math.floor(watched || 0) + 1)
-  if (episodeCount && episodeCount > 0) return Math.min(next, episodeCount)
+const LAST_EP_PREFIX = 'mioani:last-ep:'
+
+/** Session/memory fallback when localStorage is missing or blocked (e.g. tests). */
+const lastPlayedMemory = new Map<string, number>()
+
+function lastEpisodeKey(animeId: string): string {
+  return `${LAST_EP_PREFIX}${animeId}`
+}
+
+/**
+ * Default start episode for in-site play.
+ * Priority: local Watch Position / last-played resume → local library progress (next ep) → ep 1.
+ * Do not pass catalog/Bangumi progress as `libraryWatched` — that wrongly opens ep 2.
+ */
+export function defaultEpisode(
+  libraryWatched: number = 0,
+  episodeCount?: number,
+  animeId?: string,
+): number {
+  const maxEp = episodeCount && episodeCount > 0 ? episodeCount : undefined
+  if (animeId) {
+    const resume = findResumeEpisode(animeId, maxEp)
+    if (resume != null) return resume
+  }
+  const watched = Math.max(0, Math.floor(libraryWatched || 0))
+  if (watched <= 0) return 1
+  const next = watched + 1
+  if (maxEp) return Math.min(next, maxEp)
   return next
+}
+
+/** Last played episode for this work (memory + localStorage), if any. */
+export function findResumeEpisode(animeId: string, maxEpisode?: number): number | null {
+  const id = (animeId || '').trim()
+  if (!id) return null
+  let ep: number | null = lastPlayedMemory.get(id) ?? null
+  if (ep == null) {
+    try {
+      const raw = localStorage.getItem(lastEpisodeKey(id))
+      if (raw) {
+        const n = Number(raw)
+        if (Number.isFinite(n) && n >= 1) ep = Math.floor(n)
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  if (ep == null || ep < 1) return null
+  if (maxEpisode && ep > maxEpisode) return maxEpisode
+  return ep
+}
+
+export function setLastPlayedEpisode(animeId: string, episode: number): void {
+  const id = (animeId || '').trim()
+  if (!id || !Number.isFinite(episode) || episode < 1) return
+  const ep = Math.floor(episode)
+  lastPlayedMemory.set(id, ep)
+  try {
+    localStorage.setItem(lastEpisodeKey(id), String(ep))
+  } catch {
+    // quota / private mode — memory still holds value for this session
+  }
+}
+
+/** Test helper: clear in-memory last-played map. */
+export function clearLastPlayedMemory(): void {
+  lastPlayedMemory.clear()
 }
 
 export async function resolveStream(opts: {
@@ -121,6 +184,9 @@ export function setWatchPosition(animeId: string, episode: number, seconds: numb
   } catch {
     // quota / private mode
   }
+  if (Number.isFinite(seconds) && seconds >= 1) {
+    setLastPlayedEpisode(animeId, episode)
+  }
 }
 
 export function clearWatchPosition(animeId: string, episode: number): void {
@@ -136,4 +202,65 @@ export function isPlaybackEnabled(): boolean {
   const flag = import.meta.env.VITE_PLAYBACK
   if (flag === '0' || flag === 'false') return false
   return true
+}
+
+const DANMU_PREFIX = 'mioani:danmu:'
+const DANMU_MAX = 400
+
+export interface LocalDanmu {
+  text: string
+  time?: number
+  mode?: 0 | 1 | 2
+  color?: string
+  border?: boolean
+}
+
+function danmuStorageKey(animeId: string, episode: number): string {
+  return `${DANMU_PREFIX}${animeId}:${Math.floor(episode)}`
+}
+
+export function loadLocalDanmus(animeId: string, episode: number): LocalDanmu[] {
+  const id = (animeId || '').trim()
+  if (!id || !Number.isFinite(episode) || episode < 1) return []
+  try {
+    const raw = localStorage.getItem(danmuStorageKey(id, episode))
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((d): d is LocalDanmu => !!d && typeof d === 'object' && typeof (d as LocalDanmu).text === 'string')
+      .map((d): LocalDanmu => {
+        const mode: LocalDanmu['mode'] = d.mode === 1 || d.mode === 2 ? d.mode : 0
+        return {
+          text: String(d.text).slice(0, 200),
+          time: typeof d.time === 'number' && Number.isFinite(d.time) ? d.time : undefined,
+          mode,
+          color: typeof d.color === 'string' ? d.color : undefined,
+          border: !!d.border,
+        }
+      })
+      .slice(0, DANMU_MAX)
+  } catch {
+    return []
+  }
+}
+
+export function saveLocalDanmu(animeId: string, episode: number, danmu: LocalDanmu): void {
+  const id = (animeId || '').trim()
+  if (!id || !Number.isFinite(episode) || episode < 1) return
+  const text = (danmu.text || '').trim()
+  if (!text) return
+  const list = loadLocalDanmus(id, episode)
+  list.push({
+    text: text.slice(0, 200),
+    time: typeof danmu.time === 'number' && Number.isFinite(danmu.time) ? danmu.time : undefined,
+    mode: danmu.mode === 1 || danmu.mode === 2 ? danmu.mode : 0,
+    color: typeof danmu.color === 'string' ? danmu.color : undefined,
+    border: true,
+  })
+  try {
+    localStorage.setItem(danmuStorageKey(id, episode), JSON.stringify(list.slice(-DANMU_MAX)))
+  } catch {
+    // quota / private mode
+  }
 }

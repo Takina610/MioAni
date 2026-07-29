@@ -2,15 +2,22 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { PhArrowLeft, PhPlay, PhX } from '@phosphor-icons/vue'
 import Artplayer from 'artplayer'
+import artplayerPluginAutoThumbnail from 'artplayer-plugin-auto-thumbnail'
+import artplayerPluginDanmuku from 'artplayer-plugin-danmuku'
+import artplayerPluginVttThumbnail from 'artplayer-plugin-vtt-thumbnail'
 import Hls from 'hls.js'
 import { useLibraryStore } from '../stores/library'
 import {
   buildProxyUrl,
+  defaultEpisode,
   fetchEpisodes,
   fetchPlaybackSources,
   getWatchPosition,
+  loadLocalDanmus,
   pickPlaybackTitle,
   resolveStream,
+  saveLocalDanmu,
+  setLastPlayedEpisode,
   setWatchPosition,
 } from '../services/playback'
 import type { Anime } from '../types/anime'
@@ -217,6 +224,11 @@ function createArtplayer(url: string, kind: PlayableStream['kind'], useProxy: bo
     }
 
     try {
+      const episodeForDanmu = currentEpisode.value
+      const localDanmus = props.anime.id
+        ? loadLocalDanmus(props.anime.id, episodeForDanmu)
+        : []
+
       art = new Artplayer({
         container: host,
         url: playUrl,
@@ -232,6 +244,60 @@ function createArtplayer(url: string, kind: PlayableStream['kind'], useProxy: bo
         autoPlayback: false,
         theme: '#b8f05f',
         lang: 'zh-cn',
+        plugins: [
+          // Prefer WebVTT sprite sheet when available; otherwise sample frames from the playing media.
+          ...(typeof import.meta.env.VITE_PLAYBACK_THUMB_VTT === 'string' &&
+          import.meta.env.VITE_PLAYBACK_THUMB_VTT.trim()
+            ? [
+                artplayerPluginVttThumbnail({
+                  vtt: import.meta.env.VITE_PLAYBACK_THUMB_VTT.trim(),
+                }),
+              ]
+            : [
+                artplayerPluginAutoThumbnail({
+                  // Empty url → plugin samples the current Artplayer media (works for progressive;
+                  // HLS may be limited by CORS / cross-origin frames).
+                  width: 160,
+                  number: 100,
+                  scale: 0.25,
+                }),
+              ]),
+          artplayerPluginDanmuku({
+            danmuku: localDanmus,
+            speed: 5,
+            opacity: 1,
+            fontSize: 25,
+            color: '#FFFFFF',
+            mode: 0,
+            modes: [0, 1, 2],
+            margin: [10, '15%'],
+            antiOverlap: true,
+            synchronousPlayback: true,
+            visible: true,
+            emitter: true,
+            maxLength: 100,
+            lockTime: 3,
+            theme: 'dark',
+            heatmap: false,
+            async beforeEmit(danmu) {
+              const text = (danmu?.text || '').trim()
+              if (!text || text.length > 100) return false
+              if (props.anime.id) {
+                saveLocalDanmu(props.anime.id, episodeForDanmu, {
+                  text,
+                  time: typeof danmu.time === 'number' ? danmu.time : undefined,
+                  mode: danmu.mode === 1 || danmu.mode === 2 ? danmu.mode : 0,
+                  color: typeof danmu.color === 'string' ? danmu.color : '#FFFFFF',
+                  border: true,
+                })
+              }
+              return true
+            },
+            filter(danmu) {
+              return !!(danmu?.text && String(danmu.text).trim().length <= 200)
+            },
+          }),
+        ],
         moreVideoAttr: {
           // Proxy is same-origin; credentials only needed if API is cross-origin with cookies.
           crossOrigin: 'anonymous',
@@ -430,6 +496,7 @@ async function startPlayback(episode?: number) {
   const ep = episode ?? currentEpisode.value
   currentEpisode.value = ep
   completedMarked = false
+  if (props.anime.id) setLastPlayedEpisode(props.anime.id, ep)
 
   const generation = ++playGeneration
   destroyPlayer()
@@ -505,12 +572,12 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 onMounted(() => {
-  const watched = library.findInLibrary(props.anime)?.watched ?? props.anime.watched ?? 0
   const maxEp = props.anime.episodes || 0
+  const libraryWatched = library.findInLibrary(props.anime)?.watched ?? 0
   const initial =
     props.initialEpisode && props.initialEpisode > 0
       ? props.initialEpisode
-      : Math.max(1, Math.min(watched + 1, maxEp || watched + 1 || 1))
+      : defaultEpisode(libraryWatched, maxEp || undefined, props.anime.id)
   currentEpisode.value = initial
   if (maxEp) episodeCount.value = maxEp
 
@@ -557,21 +624,6 @@ watch(
         </div>
 
         <div class="playback-theater-status" aria-live="polite">
-          <label class="playback-theater-source" title="优先线路；失败时自动切换下一线路">
-            <span class="playback-theater-source-label">线路</span>
-            <select
-              v-model="preferredSource"
-              class="playback-theater-source-select"
-              :disabled="playStatus === 'resolving'"
-              aria-label="选择播放线路"
-              @change="onSourceChange"
-            >
-              <option value="auto">自动</option>
-              <option v-for="src in sourceOptions" :key="src.id" :value="src.id">
-                {{ src.label }}
-              </option>
-            </select>
-          </label>
           <span
             v-if="statusHint"
             class="playback-theater-status-text"
@@ -588,60 +640,98 @@ watch(
         </div>
       </header>
 
-      <div class="playback-theater-stage">
-        <div v-if="playStatus === 'resolving'" class="playback-theater-state">
-          <div class="playback-theater-spinner" aria-hidden="true" />
-          <p class="playback-theater-state-label">正在解析可播放流…</p>
-        </div>
+      <div class="playback-theater-body">
+        <main class="playback-theater-main">
+          <div class="playback-theater-stage">
+            <div v-if="playStatus === 'resolving'" class="playback-theater-state">
+              <div class="playback-theater-spinner" aria-hidden="true" />
+              <p class="playback-theater-state-label">正在解析可播放流…</p>
+            </div>
 
-        <div v-else-if="playStatus === 'unplayable'" class="playback-theater-state">
-          <p class="playback-theater-state-title">暂不可播放</p>
-          <p class="playback-theater-state-msg">
-            当前无法解析该作品的可播放流。目录与元数据仍可浏览。
-          </p>
-          <div class="playback-theater-actions">
-            <button type="button" class="btn-primary" @click="onRetry">
-              <PhPlay :size="16" weight="fill" />
-              重试
-            </button>
-            <button type="button" class="btn-ghost" @click="closeTheater">关闭</button>
+            <div v-else-if="playStatus === 'unplayable'" class="playback-theater-state">
+              <p class="playback-theater-state-title">暂不可播放</p>
+              <p class="playback-theater-state-msg">
+                当前无法解析该作品的可播放流。目录与元数据仍可浏览。
+              </p>
+              <div class="playback-theater-actions">
+                <button type="button" class="btn-primary" @click="onRetry">
+                  <PhPlay :size="16" weight="fill" />
+                  重试
+                </button>
+                <button type="button" class="btn-ghost" @click="closeTheater">关闭</button>
+              </div>
+            </div>
+
+            <div v-else-if="playStatus === 'error'" class="playback-theater-state">
+              <p class="playback-theater-state-title">播放出错</p>
+              <p class="playback-theater-state-msg is-error">
+                {{ playError || '播放失败，请稍后重试。' }}
+              </p>
+              <div class="playback-theater-actions">
+                <button type="button" class="btn-primary" @click="onRetry">
+                  <PhPlay :size="16" weight="fill" />
+                  重试
+                </button>
+                <button type="button" class="btn-ghost" @click="closeTheater">关闭</button>
+              </div>
+            </div>
+
+            <div
+              ref="playerHost"
+              class="playback-theater-player"
+              :class="{ 'is-visible': playStatus === 'playing' }"
+            />
           </div>
-        </div>
+        </main>
 
-        <div v-else-if="playStatus === 'error'" class="playback-theater-state">
-          <p class="playback-theater-state-title">播放出错</p>
-          <p class="playback-theater-state-msg is-error">
-            {{ playError || '播放失败，请稍后重试。' }}
-          </p>
-          <div class="playback-theater-actions">
-            <button type="button" class="btn-primary" @click="onRetry">
-              <PhPlay :size="16" weight="fill" />
-              重试
-            </button>
-            <button type="button" class="btn-ghost" @click="closeTheater">关闭</button>
-          </div>
-        </div>
+        <aside class="playback-theater-aside" aria-label="播放线路与选集">
+          <section class="playback-theater-aside-section playback-theater-line-section">
+            <h2 id="playback-theater-line-heading" class="playback-theater-aside-title">线路</h2>
+            <label
+              class="playback-theater-source"
+              title="优先线路；失败时自动切换下一线路"
+            >
+              <select
+                v-model="preferredSource"
+                class="playback-theater-source-select"
+                :disabled="playStatus === 'resolving'"
+                aria-labelledby="playback-theater-line-heading"
+                @change="onSourceChange"
+              >
+                <option value="auto">自动</option>
+                <option v-for="src in sourceOptions" :key="src.id" :value="src.id">
+                  {{ src.label }}
+                </option>
+              </select>
+            </label>
+            <p v-if="activeSourceLabel && preferredSource === 'auto'" class="playback-theater-active-line">
+              当前：{{ activeSourceLabel }}
+            </p>
+          </section>
 
-        <div
-          ref="playerHost"
-          class="playback-theater-player"
-          :class="{ 'is-visible': playStatus === 'playing' }"
-        />
+          <section class="playback-theater-aside-section playback-theater-episodes-section">
+            <h2 id="playback-theater-episodes-heading" class="playback-theater-aside-title">选集</h2>
+            <nav
+              class="playback-theater-episodes"
+              aria-labelledby="playback-theater-episodes-heading"
+            >
+              <button
+                v-for="ep in episodeChips"
+                :key="ep.index"
+                type="button"
+                class="playback-ep-chip"
+                :class="{ active: ep.index === currentEpisode }"
+                :disabled="playStatus === 'resolving'"
+                :title="ep.label && ep.label !== String(ep.index) ? ep.label : `第 ${ep.index} 集`"
+                :aria-label="ep.label && ep.label !== String(ep.index) ? ep.label : `第 ${ep.index} 集`"
+                @click="selectEpisode(ep.index)"
+              >
+                {{ ep.index }}
+              </button>
+            </nav>
+          </section>
+        </aside>
       </div>
-
-      <nav class="playback-theater-episodes" aria-label="选集">
-        <button
-          v-for="ep in episodeChips"
-          :key="ep.index"
-          type="button"
-          class="playback-ep-chip"
-          :class="{ active: ep.index === currentEpisode }"
-          :disabled="playStatus === 'resolving'"
-          @click="selectEpisode(ep.index)"
-        >
-          {{ ep.label }}
-        </button>
-      </nav>
     </div>
   </Teleport>
 </template>
