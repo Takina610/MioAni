@@ -1,20 +1,19 @@
-# Cloudflare Pages — static frontend (Vite `dist/`).
-# API stays on Render/Docker (Playwright); do not deploy `server/` as a Worker.
+# Cloudflare Workers static frontend deploy (dist after `npm run build`)
+# Same pattern as miss/soramiss.
+# Dashboard form:
+#   构建命令: npm run build
+#   部署命令: npx wrangler deploy
 #
-# ── Git-connected Pages (Dashboard) ──────────────────────────────────
-# Build command:          npm run build
-# Build output directory: dist
-# Deploy command:         (leave EMPTY)
-#   Do NOT set "npx wrangler deploy" — that is for Workers and will fail.
-#   Pages uploads `dist` automatically after a successful build.
-#
-# Environment variables (Production, build-time):
-#   VITE_API_BASE, VITE_PLAYBACK, VITE_BANGUMI_*, VITE_ANILIST_*
-#
-# ── Local / CLI deploy ───────────────────────────────────────────────
-#   npm run build
-#   npx wrangler pages deploy dist --project-name=mioani
+# NOTE: Express API in /server is NOT deployed by this file (Playwright stays on Render).
+# Set build env VITE_API_BASE=https://your-api.example.com/api on Cloudflare.
 
 name = "mioani"
-compatibility_date = "2025-07-28"
-pages_build_output_dir = "dist"
+compatibility_date = "2025-04-01"
+workers_dev = true
+
+[assets]
+directory = "./dist"
+# SPA fallback for Vue Router (do NOT also ship public/_redirects — Workers rejects that loop)
+not_found_handling = "single-page-application"
+# Avoid auto-trailing-slash rewriting that can fight SPA asset rules
+html_handling = "none"
