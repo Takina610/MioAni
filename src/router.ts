@@ -1,8 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from './views/HomeView.vue'
-import DiscoverView from './views/DiscoverView.vue'
-import LibraryView from './views/LibraryView.vue'
-import ScheduleView from './views/ScheduleView.vue'
+
+const DiscoverView = () => import('./views/DiscoverView.vue')
+const LibraryView = () => import('./views/LibraryView.vue')
+const ScheduleView = () => import('./views/ScheduleView.vue')
 
 export const router = createRouter({
   history: createWebHistory(),

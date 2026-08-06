@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { PhArrowLeft, PhPlay, PhX } from '@phosphor-icons/vue'
-import Artplayer from 'artplayer'
-import artplayerPluginAutoThumbnail from 'artplayer-plugin-auto-thumbnail'
-import artplayerPluginDanmuku from 'artplayer-plugin-danmuku'
-import artplayerPluginVttThumbnail from 'artplayer-plugin-vtt-thumbnail'
-import Hls from 'hls.js'
+import type Artplayer from 'artplayer'
 import { useLibraryStore } from '../stores/library'
 import {
   buildProxyUrl,
@@ -27,6 +23,33 @@ import type {
   PlaybackSourceInfo,
   PlayableStream,
 } from '../types/playback'
+
+type PlayerModules = {
+  Artplayer: typeof import('artplayer').default
+  Hls: typeof import('hls.js').default
+  artplayerPluginAutoThumbnail: typeof import('artplayer-plugin-auto-thumbnail').default
+  artplayerPluginDanmuku: typeof import('artplayer-plugin-danmuku').default
+  artplayerPluginVttThumbnail: typeof import('artplayer-plugin-vtt-thumbnail').default
+}
+
+let playerModulesPromise: Promise<PlayerModules> | null = null
+
+function loadPlayerModules(): Promise<PlayerModules> {
+  playerModulesPromise ??= Promise.all([
+    import('artplayer'),
+    import('hls.js'),
+    import('artplayer-plugin-auto-thumbnail'),
+    import('artplayer-plugin-danmuku'),
+    import('artplayer-plugin-vtt-thumbnail'),
+  ]).then(([artplayer, hls, autoThumbnail, danmuku, vttThumbnail]) => ({
+    Artplayer: artplayer.default,
+    Hls: hls.default,
+    artplayerPluginAutoThumbnail: autoThumbnail.default,
+    artplayerPluginDanmuku: danmuku.default,
+    artplayerPluginVttThumbnail: vttThumbnail.default,
+  }))
+  return playerModulesPromise
+}
 
 const props = defineProps<{
   anime: Pick<
@@ -189,8 +212,12 @@ function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.message === 'playback_aborted'
 }
 
-function createArtplayer(url: string, kind: PlayableStream['kind'], useProxy: boolean, generation: number): Promise<void> {
-  return new Promise((resolve, reject) => {
+async function createArtplayer(url: string, kind: PlayableStream['kind'], useProxy: boolean, generation: number): Promise<void> {
+  if (closed || generation !== playGeneration) {
+    throw new Error('playback_aborted')
+  }
+  const playerModules = await loadPlayerModules()
+  return new Promise<void>((resolve, reject) => {
     if (closed || generation !== playGeneration) {
       reject(new Error('playback_aborted'))
       return
@@ -229,7 +256,7 @@ function createArtplayer(url: string, kind: PlayableStream['kind'], useProxy: bo
         ? loadLocalDanmus(props.anime.id, episodeForDanmu)
         : []
 
-      art = new Artplayer({
+      art = new playerModules.Artplayer({
         container: host,
         url: playUrl,
         volume: 0.85,
@@ -249,12 +276,12 @@ function createArtplayer(url: string, kind: PlayableStream['kind'], useProxy: bo
           ...(typeof import.meta.env.VITE_PLAYBACK_THUMB_VTT === 'string' &&
           import.meta.env.VITE_PLAYBACK_THUMB_VTT.trim()
             ? [
-                artplayerPluginVttThumbnail({
+                playerModules.artplayerPluginVttThumbnail({
                   vtt: import.meta.env.VITE_PLAYBACK_THUMB_VTT.trim(),
                 }),
               ]
             : [
-                artplayerPluginAutoThumbnail({
+                playerModules.artplayerPluginAutoThumbnail({
                   // Empty url → plugin samples the current Artplayer media (works for progressive;
                   // HLS may be limited by CORS / cross-origin frames).
                   width: 160,
@@ -262,7 +289,7 @@ function createArtplayer(url: string, kind: PlayableStream['kind'], useProxy: bo
                   scale: 0.25,
                 }),
               ]),
-          artplayerPluginDanmuku({
+          playerModules.artplayerPluginDanmuku({
             danmuku: localDanmus,
             speed: 5,
             opacity: 1,
@@ -304,8 +331,8 @@ function createArtplayer(url: string, kind: PlayableStream['kind'], useProxy: bo
         },
         customType: {
           m3u8(video: HTMLVideoElement, src: string, playerInstance: Artplayer) {
-            if (Hls.isSupported()) {
-              const hls = new Hls({
+            if (playerModules.Hls.isSupported()) {
+              const hls = new playerModules.Hls({
                 enableWorker: true,
                 xhrSetup(xhr, reqUrl) {
                   try {
@@ -327,7 +354,7 @@ function createArtplayer(url: string, kind: PlayableStream['kind'], useProxy: bo
               playerInstance.on('destroy', () => {
                 hls.destroy()
               })
-              hls.on(Hls.Events.MANIFEST_PARSED, () => {
+              hls.on(playerModules.Hls.Events.MANIFEST_PARSED, () => {
                 if (closed || generation !== playGeneration) {
                   hls.destroy()
                   fail(new Error('playback_aborted'))
@@ -338,7 +365,7 @@ function createArtplayer(url: string, kind: PlayableStream['kind'], useProxy: bo
                 startPositionLoop()
                 ok()
               })
-              hls.on(Hls.Events.ERROR, (_e, data) => {
+              hls.on(playerModules.Hls.Events.ERROR, (_e, data) => {
                 if (!data.fatal || settled) return
                 if (closed || generation !== playGeneration) {
                   fail(new Error('playback_aborted'))

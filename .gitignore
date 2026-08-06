@@ -16,6 +16,9 @@ lerna-debug.log*
 .trellis
 .opencode
 .open-project
+.report
+.scratch
+.zed
 
 # 构建、依赖、输出目录
 node_modules

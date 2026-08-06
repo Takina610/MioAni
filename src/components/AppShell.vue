@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
+import { defineAsyncComponent, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { PhCompass, PhHouse, PhBooks, PhCalendarBlank, PhMagnifyingGlass, PhDownloadSimple } from '@phosphor-icons/vue'
-import ImportModal from './ImportModal.vue'
-import AnimeDetailOverlay from './AnimeDetailOverlay.vue'
-import PersonDetailOverlay from './PersonDetailOverlay.vue'
 import GridTrailBackground from './GridTrailBackground.vue'
 import brandLogo from '../assets/MioAni2.webp'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
 import { usePersonOverlayStore } from '../stores/personOverlay'
 import HomeView from '../views/HomeView.vue'
-import DiscoverView from '../views/DiscoverView.vue'
-import LibraryView from '../views/LibraryView.vue'
-import ScheduleView from '../views/ScheduleView.vue'
+const ImportModal = defineAsyncComponent(() => import('./ImportModal.vue'))
+const AnimeDetailOverlay = defineAsyncComponent(() => import('./AnimeDetailOverlay.vue'))
+const PersonDetailOverlay = defineAsyncComponent(() => import('./PersonDetailOverlay.vue'))
+const DiscoverView = defineAsyncComponent(() => import('../views/DiscoverView.vue'))
+const LibraryView = defineAsyncComponent(() => import('../views/LibraryView.vue'))
+const ScheduleView = defineAsyncComponent(() => import('../views/ScheduleView.vue'))
 
 type ListKey = 'home' | 'discover' | 'schedule' | 'library'
 
@@ -303,8 +303,8 @@ onUnmounted(() => {
       </div>
     </main>
     <footer class="site-footer"><span>MioAni</span><p>数据来自 Bangumi 与 AniList</p><div><a href="https://bangumi.tv" target="_blank">Bangumi</a><a href="https://anilist.co" target="_blank">AniList</a></div></footer>
-    <ImportModal :open="importOpen" @close="importOpen = false" />
-    <AnimeDetailOverlay />
-    <PersonDetailOverlay />
+    <ImportModal v-if="importOpen" :open="importOpen" @close="importOpen = false" />
+    <AnimeDetailOverlay v-if="detailOverlay.open || route.name === 'anime-detail'" />
+    <PersonDetailOverlay v-if="personOverlay.open || PERSON_ROUTES.has(String(route.name))" />
   </div>
 </template>

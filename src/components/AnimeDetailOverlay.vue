@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   PhX,
@@ -20,7 +20,7 @@ import { parsePersonId, personRouteName } from '../services/personIds'
 import { shouldOfferTranslation, translateToChinese } from '../services/translate'
 import { defaultEpisode, isPlaybackEnabled } from '../services/playback'
 import type { AnimeCharacter, AnimeRelation, AnimeStaff, WatchStatus } from '../types/anime'
-import AnimePlaybackTheater from './AnimePlaybackTheater.vue'
+const AnimePlaybackTheater = defineAsyncComponent(() => import('./AnimePlaybackTheater.vue'))
 
 const store = useDetailOverlayStore()
 const personOverlay = usePersonOverlayStore()
@@ -1224,6 +1224,7 @@ watch(
       if (flyerRef.value) flyerRef.value.style.visibility = 'hidden'
     }
   },
+  { immediate: true },
 )
 
 watch(

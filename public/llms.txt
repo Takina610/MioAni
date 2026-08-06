@@ -1,0 +1,20 @@
+# MioAni
+
+> MioAni 用于浏览季度动画、查看排播并管理追番记录。
+
+## Main pages
+
+- /: 首页与本季推荐
+- /discover: 搜索和发现动画
+- /schedule: 放送日程
+- /library: 本地追番库
+
+## Data sources
+
+- Bangumi: 动画条目、排播和图片
+- AniList: 动画补充信息
+
+## Notes
+
+- 播放源和第三方数据可能发生变化。
+- 不要将页面内容当作医疗、法律或财务建议。
