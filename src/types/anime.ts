@@ -15,6 +15,8 @@ export interface Anime {
   /** Extra title forms for cross-source matching and multilingual search. */
   titles?: AnimeTitles
   image: string
+  /** Lower-resolution poster for list cards and first-screen surfaces. */
+  thumb?: string
   banner?: string
   score: number
   year: number

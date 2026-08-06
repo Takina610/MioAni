@@ -209,6 +209,8 @@ onUnmounted(() => {
                   v-if="item.anime.image"
                   :src="item.anime.image"
                   alt=""
+                  width="214"
+                  height="303"
                   loading="lazy"
                   decoding="async"
                 />

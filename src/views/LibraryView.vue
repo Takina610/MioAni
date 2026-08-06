@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import '../styles/pages/library/page.css'
 import { RouterLink, useRoute } from 'vue-router'
 import { PhBooks, PhCheck, PhClock, PhPlay, PhArrowRight } from '@phosphor-icons/vue'
 import AnimeCard from '../components/AnimeCard.vue'

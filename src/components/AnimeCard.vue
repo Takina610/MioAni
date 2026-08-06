@@ -9,10 +9,13 @@ import { useDetailOverlayStore } from '../stores/detailOverlay'
 const props = withDefaults(defineProps<{
   anime: Anime
   index?: number
+  /** Use the list thumbnail by default; homepage can opt into the full poster. */
+  useThumb?: boolean
   /** Skip scroll-reveal (library tabs / already-visible grids). */
   instant?: boolean
 }>(), {
   instant: false,
+  useThumb: true,
 })
 const store = useLibraryStore()
 const detailOverlay = useDetailOverlayStore()
@@ -173,7 +176,16 @@ onUnmounted(() => {
   >
     <div class="poster-wrap">
       <div v-if="failed || !anime.image" class="poster-missing">暂无海报</div>
-      <img v-else :src="anime.image" :alt="`${anime.title} 海报`" loading="lazy" @error="failed = true" />
+      <img
+        v-else
+        :src="useThumb ? (anime.thumb || anime.image) : anime.image"
+        :alt="`${anime.title} 海报`"
+        width="214"
+        height="303"
+        loading="lazy"
+        decoding="async"
+        @error="failed = true"
+      />
       <span v-if="index" class="rank-number">{{ String(index).padStart(2, '0') }}</span>
       <span v-if="anime.score" class="card-score">
         <PhStar :size="12" weight="fill" />{{ anime.score.toFixed(1) }}

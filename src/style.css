@@ -20,15 +20,7 @@
 @import './styles/pages/home/closing.css';
 @import './styles/components/progress.css';
 
-/* Discover */
-@import './styles/pages/discover/page.css';
-@import './styles/pages/discover/search.css';
-@import './styles/pages/discover/filters.css';
-@import './styles/pages/discover/results.css';
-@import './styles/pages/discover/loader.css';
-
-/* Library (+ shared sliding tabs used by detail) */
-@import './styles/pages/library/page.css';
+/* Shared sliding tabs used by library and detail overlays */
 @import './styles/pages/library/tabs.css';
 
 /* Intro */
@@ -47,13 +39,3 @@
 
 /* Cross-page responsive (must stay before detail) */
 @import './styles/responsive/breakpoints.css';
-
-/* Detail overlay (after responsive - preserves original cascade) */
-@import './styles/pages/detail/overlay.css';
-@import './styles/pages/detail/content.css';
-@import './styles/pages/detail/relations.css';
-@import './styles/pages/detail/detail-motion.css';
-@import './styles/pages/detail/person.css';
-
-/* In-site playback theater */
-@import './styles/pages/playback/theater.css';

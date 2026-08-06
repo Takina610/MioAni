@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import '../styles/pages/playback/theater.css'
 import { PhArrowLeft, PhPlay, PhX } from '@phosphor-icons/vue'
 import type Artplayer from 'artplayer'
 import { useLibraryStore } from '../stores/library'

@@ -12,7 +12,16 @@ const failed = ref(false)
 <template>
   <article class="progress-row">
     <div v-if="failed || !anime.image" class="row-poster-missing">暂无海报</div>
-    <img v-else :src="anime.image" :alt="`${anime.title} 海报`" @error="failed = true" />
+    <img
+      v-else
+      :src="anime.thumb || anime.image"
+      :alt="`${anime.title} 海报`"
+      width="68"
+      height="76"
+      loading="lazy"
+      decoding="async"
+      @error="failed = true"
+    />
     <div class="progress-copy">
       <div><p class="airing">{{ anime.nextEpisode || '继续观看' }}</p><h3>{{ anime.title }}</h3></div>
       <div class="progress-track" role="progressbar" :aria-valuenow="anime.watched" aria-valuemin="0" :aria-valuemax="anime.episodes">

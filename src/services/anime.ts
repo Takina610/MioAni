@@ -56,6 +56,16 @@ function cleanText(value?: string): string {
   return value?.replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() ?? ''
 }
 
+function normalizeImageUrl(value?: string): string {
+  return value?.replace('http://', 'https://') || ''
+}
+
+function bangumiThumbUrl(item: any): string {
+  const medium = normalizeImageUrl(item.images?.medium)
+  if (medium) return medium
+  return normalizeImageUrl(item.images?.large).replace('/pic/cover/l/', '/pic/cover/m/')
+}
+
 function formatAiring(seconds?: number): string | undefined {
   if (!seconds) return undefined
   const days = Math.floor(seconds / 86400)
@@ -86,6 +96,12 @@ function mapAniList(media: any, entry?: any): Anime {
     romaji: media.title?.romaji || undefined,
     native: media.title?.native || undefined,
   }
+  const image = normalizeImageUrl(
+    media.coverImage?.extraLarge || media.coverImage?.large || media.coverImage?.medium,
+  )
+  const thumb = normalizeImageUrl(
+    media.coverImage?.medium || media.coverImage?.large || media.coverImage?.extraLarge,
+  )
   return {
     id: `anilist-${media.id}`,
     source: 'anilist',
@@ -93,7 +109,8 @@ function mapAniList(media: any, entry?: any): Anime {
     title: media.title?.native || media.title?.english || media.title?.romaji,
     originalTitle: media.title?.romaji || media.title?.native || media.title?.english || '',
     titles,
-    image: media.coverImage.extraLarge,
+    image,
+    thumb: thumb || image,
     banner: media.bannerImage || undefined,
     score: media.averageScore ? media.averageScore / 10 : entry?.score || 0,
     year: media.seasonYear || 0,
@@ -121,7 +138,7 @@ function resolveAniListEpisodes(media: {
   return 0
 }
 
-const mediaFields = `id title { romaji native english } coverImage { extraLarge } bannerImage averageScore popularity seasonYear season episodes genres nextAiringEpisode { episode timeUntilAiring airingAt }`
+const mediaFields = `id title { romaji native english } coverImage { extraLarge large medium } bannerImage averageScore popularity seasonYear season episodes genres nextAiringEpisode { episode timeUntilAiring airingAt }`
 
 function currentSeason() {
   const month = new Date().getMonth() + 1
@@ -322,6 +339,8 @@ function bangumiTagNames(item: any): string[] {
 }
 
 function mapBangumi(item: any): Anime {
+  const image = normalizeImageUrl(item.images?.large || item.images?.medium)
+  const thumb = bangumiThumbUrl(item)
   return {
     id: `bgm-${item.id ?? item.subject_id}`,
     source: 'bangumi',
@@ -331,7 +350,8 @@ function mapBangumi(item: any): Anime {
       cn: item.name_cn || undefined,
       native: item.name || undefined,
     },
-    image: (item.images?.large || '').replace('http://', 'https://'),
+    image,
+    thumb: thumb || image,
     score: item.rating?.score || item.score || 0,
     year: Number((item.air_date || item.date)?.slice(0, 4)) || 0,
     airDate: item.air_date || item.date || undefined,

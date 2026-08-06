@@ -1,5 +1,11 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import '../styles/pages/detail/overlay.css'
+import '../styles/pages/detail/content.css'
+import '../styles/pages/detail/relations.css'
+import '../styles/pages/detail/detail-motion.css'
+import '../styles/pages/detail/person.css'
+import '../styles/pages/playback/theater.css'
 import { useRoute, useRouter } from 'vue-router'
 import {
   PhX,

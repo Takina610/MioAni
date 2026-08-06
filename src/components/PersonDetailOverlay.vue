@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import '../styles/pages/detail/person.css'
 import { useRoute, useRouter } from 'vue-router'
 import {
   PhArrowLeft,

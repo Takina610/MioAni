@@ -70,8 +70,8 @@ const bridgeImgRef = ref<HTMLImageElement | null>(null)
 const focusBridgeRef = ref<HTMLElement | null>(null)
 const focusBridgeImgRef = ref<HTMLImageElement | null>(null)
 const foreCopyRef = ref<HTMLElement | null>(null)
-const ambientARef = ref<HTMLElement | null>(null)
-const ambientBRef = ref<HTMLElement | null>(null)
+const ambientARef = ref<HTMLImageElement | null>(null)
+const ambientBRef = ref<HTMLImageElement | null>(null)
 const ambientActive = ref<'a' | 'b'>('a')
 let autoplayTween: gsap.core.Tween | null = null
 let wasPlayingBeforeHidden = false
@@ -331,6 +331,11 @@ function mediaOf(anime: Anime | null | undefined) {
   return anime.banner || anime.image
 }
 
+function ambientOf(anime: Anime | null | undefined) {
+  if (!anime) return ''
+  return mediaOf(anime)
+}
+
 function wait(ms: number) {
   return new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms)
@@ -584,7 +589,7 @@ function crossfadeAmbient(url: string, ready: boolean): gsap.core.Timeline {
   const incoming = showB ? b : a
   const outgoing = showB ? a : b
 
-  incoming.style.backgroundImage = `url(${url})`
+  incoming.src = url
   gsap.set(incoming, { autoAlpha: 0 })
   gsap.set(outgoing, { autoAlpha: (gsap.getProperty(outgoing, 'autoAlpha') as number) || 1 })
 
@@ -607,7 +612,7 @@ function prepareNextLayer(nextAnime: Anime | null, ready: boolean): gsap.core.Ti
     return gsap.timeline().to(layer, { autoAlpha: 0, duration: 0.4, ease: 'power2.out' }, 0)
   }
 
-  const url = mediaOf(nextAnime)
+  const url = ambientOf(nextAnime)
   if (!ready) {
     gsap.set(layer, { autoAlpha: 0 })
     return null
@@ -659,13 +664,13 @@ async function goTo(index: number) {
   }
 
   const posterUrl = target.image
-  const ambientUrl = mediaOf(target)
+  const ambientUrl = ambientOf(target)
   const upcoming = slides.value[(next + 1) % slides.value.length] || null
 
   const [posterReady, ambientReady, upcomingReady] = await Promise.all([
     loadImage(posterUrl),
     loadImage(ambientUrl),
-    upcoming ? loadImage(mediaOf(upcoming)) : Promise.resolve(false),
+    upcoming ? loadImage(ambientOf(upcoming)) : Promise.resolve(false),
   ])
   if (!posterReady) {
     await finishHeroTransition()
@@ -840,7 +845,7 @@ function nextSlide() {
 function initAmbient() {
   const url = mediaOf(feature.value)
   if (ambientARef.value && url) {
-    ambientARef.value.style.backgroundImage = `url(${url})`
+    ambientARef.value.src = url
     gsap.set(ambientARef.value, { autoAlpha: 1 })
   }
   if (ambientBRef.value) gsap.set(ambientBRef.value, { autoAlpha: 0 })
@@ -852,7 +857,7 @@ function initNextLayer() {
   const layer = nextLayerRef.value
   const img = nextImgRef.value
   if (!layer || !img || !anime) return
-  const url = mediaOf(anime)
+  const url = ambientOf(anime)
   img.src = url
   gsap.set(layer, { autoAlpha: 0, clearProps: 'filter' })
   void waitImg(img, IMAGE_READY_TIMEOUT).then((ready) => {
@@ -1002,8 +1007,8 @@ onUnmounted(() => {
       >
         <!-- 环境底图双缓冲，交叉淡入避免硬切 -->
         <div class="hero-depth" aria-hidden="true">
-          <div ref="ambientARef" class="hero-depth-current hero-ambient"></div>
-          <div ref="ambientBRef" class="hero-depth-current hero-ambient"></div>
+          <img ref="ambientARef" class="hero-depth-current hero-ambient" alt="" aria-hidden="true" decoding="async" fetchpriority="high" />
+          <img ref="ambientBRef" class="hero-depth-current hero-ambient" alt="" aria-hidden="true" decoding="async" fetchpriority="low" />
         </div>
 
         <!-- 静态后景：src 由 JS 控制，避免 Vue 绑定硬切 -->
@@ -1080,7 +1085,16 @@ onUnmounted(() => {
               </div>
             </div>
             <div ref="posterRef" class="hero-fore-poster">
-              <img ref="posterImgRef" :src="feature.image" :alt="`${feature.title} 海报`" />
+              <img
+                ref="posterImgRef"
+                :src="feature.image"
+                :alt="`${feature.title} 海报`"
+                width="420"
+                height="630"
+                loading="eager"
+                decoding="async"
+                fetchpriority="high"
+              />
             </div>
           </article>
         </div>
@@ -1128,7 +1142,13 @@ onUnmounted(() => {
           <p class="directory-count">{{ hotAnime.length }} 部精选</p>
         </div>
         <TransitionGroup name="list" tag="div" class="catalog-grid directory-grid">
-          <AnimeCard v-for="(anime, index) in hotAnime" :key="anime.id" :anime="anime" :index="index + 1" />
+          <AnimeCard
+            v-for="(anime, index) in hotAnime"
+            :key="anime.id"
+            :anime="anime"
+            :index="index + 1"
+            :use-thumb="false"
+          />
         </TransitionGroup>
       </section>
 

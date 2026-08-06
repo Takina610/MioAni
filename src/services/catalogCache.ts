@@ -1,7 +1,7 @@
 import type { Anime } from '../types/anime'
 import type { ScheduleDay } from '../types/schedule'
 
-export const CATALOG_CACHE_KEY = 'anime-catalog-v1'
+export const CATALOG_CACHE_KEY = 'anime-catalog-v2'
 export const CATALOG_CACHE_TTL_MS = 45 * 60 * 1000
 
 export type CatalogCacheSnapshot = {
