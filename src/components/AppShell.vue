@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { PhCompass, PhHouse, PhBooks, PhCalendarBlank, PhMagnifyingGlass, PhDownloadSimple } from '@phosphor-icons/vue'
 import GridTrailBackground from './GridTrailBackground.vue'
+import BackToTop from './BackToTop.vue'
 import brandLogo from '../assets/MioAni2.webp'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
 import { usePersonOverlayStore } from '../stores/personOverlay'
@@ -23,6 +24,11 @@ const topbarCompact = ref(false)
 const route = useRoute()
 const detailOverlay = useDetailOverlayStore()
 const personOverlay = usePersonOverlayStore()
+
+/** Back-to-top for the window-scrolling list pages (home/discover/schedule/library). */
+const showListBackToTop = computed(() =>
+  ['home', 'discover', 'schedule', 'library'].includes(String(route.name)),
+)
 
 const COMPACT_ON = 56
 const COMPACT_OFF = 20
@@ -230,6 +236,7 @@ onUnmounted(() => {
     }"
   >
     <GridTrailBackground />
+    <BackToTop :show="showListBackToTop" />
     <a class="skip-link" href="#main-content">跳到主要内容</a>
     <div class="topbar-slot" :class="{ 'is-compact': topbarCompact }">
       <header class="topbar" :class="{ 'is-compact': topbarCompact }">

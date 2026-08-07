@@ -8,7 +8,6 @@ import {
   PhCheck,
 } from '@phosphor-icons/vue'
 import AnimeCard from '../components/AnimeCard.vue'
-import BackToTop from '../components/BackToTop.vue'
 import {
   formatOptionsForSource,
   languageOptionsForSource,
@@ -754,6 +753,5 @@ watch(sentinel, () => setupObserver())
 
       <div ref="sentinel" class="infinite-sentinel" aria-hidden="true" />
     </section>
-    <BackToTop />
   </div>
 </template>

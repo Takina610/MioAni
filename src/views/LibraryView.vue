@@ -3,7 +3,6 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { PhBooks, PhCheck, PhClock, PhPlay, PhArrowRight } from '@phosphor-icons/vue'
 import AnimeCard from '../components/AnimeCard.vue'
-import BackToTop from '../components/BackToTop.vue'
 import { useLibraryStore } from '../stores/library'
 const store = useLibraryStore()
 const route = useRoute()
@@ -289,6 +288,5 @@ onUnmounted(() => {
         已显示全部 {{ filtered.length }} 部
       </div>
     </section>
-    <BackToTop />
   </div>
 </template>
