@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import '../styles/pages/playback/theater.css'
-import { PhArrowLeft, PhPlay, PhX } from '@phosphor-icons/vue'
+import { PhArrowLeft, PhPlay, PhTranslate, PhX } from '@phosphor-icons/vue'
 import type Artplayer from 'artplayer'
 import { useLibraryStore } from '../stores/library'
+import {
+  fetchBangumiEpisodeMeta,
+  fetchEpisodeComments,
+  type BangumiEpisodeMeta,
+} from '../services/bangumiComments'
+import { shouldOfferTranslation, translateToChinese } from '../services/translate'
 import {
   buildProxyUrl,
   defaultEpisode,
@@ -18,6 +24,7 @@ import {
   setWatchPosition,
 } from '../services/playback'
 import type { Anime } from '../types/anime'
+import type { PersonComment } from '../types/anime'
 import type {
   EpisodeInfo,
   PlaybackSourceChoice,
@@ -80,12 +87,32 @@ const preferredSource = ref<PlaybackSourceChoice>('auto')
 const sourceOptions = ref<PlaybackSourceInfo[]>([])
 /** Line that actually resolved (from API). */
 const activeProvider = ref<string>('')
+/** Bangumi episode metadata: concrete episode names + ep ids (comments source). */
+const bangumiEpisodes = ref<BangumiEpisodeMeta[]>([])
+/** Right-side panel: existing line/episodes vs Bangumi episode comments. */
+const asideTab = ref<'channels' | 'comments'>('channels')
+/** Episode-name overlay (player top-left); follows player controls on touch. */
+const epLabelVisible = ref(false)
+/** Comments state (lazy-loaded when the comments tab is opened). */
+const comments = ref<PersonComment[]>([])
+const commentsLoading = ref(false)
+const commentsError = ref('')
+const commentsPage = ref(1)
+const commentsTotal = ref(0)
+const commentsHasMore = ref(false)
+const commentsSentinelRef = ref<HTMLElement | null>(null)
+const commentsLoadedFor = ref<number | null>(null)
+const commentTranslations = ref<Record<string, string>>({})
+const commentTranslating = ref<Record<string, boolean>>({})
+const commentTranslateErrors = ref<Record<string, string>>({})
 
 let art: Artplayer | null = null
 let closed = false
 let playGeneration = 0
 let completedMarked = false
 let positionTimer: ReturnType<typeof setInterval> | null = null
+let commentsObserver: IntersectionObserver | null = null
+let commentsLoadGeneration = 0
 
 const titleKeys = computed(() => pickPlaybackTitle(props.anime))
 const titleLabel = computed(() => titleKeys.value.title || props.anime.title)
@@ -127,6 +154,121 @@ const episodeChips = computed(() => {
     label: String(start + i),
   }))
 })
+
+const currentEpisodeName = computed(() => {
+  const meta = bangumiEpisodes.value.find((ep) => ep.sort === currentEpisode.value)
+  return meta?.nameCn || meta?.name || ''
+})
+
+const currentEpisodeLabel = computed(() => {
+  const name = currentEpisodeName.value
+  return name ? `第 ${currentEpisode.value} 集 · ${name}` : `第 ${currentEpisode.value} 集`
+})
+
+const commentsCountLabel = computed(() => {
+  return commentsTotal.value > comments.value.length
+    ? `${comments.value.length}/${commentsTotal.value}`
+    : String(commentsTotal.value || comments.value.length)
+})
+
+async function loadBangumiMeta() {
+  try {
+    const meta = await fetchBangumiEpisodeMeta(props.anime)
+    if (closed || meta.length) bangumiEpisodes.value = meta
+  } catch {
+    // non-fatal — episode labels and comments fall back to "第 X 集" / empty state
+  }
+}
+
+function resetCommentsState() {
+  comments.value = []
+  commentsPage.value = 1
+  commentsTotal.value = 0
+  commentsHasMore.value = false
+  commentsError.value = ''
+  commentTranslations.value = {}
+  commentTranslating.value = {}
+  commentTranslateErrors.value = {}
+}
+
+async function loadComments(reset = true) {
+  if (commentsLoading.value || closed) return
+  const generation = ++commentsLoadGeneration
+  commentsLoading.value = true
+  commentsError.value = ''
+  const page = reset ? 1 : commentsPage.value + 1
+  try {
+    const result = await fetchEpisodeComments(props.anime, currentEpisode.value, page, 20)
+    if (closed || generation !== commentsLoadGeneration) return
+    if (result === null) {
+      comments.value = []
+      commentsTotal.value = 0
+      commentsHasMore.value = false
+      return
+    }
+    comments.value = reset ? result.items : [...comments.value, ...result.items]
+    commentsPage.value = result.page
+    commentsTotal.value = result.total
+    commentsHasMore.value = result.hasMore
+  } catch (err) {
+    if (closed || generation !== commentsLoadGeneration) return
+    commentsError.value = err instanceof Error ? err.message : '吐槽加载失败'
+  } finally {
+    if (generation === commentsLoadGeneration) commentsLoading.value = false
+  }
+}
+
+function ensureComments() {
+  if (commentsLoadedFor.value === currentEpisode.value && comments.value.length) return
+  if (commentsLoadedFor.value === currentEpisode.value && commentsError.value) return
+  commentsLoadedFor.value = currentEpisode.value
+  void loadComments(true)
+}
+
+function setupCommentsObserver() {
+  commentsObserver?.disconnect()
+  commentsObserver = null
+  if (!commentsSentinelRef.value || !commentsHasMore.value) return
+  commentsObserver = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) void loadComments(false)
+    },
+    // Viewport-based root works for both the desktop inner-scroll panel and the
+    // mobile page scroll: the sentinel only crosses the viewport when reached.
+    { rootMargin: '480px 0px' },
+  )
+  commentsObserver.observe(commentsSentinelRef.value)
+}
+
+async function translateComment(id: string, text: string) {
+  if (!text || commentTranslating.value[id]) return
+  if (commentTranslations.value[id]) {
+    const next = { ...commentTranslations.value }
+    delete next[id]
+    commentTranslations.value = next
+    return
+  }
+  commentTranslating.value = { ...commentTranslating.value, [id]: true }
+  commentTranslateErrors.value = { ...commentTranslateErrors.value, [id]: '' }
+  try {
+    const translated = await translateToChinese(text)
+    commentTranslations.value = { ...commentTranslations.value, [id]: translated }
+  } catch (reason) {
+    commentTranslateErrors.value = {
+      ...commentTranslateErrors.value,
+      [id]: reason instanceof Error ? reason.message : '翻译失败',
+    }
+  } finally {
+    commentTranslating.value = { ...commentTranslating.value, [id]: false }
+  }
+}
+
+function selectAsideTab(next: 'channels' | 'comments') {
+  if (asideTab.value === next) return
+  asideTab.value = next
+  if (next === 'comments') ensureComments()
+  void nextTick().then(setupCommentsObserver)
+}
 
 function destroyPlayer() {
   if (positionTimer) {
@@ -414,6 +556,14 @@ async function createArtplayer(url: string, kind: PlayableStream['kind'], usePro
         }
       })
 
+      // Episode-name overlay follows the player controls (tap / hover chrome).
+      art.on('controls:show', () => {
+        epLabelVisible.value = true
+      })
+      art.on('controls:hide', () => {
+        epLabelVisible.value = false
+      })
+
       art.on('error', (err) => {
         if (settled) return
         if (closed || generation !== playGeneration) {
@@ -613,11 +763,14 @@ onMounted(() => {
   window.addEventListener('keydown', onKeydown)
   void loadSourceOptions()
   void loadEpisodeMeta()
+  void loadBangumiMeta()
   void startPlayback(initial)
 })
 
 onBeforeUnmount(() => {
   playGeneration += 1
+  commentsObserver?.disconnect()
+  commentsObserver = null
   if (!closed) {
     closed = true
     persistPosition()
@@ -631,7 +784,31 @@ watch(
   () => props.anime.id,
   (next, prev) => {
     if (!prev || next === prev) return
+    bangumiEpisodes.value = []
+    commentsLoadedFor.value = null
+    resetCommentsState()
+    void loadBangumiMeta()
     void startPlayback(1)
+  },
+)
+
+watch(
+  () => currentEpisode.value,
+  () => {
+    if (asideTab.value === 'comments') {
+      resetCommentsState()
+      commentsLoadedFor.value = currentEpisode.value
+      void loadComments(true)
+    } else {
+      commentsLoadedFor.value = null
+    }
+  },
+)
+
+watch(
+  () => [commentsHasMore.value, commentsLoading.value, asideTab.value],
+  () => {
+    void nextTick().then(setupCommentsObserver)
   },
 )
 </script>
@@ -709,55 +886,177 @@ watch(
               class="playback-theater-player"
               :class="{ 'is-visible': playStatus === 'playing' }"
             />
+            <div
+              class="playback-ep-label"
+              :class="{ 'is-visible': epLabelVisible }"
+              aria-hidden="true"
+            >
+              {{ currentEpisodeLabel }}
+            </div>
           </div>
         </main>
 
-        <aside class="playback-theater-aside" aria-label="播放线路与选集">
-          <section class="playback-theater-aside-section playback-theater-line-section">
-            <h2 id="playback-theater-line-heading" class="playback-theater-aside-title">线路</h2>
-            <label
-              class="playback-theater-source"
-              title="优先线路；失败时自动切换下一线路"
+        <aside class="playback-theater-aside" aria-label="播放线路、选集与评论">
+          <div class="playback-aside-tabs" role="tablist" aria-label="播放器侧栏">
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="asideTab === 'channels'"
+              :class="{ active: asideTab === 'channels' }"
+              @click="selectAsideTab('channels')"
             >
-              <select
-                v-model="preferredSource"
-                class="playback-theater-source-select"
-                :disabled="playStatus === 'resolving'"
-                aria-labelledby="playback-theater-line-heading"
-                @change="onSourceChange"
-              >
-                <option value="auto">自动</option>
-                <option v-for="src in sourceOptions" :key="src.id" :value="src.id">
-                  {{ src.label }}
-                </option>
-              </select>
-            </label>
-            <p v-if="activeSourceLabel && preferredSource === 'auto'" class="playback-theater-active-line">
-              当前：{{ activeSourceLabel }}
-            </p>
-          </section>
+              线路/集数
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="asideTab === 'comments'"
+              :class="{ active: asideTab === 'comments' }"
+              @click="selectAsideTab('comments')"
+            >
+              评论
+              <sup v-if="commentsTotal">{{ commentsCountLabel }}</sup>
+            </button>
+          </div>
 
-          <section class="playback-theater-aside-section playback-theater-episodes-section">
-            <h2 id="playback-theater-episodes-heading" class="playback-theater-aside-title">选集</h2>
-            <nav
-              class="playback-theater-episodes"
-              aria-labelledby="playback-theater-episodes-heading"
-            >
-              <button
-                v-for="ep in episodeChips"
-                :key="ep.index"
-                type="button"
-                class="playback-ep-chip"
-                :class="{ active: ep.index === currentEpisode }"
-                :disabled="playStatus === 'resolving'"
-                :title="ep.label && ep.label !== String(ep.index) ? ep.label : `第 ${ep.index} 集`"
-                :aria-label="ep.label && ep.label !== String(ep.index) ? ep.label : `第 ${ep.index} 集`"
-                @click="selectEpisode(ep.index)"
+          <div
+            v-show="asideTab === 'channels'"
+            class="playback-aside-panel playback-aside-panel--channels"
+          >
+            <section class="playback-theater-aside-section playback-theater-line-section">
+              <h2 id="playback-theater-line-heading" class="playback-theater-aside-title">线路</h2>
+              <label
+                class="playback-theater-source"
+                title="优先线路；失败时自动切换下一线路"
               >
-                {{ ep.index }}
-              </button>
-            </nav>
-          </section>
+                <select
+                  v-model="preferredSource"
+                  class="playback-theater-source-select"
+                  :disabled="playStatus === 'resolving'"
+                  aria-labelledby="playback-theater-line-heading"
+                  @change="onSourceChange"
+                >
+                  <option value="auto">自动</option>
+                  <option v-for="src in sourceOptions" :key="src.id" :value="src.id">
+                    {{ src.label }}
+                  </option>
+                </select>
+              </label>
+              <p v-if="activeSourceLabel && preferredSource === 'auto'" class="playback-theater-active-line">
+                当前：{{ activeSourceLabel }}
+              </p>
+            </section>
+
+            <section class="playback-theater-aside-section playback-theater-episodes-section">
+              <h2 id="playback-theater-episodes-heading" class="playback-theater-aside-title">选集</h2>
+              <nav
+                class="playback-theater-episodes"
+                aria-labelledby="playback-theater-episodes-heading"
+              >
+                <button
+                  v-for="ep in episodeChips"
+                  :key="ep.index"
+                  type="button"
+                  class="playback-ep-chip"
+                  :class="{ active: ep.index === currentEpisode }"
+                  :disabled="playStatus === 'resolving'"
+                  :title="ep.label && ep.label !== String(ep.index) ? ep.label : `第 ${ep.index} 集`"
+                  :aria-label="ep.label && ep.label !== String(ep.index) ? ep.label : `第 ${ep.index} 集`"
+                  @click="selectEpisode(ep.index)"
+                >
+                  {{ ep.index }}
+                </button>
+              </nav>
+            </section>
+          </div>
+
+          <div
+            v-show="asideTab === 'comments'"
+            class="playback-aside-panel playback-aside-panel--comments"
+            role="tabpanel"
+          >
+            <div
+              v-if="commentsLoading && !comments.length"
+              class="playback-comment-skeletons"
+              aria-label="正在读取 Bangumi 吐槽"
+              aria-busy="true"
+            >
+              <article v-for="index in 4" :key="index" class="playback-comment-skeleton">
+                <i class="playback-comment-skeleton__avatar" />
+                <span>
+                  <i class="playback-comment-skeleton__name" />
+                  <i class="playback-comment-skeleton__line" />
+                  <i class="playback-comment-skeleton__line playback-comment-skeleton__line--short" />
+                </span>
+              </article>
+            </div>
+
+            <div v-else-if="commentsError" class="playback-comments-error">
+              <p>{{ commentsError }}</p>
+              <button type="button" @click="loadComments(true)">重试</button>
+            </div>
+
+            <div v-else-if="comments.length" class="playback-comments">
+              <article
+                v-for="(comment, index) in comments"
+                :key="comment.id"
+                class="playback-comment"
+                :class="index % 2 === 0 ? 'is-left' : 'is-right'"
+              >
+                <header class="playback-comment__head">
+                  <strong>{{ comment.author }}</strong>
+                  <time v-if="comment.time">{{ comment.time }}</time>
+                </header>
+                <p v-if="comment.replyTo" class="playback-comment__reply-to">回复 @{{ comment.replyTo }}</p>
+                <p class="playback-comment__body">{{ comment.text }}</p>
+                <button
+                  v-if="shouldOfferTranslation(comment.text)"
+                  type="button"
+                  class="playback-comment-translate"
+                  :disabled="commentTranslating[comment.id]"
+                  @click="translateComment(comment.id, comment.text)"
+                >
+                  <PhTranslate :size="13" weight="bold" />
+                  {{ commentTranslating[comment.id] ? '翻译中' : commentTranslations[comment.id] ? '隐藏翻译' : '翻译' }}
+                </button>
+                <div
+                  v-if="commentTranslations[comment.id] || commentTranslateErrors[comment.id]"
+                  class="playback-comment-translation"
+                >
+                  <p v-if="commentTranslations[comment.id]">{{ commentTranslations[comment.id] }}</p>
+                  <p v-else class="is-error">{{ commentTranslateErrors[comment.id] }}</p>
+                </div>
+                <div v-if="comment.replies?.length" class="playback-comment-replies">
+                  <article
+                    v-for="reply in comment.replies"
+                    :key="reply.id"
+                    class="playback-comment-reply"
+                  >
+                    <header class="playback-comment__head">
+                      <strong>{{ reply.author }}</strong>
+                      <time v-if="reply.time">{{ reply.time }}</time>
+                    </header>
+                    <p v-if="reply.replyTo" class="playback-comment__reply-to">回复 @{{ reply.replyTo }}</p>
+                    <p class="playback-comment__body">{{ reply.text }}</p>
+                  </article>
+                </div>
+              </article>
+            </div>
+
+            <div v-else class="playback-comments-empty">
+              <p>暂时没有抓到用户吐槽。</p>
+            </div>
+
+            <div
+              v-if="commentsHasMore"
+              ref="commentsSentinelRef"
+              class="playback-comments-sentinel"
+              aria-hidden="true"
+            />
+            <div v-if="commentsLoading && comments.length" class="playback-comments-loading" aria-busy="true">
+              加载更多…
+            </div>
+          </div>
         </aside>
       </div>
     </div>

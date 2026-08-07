@@ -288,7 +288,7 @@ async function fetchBangumiPersonVoiceRoles(rawId: string): Promise<PersonVoiceR
     })
 }
 
-function pageItems<T>(items: T[], page: number, pageSize: number): PersonExtraPage<T> {
+export function pageItems<T>(items: T[], page: number, pageSize: number): PersonExtraPage<T> {
   const current = Math.max(1, Math.floor(page || 1))
   const end = current * pageSize
   return {
@@ -351,13 +351,14 @@ async function fetchWithHardTimeout(
   }
 }
 
-async function fetchBangumiMonoHtml(kind: BangumiMonoKind, rawId: string): Promise<string> {
-  const key = `${kind}/${rawId}`
+/** Fetch a Bangumi public page through Jina Reader (HTML), cached per path. */
+export async function fetchBangumiPageHtml(path: string): Promise<string> {
+  const key = path
   const cached = bangumiMonoHtmlCache.get(key)
   if (cached) return cached
 
   const request = fetchWithHardTimeout(
-    `https://r.jina.ai/http://https://bgm.tv/${kind}/${encodeURIComponent(rawId)}`,
+    `https://r.jina.ai/http://https://bgm.tv/${path}`,
     {
       headers: {
         Accept: 'text/plain',
@@ -374,6 +375,10 @@ async function fetchBangumiMonoHtml(kind: BangumiMonoKind, rawId: string): Promi
   const html = await request
   if (!html) bangumiMonoHtmlCache.delete(key)
   return html
+}
+
+async function fetchBangumiMonoHtml(kind: BangumiMonoKind, rawId: string): Promise<string> {
+  return fetchBangumiPageHtml(`${kind}/${encodeURIComponent(rawId)}`)
 }
 
 function markdownContent(markdown: string): string {
