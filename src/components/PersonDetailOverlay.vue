@@ -20,6 +20,7 @@ import { usePersonOverlayStore } from '../stores/personOverlay'
 import { parsePersonId } from '../services/personIds'
 import { shouldOfferTranslation, translateToChinese } from '../services/translate'
 import type { AnimeRelation, PersonVoiceRole } from '../types/anime'
+import BackToTop from './BackToTop.vue'
 
 const store = usePersonOverlayStore()
 const detailStore = useDetailOverlayStore()
@@ -1465,5 +1466,6 @@ onUnmounted(() => {
       </div>
 
     </div>
+    <BackToTop :scroll-el="tab === 'comments' ? personScrollRef : null" :show="tab === 'comments'" />
   </Teleport>
 </template>

@@ -7,6 +7,9 @@ import { fetchBangumiPageHtml, pageItems, parseBangumiMonoHtmlComments, type Per
 const BANGUMI_API_TIMEOUT_MS = 15_000
 const EP_META_CACHE_TTL_MS = 30 * 60 * 1000
 const EP_META_STORAGE_PREFIX = 'mioani:bgm-ep-meta:'
+const SUBJECT_COMMENTS_MAX_EPISODES = 8
+const SUBJECT_COMMENTS_PER_EP = 30
+const SUBJECT_COMMENTS_BATCH = 3
 
 export interface BangumiEpisodeMeta {
   /** Bangumi episode id (used by the ep page / comments). */
@@ -243,19 +246,54 @@ export async function fetchEpisodeComments(
   return pageItems(comments, page, pageSize)
 }
 
+function commentTimestampMs(value?: string): number {
+  if (!value) return Number.NaN
+  const match = /(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})(?:日)?(?:\s+(\d{1,2}):(\d{2}))?/.exec(value)
+  if (!match) return Number.NaN
+  return Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4] || 0),
+    Number(match[5] || 0),
+  )
+}
+
+async function fetchEpComments(epId: number): Promise<PersonComment[]> {
+  try {
+    const html = await fetchBangumiPageHtml(`ep/${epId}`)
+    if (!html) return []
+    return parseBangumiMonoHtmlComments(html).slice(0, SUBJECT_COMMENTS_PER_EP)
+  } catch {
+    return []
+  }
+}
+
 /**
- * Paged Bangumi comments for the anime's subject page (`/subject/{id}/comments`),
- * the same 吐槽箱 structure as episode/person pages.
+ * Paged 吐槽 for the anime by aggregating its aired episodes' comment boxes.
+ * Bangumi's subject comments page (`/subject/{id}/comments`) is login-gated for
+ * guests, while per-episode pages embed the same 吐槽箱 markup, so we reuse the
+ * episode pipeline (batched, cached) and merge newest-first.
  */
 export async function fetchSubjectComments(
   anime: Pick<Anime, 'id' | 'linkedIds' | 'title' | 'originalTitle' | 'titles' | 'year'>,
   page = 1,
   pageSize = 20,
 ): Promise<PersonExtraPage<PersonComment> | null> {
-  const subjectId = await resolveBangumiSubjectId(anime)
-  if (subjectId == null) return null
-  const html = await fetchBangumiPageHtml(`subject/${subjectId}/comments`)
-  if (!html) throw new Error('吐槽页面加载失败')
-  const comments = parseBangumiMonoHtmlComments(html)
+  const meta = await fetchBangumiEpisodeMeta(anime)
+  if (!meta.length) return null
+  const eps = meta.slice(0, SUBJECT_COMMENTS_MAX_EPISODES)
+  const comments: PersonComment[] = []
+  for (let start = 0; start < eps.length; start += SUBJECT_COMMENTS_BATCH) {
+    const batch = eps.slice(start, start + SUBJECT_COMMENTS_BATCH)
+    const results = await Promise.all(batch.map((ep) => fetchEpComments(ep.id)))
+    for (const list of results) comments.push(...list)
+  }
+  comments.sort((a, b) => {
+    const at = commentTimestampMs(a.time)
+    const bt = commentTimestampMs(b.time)
+    if (Number.isFinite(at) && Number.isFinite(bt) && at !== bt) return bt - at
+    return 0
+  })
   return pageItems(comments, page, pageSize)
 }

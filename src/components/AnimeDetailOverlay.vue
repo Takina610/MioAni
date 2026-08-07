@@ -27,6 +27,7 @@ import { parsePersonId, personRouteName } from '../services/personIds'
 import { shouldOfferTranslation, translateToChinese } from '../services/translate'
 import { defaultEpisode, isPlaybackEnabled } from '../services/playback'
 import type { AnimeCharacter, AnimeRelation, AnimeStaff, PersonComment, WatchStatus } from '../types/anime'
+import BackToTop from './BackToTop.vue'
 const AnimePlaybackTheater = defineAsyncComponent(() => import('./AnimePlaybackTheater.vue'))
 
 const store = useDetailOverlayStore()
@@ -1124,6 +1125,11 @@ function getDetailScrollRoot(): Element | null {
     || null
 }
 
+const commentScrollRoot = computed<HTMLElement | null>(() => {
+  if (tab.value !== 'comments') return null
+  return getDetailScrollRoot() as HTMLElement | null
+})
+
 function isExtraSentinelInView(root: Element | null): boolean {
   const sentinel = extraSentinelRef.value
   if (!sentinel) return false
@@ -1881,7 +1887,7 @@ onUnmounted(() => {
                     <div
                       v-if="commentsLoading && !comments.length"
                       class="person-comment-skeletons"
-                      aria-label="正在读取 Bangumi 吐槽"
+                      aria-label="正在获取全部单集吐槽，首次加载可能较慢"
                       aria-busy="true"
                     >
                       <article v-for="index in 4" :key="index" class="person-comment-skeleton">
@@ -2043,6 +2049,7 @@ onUnmounted(() => {
       >
         <img :src="flyerImage" alt="" draggable="false" />
       </div>
+      <BackToTop :scroll-el="commentScrollRoot" :show="tab === 'comments'" />
     </div>
   </Teleport>
 
