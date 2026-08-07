@@ -351,40 +351,25 @@ async function fetchWithHardTimeout(
   }
 }
 
-/** Fetch a Bangumi public page (HTML), cached per path. Prefers our API proxy
- * (which can carry BANGUMI_COOKIE for guest-walled pages); Jina Reader fallback. */
+/** Fetch a Bangumi public page through Jina Reader (HTML), cached per path. */
 export async function fetchBangumiPageHtml(path: string): Promise<string> {
   const key = path
   const cached = bangumiMonoHtmlCache.get(key)
   if (cached) return cached
 
-  const request = (async () => {
-    try {
-      const apiBase = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') || '/api'
-      const proxy = await fetch(`${apiBase}/bangumi/page?path=${encodeURIComponent(path)}`, {
-        signal: AbortSignal.timeout(BANGUMI_API_TIMEOUT_MS),
-      })
-      if (proxy.ok) {
-        const text = await proxy.text()
-        if (text && text.trim().length > 500) return text
-      }
-    } catch {
-      // fall through to Jina Reader
-    }
-    return fetchWithHardTimeout(
-      `https://r.jina.ai/http://https://bgm.tv/${path}`,
-      {
-        headers: {
-          Accept: 'text/plain',
-          'X-Return-Format': 'html',
-          'X-Cache-Tolerance': '0',
-        },
+  const request = fetchWithHardTimeout(
+    `https://r.jina.ai/http://https://bgm.tv/${path}`,
+    {
+      headers: {
+        Accept: 'text/plain',
+        'X-Return-Format': 'html',
+        'X-Cache-Tolerance': '0',
       },
-      BANGUMI_MONO_TIMEOUT_MS,
-    )
-      .then((response) => (response.ok ? response.text() : ''))
-      .catch(() => '')
-  })()
+    },
+    BANGUMI_MONO_TIMEOUT_MS,
+  )
+    .then((response) => (response.ok ? response.text() : ''))
+    .catch(() => '')
 
   bangumiMonoHtmlCache.set(key, request)
   const html = await request

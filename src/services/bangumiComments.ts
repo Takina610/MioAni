@@ -280,18 +280,6 @@ export async function fetchSubjectComments(
   page = 1,
   pageSize = 20,
 ): Promise<PersonExtraPage<PersonComment> | null> {
-  // With a logged-in proxy (BANGUMI_COOKIE) the subject 吐槽 page is reachable;
-  // otherwise its markup is empty for guests and we fall back to episode boxes.
-  const subjectId = await resolveBangumiSubjectId(anime)
-  if (subjectId != null) {
-    try {
-      const html = await fetchBangumiPageHtml(`subject/${subjectId}/comments`)
-      const direct = html ? parseBangumiMonoHtmlComments(html) : []
-      if (direct.length) return pageItems(direct, page, pageSize)
-    } catch {
-      // fall through to the episode aggregation
-    }
-  }
   const meta = await fetchBangumiEpisodeMeta(anime)
   if (!meta.length) return null
   const eps = meta.slice(0, SUBJECT_COMMENTS_MAX_EPISODES)
