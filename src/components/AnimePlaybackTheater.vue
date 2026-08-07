@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import '../styles/pages/playback/theater.css'
-import { PhArrowLeft, PhCaretDown, PhPlay, PhTranslate, PhX } from '@phosphor-icons/vue'
+import { PhArrowLeft, PhArrowUp, PhCaretDown, PhPlay, PhTranslate, PhX } from '@phosphor-icons/vue'
 import type Artplayer from 'artplayer'
 import { useLibraryStore } from '../stores/library'
 import {
@@ -83,6 +83,7 @@ const currentEpisode = ref(1)
 const episodeCount = ref(0)
 const episodeList = ref<EpisodeInfo[]>([])
 const playerHost = ref<HTMLElement | null>(null)
+const theaterRef = ref<HTMLElement | null>(null)
 /** User-selected preferred line; failure still auto-falls through remaining sources. */
 const preferredSource = ref<PlaybackSourceChoice>('auto')
 const sourceOptions = ref<PlaybackSourceInfo[]>([])
@@ -101,6 +102,8 @@ const linePickerOpen = ref(false)
 /** Draggable aside width (0 = default). */
 const asideWidth = ref(0)
 const asideDragging = ref(false)
+/** Mobile: back-to-top button once the comment area fills the screen. */
+const showBackToTop = ref(false)
 let asideDragStartX = 0
 let asideDragStartW = 0
 /** Comments state (lazy-loaded when the comments tab is opened). */
@@ -148,6 +151,11 @@ const statusHint = computed(() => {
 })
 
 const episodeChips = computed(() => {
+  // Bangumi metadata (airdate-filtered) is the most accurate episode list when
+  // available — weekly shows often have placeholder episodes in source pages.
+  if (bangumiEpisodes.value.length) {
+    return bangumiEpisodes.value.map((ep) => ({ index: ep.sort, label: String(ep.sort) }))
+  }
   if (episodeList.value.length) return episodeList.value
   const n = episodeCount.value || props.anime.episodes || 0
   if (n > 0) {
@@ -261,6 +269,25 @@ function restoreAsideWidth() {
   } catch {
     // ignore
   }
+}
+
+function onTheaterScroll() {
+  if (window.innerWidth > 959) {
+    showBackToTop.value = false
+    return
+  }
+  const panel = document.querySelector<HTMLElement>('.playback-aside-panel--comments')
+  if (!panel) {
+    showBackToTop.value = false
+    return
+  }
+  showBackToTop.value = panel.getBoundingClientRect().top <= 0
+}
+
+function scrollTheaterToTop() {
+  const theater = theaterRef.value
+  if (!theater) return
+  theater.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 async function loadBangumiMeta() {
@@ -873,6 +900,7 @@ onMounted(() => {
 
   lockBodyScroll()
   restoreAsideWidth()
+  theaterRef.value?.addEventListener('scroll', onTheaterScroll, { passive: true })
   window.addEventListener('keydown', onKeydown)
   document.addEventListener('pointerdown', onLinePickerPointerDown)
   void loadSourceOptions()
@@ -885,6 +913,7 @@ onBeforeUnmount(() => {
   playGeneration += 1
   commentsObserver?.disconnect()
   commentsObserver = null
+  theaterRef.value?.removeEventListener('scroll', onTheaterScroll)
   document.removeEventListener('pointerdown', onLinePickerPointerDown)
   if (!closed) {
     closed = true
@@ -954,8 +983,19 @@ watch(
 
 <template>
   <Teleport to="body">
-    <div class="playback-theater" role="dialog" aria-modal="true" aria-label="站内播放">
+    <div ref="theaterRef" class="playback-theater" role="dialog" aria-modal="true" aria-label="站内播放">
       <div class="playback-theater-backdrop" aria-hidden="true" />
+      <Transition name="backtop">
+        <button
+          v-if="showBackToTop"
+          type="button"
+          class="playback-back-to-top"
+          aria-label="回到顶部"
+          @click="scrollTheaterToTop"
+        >
+          <PhArrowUp :size="18" weight="bold" />
+        </button>
+      </Transition>
 
       <header class="playback-theater-chrome">
         <button type="button" class="playback-theater-back" aria-label="关闭播放" @click="closeTheater">

@@ -22,10 +22,11 @@ import {
 import { useDetailOverlayStore } from '../stores/detailOverlay'
 import { usePersonOverlayStore } from '../stores/personOverlay'
 import { useLibraryStore } from '../stores/library'
+import { fetchSubjectComments } from '../services/bangumiComments'
 import { parsePersonId, personRouteName } from '../services/personIds'
 import { shouldOfferTranslation, translateToChinese } from '../services/translate'
 import { defaultEpisode, isPlaybackEnabled } from '../services/playback'
-import type { AnimeCharacter, AnimeRelation, AnimeStaff, WatchStatus } from '../types/anime'
+import type { AnimeCharacter, AnimeRelation, AnimeStaff, PersonComment, WatchStatus } from '../types/anime'
 const AnimePlaybackTheater = defineAsyncComponent(() => import('./AnimePlaybackTheater.vue'))
 
 const store = useDetailOverlayStore()
@@ -48,16 +49,10 @@ const flyerImage = ref('')
 const posterSrc = ref('')
 /** Banner bg: start from seed art, upgrade to real banner only after decode. */
 const bannerSrc = ref('')
-type DetailTab = 'overview' | 'characters' | 'staff' | 'relations'
+type DetailTab = 'overview' | 'characters' | 'staff' | 'relations' | 'comments'
 const tab = ref<DetailTab>('overview')
 const tabsRef = ref<HTMLElement | null>(null)
 const indicatorStyle = ref({ width: '0px', transform: 'translateX(0px)' })
-const DETAIL_TABS: { id: DetailTab; label: string }[] = [
-  { id: 'overview', label: '概览' },
-  { id: 'relations', label: '关联作品' },
-  { id: 'characters', label: '角色 / CV' },
-  { id: 'staff', label: '制作人员' },
-]
 /** Infinite-scroll batch size for full lists. */
 const EXTRA_BATCH = 12
 type ExtraSection = 'relations' | 'characters' | 'staff'
@@ -277,6 +272,31 @@ const display = computed(() => store.detail || store.seed)
 const libraryItem = computed(() => (display.value ? library.findInLibrary(display.value) : undefined))
 const detail = computed(() => store.detail)
 
+const detailTabs = computed<{ id: DetailTab; label: string }[]>(() => {
+  const tabs: { id: DetailTab; label: string }[] = [
+    { id: 'overview', label: '概览' },
+    { id: 'relations', label: '关联作品' },
+    { id: 'characters', label: '角色 / CV' },
+    { id: 'staff', label: '制作人员' },
+  ]
+  // Bangumi-only: subject 吐槽 shares the person-page parsing pipeline.
+  if (display.value?.source === 'bangumi') tabs.push({ id: 'comments', label: '吐槽' })
+  return tabs
+})
+
+/** Subject 吐槽 (mirrors the person-page comments tab). */
+const comments = ref<PersonComment[]>([])
+const commentsLoading = ref(false)
+const commentsError = ref('')
+const commentsPage = ref(1)
+const commentsTotal = ref(0)
+const commentsHasMore = ref(false)
+const commentsLoadedFor = ref('')
+const commentTranslations = ref<Record<string, string>>({})
+const commentTranslating = ref<Record<string, boolean>>({})
+const commentTranslateErrors = ref<Record<string, string>>({})
+let commentsGeneration = 0
+
 function displayText(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -294,6 +314,10 @@ const tagsCanTranslate = computed(() => {
   return tags.some((tag) => shouldOfferTranslation(tag))
 })
 const tagsTranslationText = computed(() => (display.value?.tags?.slice(0, 10) || []).join(' · '))
+const commentsCountLabel = computed(() => {
+  const total = commentsTotal.value || comments.value.length
+  return total > comments.value.length ? `${comments.value.length}/${total}` : String(total)
+})
 
 function resetTranslationState() {
   summaryTranslation.value = ''
@@ -935,7 +959,9 @@ function selectTab(next: DetailTab) {
   tab.value = next
   // Keep tab body near tabs on mobile — collapse meta when switching away from overview.
   if (next !== 'overview') metaExpanded.value = false
-  if (next !== 'overview') {
+  if (next === 'comments') {
+    ensureComments()
+  } else if (next !== 'overview') {
     visibleByTab.value[next] = EXTRA_BATCH
     void store.ensureExtras(next)
   }
@@ -965,11 +991,96 @@ function activeExtraHasMore() {
   if (tab.value === 'relations') return relationsHasMore.value
   if (tab.value === 'characters') return charactersHasMore.value
   if (tab.value === 'staff') return staffHasMore.value
+  if (tab.value === 'comments') return commentsHasMore.value
   return false
 }
 
+async function loadMoreComments(reset = true) {
+  if (commentsLoading.value || !display.value) return
+  const generation = ++commentsGeneration
+  commentsLoading.value = true
+  commentsError.value = ''
+  const page = reset ? 1 : commentsPage.value + 1
+  try {
+    const result = await fetchSubjectComments(display.value, page, 20)
+    if (generation !== commentsGeneration || !display.value) return
+    if (result === null) {
+      comments.value = []
+      commentsTotal.value = 0
+      commentsHasMore.value = false
+      return
+    }
+    comments.value = reset ? result.items : [...comments.value, ...result.items]
+    commentsPage.value = result.page
+    commentsTotal.value = result.total
+    commentsHasMore.value = result.hasMore
+  } catch (err) {
+    if (generation !== commentsGeneration) return
+    commentsError.value = err instanceof Error ? err.message : '吐槽加载失败'
+  } finally {
+    if (generation === commentsGeneration) {
+      commentsLoading.value = false
+      // Keep loading while the sentinel stays inside the pre-load area.
+      if (!commentsError.value && commentsHasMore.value) {
+        void nextTick().then(() => {
+          if (isExtraSentinelInView(getDetailScrollRoot())) void loadMoreComments(false)
+        })
+      }
+    }
+  }
+}
+
+function ensureComments() {
+  const id = display.value?.id || ''
+  if (commentsLoadedFor.value === id && comments.value.length) return
+  if (commentsLoadedFor.value === id && commentsError.value) return
+  commentsLoadedFor.value = id
+  void loadMoreComments(true)
+}
+
+function resetComments() {
+  commentsGeneration += 1
+  comments.value = []
+  commentsPage.value = 1
+  commentsTotal.value = 0
+  commentsHasMore.value = false
+  commentsError.value = ''
+  commentsLoadedFor.value = ''
+  commentTranslations.value = {}
+  commentTranslating.value = {}
+  commentTranslateErrors.value = {}
+}
+
+async function translateComment(id: string, text: string) {
+  if (!text || commentTranslating.value[id]) return
+  if (commentTranslations.value[id]) {
+    const next = { ...commentTranslations.value }
+    delete next[id]
+    commentTranslations.value = next
+    return
+  }
+  commentTranslating.value = { ...commentTranslating.value, [id]: true }
+  commentTranslateErrors.value = { ...commentTranslateErrors.value, [id]: '' }
+  try {
+    const translated = await translateToChinese(text)
+    commentTranslations.value = { ...commentTranslations.value, [id]: translated }
+  } catch (reason) {
+    commentTranslateErrors.value = {
+      ...commentTranslateErrors.value,
+      [id]: reason instanceof Error ? reason.message : '翻译失败',
+    }
+  } finally {
+    commentTranslating.value = { ...commentTranslating.value, [id]: false }
+  }
+}
+
 function loadMoreExtra() {
-  if (tab.value === 'overview' || loadingMoreExtra.value || !activeExtraHasMore()) return
+  if (tab.value === 'overview' || loadingMoreExtra.value) return
+  if (tab.value === 'comments') {
+    if (commentsHasMore.value) void loadMoreComments(false)
+    return
+  }
+  if (!activeExtraHasMore()) return
   const section = tab.value as ExtraSection
   loadingMoreExtra.value = true
   if (extraLoadTimer) clearTimeout(extraLoadTimer)
@@ -1059,6 +1170,7 @@ watch(
     contentEpoch.value = 0
     resetExtraVisible()
     resetTranslationState()
+    resetComments()
     void nextTick().then(updateTabIndicator)
   },
 )
@@ -1540,7 +1652,7 @@ onUnmounted(() => {
             <section class="detail-main">
               <div ref="tabsRef" class="detail-tabs sliding-tabs" role="tablist" aria-label="详情分区">
                 <button
-                  v-for="item in DETAIL_TABS"
+                  v-for="item in detailTabs"
                   :key="item.id"
                   type="button"
                   role="tab"
@@ -1708,7 +1820,7 @@ onUnmounted(() => {
                     <p v-else class="detail-empty">暂无角色资料。</p>
                   </template>
 
-                  <template v-else>
+                  <template v-else-if="tab === 'staff'">
                     <header class="detail-block-head">
                       <span>STAFF</span>
                       <h2>制作人员</h2>
@@ -1757,6 +1869,104 @@ onUnmounted(() => {
                       <p v-if="!loadingMoreExtra && !staffHasMore" class="detail-infinite-status">已全部加载</p>
                     </template>
                     <p v-else class="detail-empty">暂无制作人员资料。</p>
+                  </template>
+
+                  <template v-else>
+                    <header class="detail-block-head">
+                      <span>COMMENTS</span>
+                      <h2>用户吐槽</h2>
+                      <p v-if="comments.length" class="detail-block-count">{{ commentsCountLabel }}</p>
+                    </header>
+
+                    <div
+                      v-if="commentsLoading && !comments.length"
+                      class="person-comment-skeletons"
+                      aria-label="正在读取 Bangumi 吐槽"
+                      aria-busy="true"
+                    >
+                      <article v-for="index in 4" :key="index" class="person-comment-skeleton">
+                        <i class="person-comment-skeleton__avatar" />
+                        <span>
+                          <i class="person-comment-skeleton__name" />
+                          <i class="person-comment-skeleton__line" />
+                          <i class="person-comment-skeleton__line person-comment-skeleton__line--short" />
+                        </span>
+                      </article>
+                    </div>
+
+                    <div v-else-if="commentsError" class="person-error">
+                      <p>{{ commentsError }}</p>
+                      <button type="button" class="person-translate" @click="loadMoreComments(true)">重试</button>
+                    </div>
+
+                    <div v-else-if="comments.length" class="person-comments is-chat">
+                      <article
+                        v-for="(comment, index) in comments"
+                        :key="comment.id"
+                        class="person-comment"
+                        :class="index % 2 === 0 ? 'is-left' : 'is-right'"
+                      >
+                        <header class="person-comment__head">
+                          <strong>{{ comment.author }}</strong>
+                          <time v-if="comment.time">{{ comment.time }}</time>
+                        </header>
+                        <p v-if="comment.replyTo" class="person-comment__reply-to">回复 @{{ comment.replyTo }}</p>
+                        <p class="person-comment__body">{{ comment.text }}</p>
+                        <button
+                          v-if="shouldOfferTranslation(comment.text)"
+                          type="button"
+                          class="person-translate person-translate--inline"
+                          :disabled="commentTranslating[comment.id]"
+                          @click="translateComment(comment.id, comment.text)"
+                        >
+                          <PhTranslate :size="14" weight="bold" />
+                          {{ commentTranslating[comment.id] ? '翻译中' : commentTranslations[comment.id] ? '隐藏翻译' : '翻译' }}
+                        </button>
+                        <div
+                          v-if="commentTranslations[comment.id] || commentTranslateErrors[comment.id]"
+                          class="person-translation person-translation--comment"
+                        >
+                          <p v-if="commentTranslations[comment.id]">{{ commentTranslations[comment.id] }}</p>
+                          <p v-else class="person-translation__error">{{ commentTranslateErrors[comment.id] }}</p>
+                        </div>
+                        <div v-if="comment.replies?.length" class="person-comment-replies">
+                          <article
+                            v-for="reply in comment.replies"
+                            :key="reply.id"
+                            class="person-comment-reply"
+                          >
+                            <header class="person-comment__head">
+                              <strong>{{ reply.author }}</strong>
+                              <time v-if="reply.time">{{ reply.time }}</time>
+                            </header>
+                            <p v-if="reply.replyTo" class="person-comment__reply-to">回复 @{{ reply.replyTo }}</p>
+                            <p class="person-comment__body">{{ reply.text }}</p>
+                          </article>
+                        </div>
+                      </article>
+                    </div>
+
+                    <p v-else class="detail-empty">暂时没有抓到用户吐槽。</p>
+
+                    <div
+                      v-if="commentsHasMore"
+                      ref="extraSentinelRef"
+                      class="detail-infinite-sentinel"
+                      aria-hidden="true"
+                    />
+                    <div
+                      v-if="commentsLoading && comments.length"
+                      class="person-comment-skeletons person-comment-skeletons--append"
+                      aria-busy="true"
+                    >
+                      <article v-for="index in 2" :key="`append-${index}`" class="person-comment-skeleton">
+                        <i class="person-comment-skeleton__avatar" />
+                        <span>
+                          <i class="person-comment-skeleton__name" />
+                          <i class="person-comment-skeleton__line" />
+                        </span>
+                      </article>
+                    </div>
                   </template>
                 </div>
               </Transition>

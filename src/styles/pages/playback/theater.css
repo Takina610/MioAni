@@ -814,6 +814,41 @@
   letter-spacing: .06em;
 }
 
+/* ── Mobile back-to-top (comment area fills the screen) ─────────────── */
+
+.playback-back-to-top {
+  position: absolute;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: 999px;
+  background: rgba(11, 13, 12, .86);
+  color: var(--ink);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .38);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+  transition: transform .18s var(--ease);
+}
+.playback-back-to-top:active {
+  transform: scale(.94);
+}
+.backtop-enter-active,
+.backtop-leave-active {
+  transition: opacity .2s ease, transform .24s var(--ease);
+}
+.backtop-enter-from,
+.backtop-leave-to {
+  opacity: 0;
+  transform: translateY(8px) scale(.9);
+}
+
 /* ── Narrow: stack player then aside ──────────────────────────────── */
 
 @media (max-width: 959px) {

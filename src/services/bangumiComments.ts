@@ -15,6 +15,8 @@ export interface BangumiEpisodeMeta {
   sort: number
   name?: string
   nameCn?: string
+  /** Airing date `YYYY-MM-DD`; future dates mark not-yet-aired placeholders. */
+  airdate?: string
 }
 
 interface CachedMeta {
@@ -175,7 +177,7 @@ async function fetchBangumiEpisodeMetaRaw(subjectId: number): Promise<BangumiEpi
   const response = await fetchWithTimeout(url, { headers: bangumiHeaders() })
   if (!response.ok) throw new Error(`Bangumi 章节接口 ${response.status}`)
   const payload = await response.json() as {
-    data?: Array<{ id?: unknown; sort?: unknown; name?: unknown; name_cn?: unknown }>
+    data?: Array<{ id?: unknown; sort?: unknown; name?: unknown; name_cn?: unknown; airdate?: unknown }>
   }
   const list = (payload.data || [])
     .filter((ep) => Number.isFinite(Number(ep.id)) && Number.isFinite(Number(ep.sort)))
@@ -184,24 +186,40 @@ async function fetchBangumiEpisodeMetaRaw(subjectId: number): Promise<BangumiEpi
       sort: Number(ep.sort),
       name: typeof ep.name === 'string' && ep.name ? ep.name : undefined,
       nameCn: typeof ep.name_cn === 'string' && ep.name_cn ? ep.name_cn : undefined,
+      airdate: typeof ep.airdate === 'string' && ep.airdate ? ep.airdate : undefined,
     }))
     .sort((a, b) => a.sort - b.sort)
   return list
 }
 
+function localToday(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/** Resolve the Bangumi subject id for an anime (direct link first, then search). */
+async function resolveBangumiSubjectId(anime: Parameters<typeof fetchBangumiEpisodeMeta>[0]): Promise<number | null> {
+  return bangumiSubjectIdFromAnime(anime) ?? searchBangumiSubjectId(anime)
+}
+
 /**
  * Episode metadata (Bangumi ep ids + names) for an anime, cached 30 minutes.
+ * Future-dated placeholder episodes (not yet aired) are dropped so a weekly
+ * show reports only the episodes that are actually available.
  * Returns [] when the anime has no resolvable Bangumi subject.
  */
 export async function fetchBangumiEpisodeMeta(anime: Pick<Anime, 'id' | 'linkedIds' | 'title' | 'originalTitle' | 'titles' | 'year'>): Promise<BangumiEpisodeMeta[]> {
-  let subjectId = bangumiSubjectIdFromAnime(anime)
-  if (subjectId == null) {
-    subjectId = await searchBangumiSubjectId(anime)
-  }
+  const subjectId = await resolveBangumiSubjectId(anime)
   if (subjectId == null) return []
   const cached = loadCachedMeta(subjectId)
   if (cached) return cached
-  const list = await fetchBangumiEpisodeMetaRaw(subjectId)
+  const today = localToday()
+  const list = (await fetchBangumiEpisodeMetaRaw(subjectId)).filter(
+    (ep) => !ep.airdate || ep.airdate <= today,
+  )
   if (list.length) saveCachedMeta(subjectId, list)
   return list
 }
@@ -220,6 +238,23 @@ export async function fetchEpisodeComments(
   const target = meta.find((ep) => ep.sort === episode)
   if (!target) return null
   const html = await fetchBangumiPageHtml(`ep/${target.id}`)
+  if (!html) throw new Error('吐槽页面加载失败')
+  const comments = parseBangumiMonoHtmlComments(html)
+  return pageItems(comments, page, pageSize)
+}
+
+/**
+ * Paged Bangumi comments for the anime's subject page (`/subject/{id}/comments`),
+ * the same 吐槽箱 structure as episode/person pages.
+ */
+export async function fetchSubjectComments(
+  anime: Pick<Anime, 'id' | 'linkedIds' | 'title' | 'originalTitle' | 'titles' | 'year'>,
+  page = 1,
+  pageSize = 20,
+): Promise<PersonExtraPage<PersonComment> | null> {
+  const subjectId = await resolveBangumiSubjectId(anime)
+  if (subjectId == null) return null
+  const html = await fetchBangumiPageHtml(`subject/${subjectId}/comments`)
   if (!html) throw new Error('吐槽页面加载失败')
   const comments = parseBangumiMonoHtmlComments(html)
   return pageItems(comments, page, pageSize)
