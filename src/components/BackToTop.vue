@@ -106,13 +106,15 @@ function generateDisplacementMap(
   bezelWidth: number,
   profile: Float64Array,
   maxDisp: number,
+  scaleFactor = 1,
 ): string {
   const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
+  // 按设备像素比放大贴图，避免小按钮在高 DPR 屏幕被放大采样产生锯齿边缘。
+  canvas.width = w * scaleFactor
+  canvas.height = h * scaleFactor
   const ctx = canvas.getContext('2d')
   if (!ctx) return ''
-  const img = ctx.createImageData(w, h)
+  const img = ctx.createImageData(canvas.width, canvas.height)
   const d = img.data
   for (let i = 0; i < d.length; i += 4) {
     d[i] = 128
@@ -121,28 +123,30 @@ function generateDisplacementMap(
     d[i + 3] = 255
   }
 
-  const rSq = radius * radius
-  const r1Sq = (radius + 1) ** 2
-  const rBSq = Math.max(radius - bezelWidth, 0) ** 2
-  const wB = w - radius * 2
-  const hB = h - radius * 2
+  const R = radius * scaleFactor
+  const BW = bezelWidth * scaleFactor
+  const rSq = R * R
+  const r1Sq = (R + 1) ** 2
+  const rBSq = Math.max(R - BW, 0) ** 2
+  const wB = canvas.width - R * 2
+  const hB = canvas.height - R * 2
   const samples = profile.length
 
-  for (let y1 = 0; y1 < h; y1++) {
-    for (let x1 = 0; x1 < w; x1++) {
-      const x = x1 < radius ? x1 - radius : x1 >= w - radius ? x1 - radius - wB : 0
-      const y = y1 < radius ? y1 - radius : y1 >= h - radius ? y1 - radius - hB : 0
+  for (let y1 = 0; y1 < canvas.height; y1++) {
+    for (let x1 = 0; x1 < canvas.width; x1++) {
+      const x = x1 < R ? x1 - R : x1 >= canvas.width - R ? x1 - R - wB : 0
+      const y = y1 < R ? y1 - R : y1 >= canvas.height - R ? y1 - R - hB : 0
       const dSq = x * x + y * y
       if (dSq > r1Sq || dSq < rBSq) continue
       const dist = Math.sqrt(dSq)
-      const fromSide = radius - dist
+      const fromSide = R - dist
       const op = dSq < rSq ? 1 : 1 - (dist - Math.sqrt(rSq)) / (Math.sqrt(r1Sq) - Math.sqrt(rSq))
       if (op <= 0 || dist === 0) continue
       const cos = x / dist
       const sin = y / dist
-      const bi = Math.min(((fromSide / bezelWidth) * samples) | 0, samples - 1)
+      const bi = Math.min(((fromSide / BW) * samples) | 0, samples - 1)
       const disp = profile[bi] || 0
-      const idx = (y1 * w + x1) * 4
+      const idx = (y1 * canvas.width + x1) * 4
       d[idx] = (128 + (-cos * disp * 127 * op) / maxDisp + 0.5) | 0
       d[idx + 1] = (128 + (-sin * disp * 127 * op) / maxDisp + 0.5) | 0
     }
@@ -158,31 +162,34 @@ function generateSpecularMap(
   radius: number,
   bezelWidth: number,
   angle = Math.PI / 3,
+  scaleFactor = 1,
 ): string {
   const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
+  canvas.width = w * scaleFactor
+  canvas.height = h * scaleFactor
   const ctx = canvas.getContext('2d')
   if (!ctx) return ''
-  const img = ctx.createImageData(w, h)
+  const img = ctx.createImageData(canvas.width, canvas.height)
   const d = img.data
   d.fill(0)
 
-  const rSq = radius * radius
-  const r1Sq = (radius + 1) ** 2
-  const rBSq = Math.max(radius - bezelWidth, 0) ** 2
-  const wB = w - radius * 2
-  const hB = h - radius * 2
+  const R = radius * scaleFactor
+  const BW = bezelWidth * scaleFactor
+  const rSq = R * R
+  const r1Sq = (R + 1) ** 2
+  const rBSq = Math.max(R - BW, 0) ** 2
+  const wB = canvas.width - R * 2
+  const hB = canvas.height - R * 2
   const sv = [Math.cos(angle), Math.sin(angle)]
 
-  for (let y1 = 0; y1 < h; y1++) {
-    for (let x1 = 0; x1 < w; x1++) {
-      const x = x1 < radius ? x1 - radius : x1 >= w - radius ? x1 - radius - wB : 0
-      const y = y1 < radius ? y1 - radius : y1 >= h - radius ? y1 - radius - hB : 0
+  for (let y1 = 0; y1 < canvas.height; y1++) {
+    for (let x1 = 0; x1 < canvas.width; x1++) {
+      const x = x1 < R ? x1 - R : x1 >= canvas.width - R ? x1 - R - wB : 0
+      const y = y1 < R ? y1 - R : y1 >= canvas.height - R ? y1 - R - hB : 0
       const dSq = x * x + y * y
       if (dSq > r1Sq || dSq < rBSq) continue
       const dist = Math.sqrt(dSq)
-      const fromSide = radius - dist
+      const fromSide = R - dist
       const op = dSq < rSq ? 1 : 1 - (dist - Math.sqrt(rSq)) / (Math.sqrt(r1Sq) - Math.sqrt(rSq))
       if (op <= 0 || dist === 0) continue
       const cos = x / dist
@@ -192,7 +199,7 @@ function generateSpecularMap(
       const coeff = dot * edge
       const col = (255 * coeff) | 0
       const alpha = (col * coeff * op) | 0
-      const idx = (y1 * w + x1) * 4
+      const idx = (y1 * canvas.width + x1) * 4
       d[idx] = col
       d[idx + 1] = col
       d[idx + 2] = col
@@ -219,23 +226,28 @@ function rebuildLiquidGlass() {
   const blurAmount = 0.3
   const specularOpacity = 0.5
   const specularSaturation = 4
+  // 贴图按设备像素比生成（上限 3x），配合滤镜内高斯模糊消除小按钮边缘锯齿。
+  const dpr = Math.min(window.devicePixelRatio || 1, 3)
 
   const profile = calculateRefractionProfile(glassThickness, bezelWidth, ior, 128)
   let maxDisp = 1
   for (const v of profile) maxDisp = Math.max(maxDisp, Math.abs(v))
-  const dispUrl = generateDisplacementMap(w, h, radius, bezelWidth, profile, maxDisp)
-  const specUrl = generateSpecularMap(w, h, radius, bezelWidth * 2.5)
-  const scale = maxDisp
+  const dispUrl = generateDisplacementMap(w, h, radius, bezelWidth, profile, maxDisp, dpr)
+  const specUrl = generateSpecularMap(w, h, radius, bezelWidth * 2.5, Math.PI / 3, dpr)
+  // 略降位移强度，避免边缘过强的像素级拉扯造成的锯齿感。
+  const scale = maxDisp * 0.8
 
   filterDefs.value = `
     <filter id="${filterId}" x="0%" y="0%" width="100%" height="100%">
       <feGaussianBlur in="SourceGraphic" stdDeviation="${blurAmount}" result="blurred_source" />
       <feImage href="${dispUrl}" x="0" y="0" width="${w}" height="${h}" result="disp_map" />
-      <feDisplacementMap in="blurred_source" in2="disp_map" scale="${scale}" xChannelSelector="R" yChannelSelector="G" result="displaced" />
+      <feGaussianBlur in="disp_map" stdDeviation="1.2" result="disp_map_sm" />
+      <feDisplacementMap in="blurred_source" in2="disp_map_sm" scale="${scale}" xChannelSelector="R" yChannelSelector="G" result="displaced" />
       <feColorMatrix in="displaced" type="saturate" values="${specularSaturation}" result="displaced_sat" />
       <feImage href="${specUrl}" x="0" y="0" width="${w}" height="${h}" result="spec_layer" />
-      <feComposite in="displaced_sat" in2="spec_layer" operator="in" result="spec_masked" />
-      <feComponentTransfer in="spec_layer" result="spec_faded">
+      <feGaussianBlur in="spec_layer" stdDeviation="1" result="spec_layer_sm" />
+      <feComposite in="displaced_sat" in2="spec_layer_sm" operator="in" result="spec_masked" />
+      <feComponentTransfer in="spec_layer_sm" result="spec_faded">
         <feFuncA type="linear" slope="${specularOpacity}" />
       </feComponentTransfer>
       <feBlend in="spec_masked" in2="displaced" mode="normal" result="with_sat" />

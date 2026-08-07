@@ -62,6 +62,12 @@ const currentStatusLabel = computed(() =>
 
 const enterDelay = computed(() => `${Math.min((props.index ?? 1) - 1, 12) * 45}ms`)
 
+/** AniList 的 medium 缩略图在列表里观感差，统一用原图；其余数据源继续用列表缩略图。 */
+const displayImage = computed(() => {
+  if (props.anime.source === 'anilist') return props.anime.image
+  return props.useThumb ? (props.anime.thumb || props.anime.image) : props.anime.image
+})
+
 function showFeedback(message: string) {
   feedback.value = message
   flash.value = false
@@ -178,7 +184,7 @@ onUnmounted(() => {
       <div v-if="failed || !anime.image" class="poster-missing">暂无海报</div>
       <img
         v-else
-        :src="useThumb ? (anime.thumb || anime.image) : anime.image"
+        :src="displayImage"
         :alt="`${anime.title} 海报`"
         width="214"
         height="303"
