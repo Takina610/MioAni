@@ -1,8 +1,9 @@
 import cors from 'cors'
 import express from 'express'
+import { readFileSync } from 'node:fs'
 import { Readable } from 'node:stream'
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web'
-import { warmupBrowser } from './stream-sources/browser.js'
+import { warmupBrowser, withPage } from './stream-sources/browser.js'
 import {
   isProviderId,
   isProxyHostAllowed,
@@ -16,6 +17,21 @@ const PORT = Number(process.env.PORT || 8787)
 const IS_PROD = process.env.NODE_ENV === 'production'
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+
+// Load local secrets (e.g. BANGUMI_COOKIE) without a dotenv dependency.
+// .env.local is git-ignored and should never hold committed credentials.
+try {
+  const envPath = new URL('../.env.local', import.meta.url)
+  const envText = readFileSync(envPath, 'utf8')
+  for (const line of envText.split(/\r?\n/)) {
+    const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line)
+    if (match && !(match[1] in process.env)) {
+      process.env[match[1]] = match[2].replace(/^["']|["']$/g, '')
+    }
+  }
+} catch {
+  // .env.local is optional
+}
 
 /** Comma-separated allowlist; empty → reflect request origin (dev-friendly). */
 function resolveCorsOrigin(): boolean | string | string[] {
@@ -178,6 +194,55 @@ app.get('/api/playback/proxy', async (req, res) => {
         error: err instanceof Error ? err.message : String(err),
       })
     }
+  }
+})
+
+/**
+ * Bangumi public page proxy (episode / subject / character / person HTML).
+ * Path is allowlisted to prevent SSRF. Optional BANGUMI_COOKIE (from .env.local
+ * or the deployment environment) lifts guest-only walls such as the subject
+ * 吐槽 page (/subject/{id}/comments).
+ */
+app.get('/api/bangumi/page', async (req, res) => {
+  try {
+    const raw = typeof req.query.path === 'string' ? req.query.path.trim() : ''
+    if (!raw || !/^(ep|character|person|subject)\/[0-9]+(\/comments)?$/i.test(raw)) {
+      res.status(400).json({ error: 'invalid path' })
+      return
+    }
+    const cookie = process.env.BANGUMI_COOKIE || ''
+    // Node's native TLS fingerprint is rejected by bgm.tv; use the shared
+    // Playwright browser (real Chromium handshake) and optionally inject the
+    // user's login cookie to lift guest-only walls.
+    const html = await withPage(async (page) => {
+      if (cookie) {
+        try {
+          const pairs = cookie
+            .split(';')
+            .map((pair) => {
+              const [name, ...rest] = pair.trim().split('=')
+              return { name: name.trim(), value: rest.join('=').trim() }
+            })
+            .filter((c) => c.name && c.value)
+          await page.context().addCookies(
+            pairs.map((c) => ({ ...c, domain: 'bgm.tv', path: '/' })),
+          )
+        } catch {
+          // ignore malformed cookie values
+        }
+      }
+      await page.goto(`https://bgm.tv/${raw}`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 25000,
+      })
+      // Bangumi lazy-renders some comment lists; let them settle.
+      await page.waitForTimeout(900)
+      return page.content()
+    })
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.send(html)
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
   }
 })
 

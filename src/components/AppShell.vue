@@ -27,7 +27,7 @@ const personOverlay = usePersonOverlayStore()
 
 /** Back-to-top for the window-scrolling list pages (home/discover/schedule/library). */
 const showListBackToTop = computed(() =>
-  ['home', 'discover', 'schedule', 'library'].includes(String(route.name)),
+  ['discover', 'schedule', 'library'].includes(String(route.name)),
 )
 
 const COMPACT_ON = 56
