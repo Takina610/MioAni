@@ -71,6 +71,49 @@ function saveCachedMeta(subjectId: number, value: BangumiEpisodeMeta[]) {
   }
 }
 
+/** Longest common substring length (loose title matching for 漏字/别字). */
+function lcsLength(a: string, b: string): number {
+  const m = a.length
+  const n = b.length
+  const dp = new Array<number>(n + 1).fill(0)
+  let best = 0
+  for (let i = 1; i <= m; i += 1) {
+    let prev = 0
+    for (let j = 1; j <= n; j += 1) {
+      const next = dp[j]
+      if (a[i - 1] === b[j - 1]) {
+        dp[j] = prev + 1
+        if (dp[j] > best) best = dp[j]
+      } else {
+        dp[j] = 0
+      }
+      prev = next
+    }
+  }
+  return best
+}
+
+function bangumiTitleKeysMatch(candidateKeys: string[], animeKeys: string[]): boolean {
+  for (const candidate of candidateKeys) {
+    for (const key of animeKeys) {
+      if (!candidate || !key) continue
+      if (candidate === key) return true
+      // Season/cour suffixes: one title contains the other with a bounded length gap.
+      const shorter = candidate.length <= key.length ? candidate : key
+      const longer = candidate.length <= key.length ? key : candidate
+      if (shorter.length >= 4 && longer.includes(shorter)) return true
+      // Missing/miswritten characters: long common substring (>= 60% of the shorter title).
+      if (
+        lcsLength(candidate, key)
+          >= Math.max(5, Math.min(candidate.length, key.length) * 0.6)
+      ) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
 /** Search Bangumi for the subject id by title; prefers exact normalized title + year match. */
 export async function searchBangumiSubjectId(anime: Pick<Anime, 'title' | 'originalTitle' | 'titles' | 'year'>): Promise<number | null> {
   const keywords = [
@@ -107,7 +150,7 @@ export async function searchBangumiSubjectId(anime: Pick<Anime, 'title' | 'origi
         const keys = [item.name_cn, item.name]
           .map((s) => normalizeTitleKey(typeof s === 'string' ? s : ''))
           .filter(Boolean)
-        return keys.some((key) => animeKeys.includes(key))
+        return bangumiTitleKeysMatch(keys, animeKeys)
       })
       const year = anime.year || 0
       const byYear = year

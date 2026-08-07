@@ -10,6 +10,7 @@ import {
   type BangumiEpisodeMeta,
 } from '../services/bangumiComments'
 import { shouldOfferTranslation, translateToChinese } from '../services/translate'
+import { collectTitleKeys } from '../utils/animeIdentity'
 import {
   buildProxyUrl,
   defaultEpisode,
@@ -171,7 +172,16 @@ const currentEpisodeName = computed(() => {
 
 const currentEpisodeLabel = computed(() => {
   const name = currentEpisodeName.value
-  return name ? `第 ${currentEpisode.value} 集 · ${name}` : `第 ${currentEpisode.value} 集`
+  if (!name) return `第 ${currentEpisode.value} 集`
+  // Bangumi sometimes names ep.1 after the anime itself; drop the duplicated
+  // title so the overlay does not read as "just the anime name".
+  const nameKey = name.replace(/\s+/g, '').toLowerCase()
+  const looksLikeAnimeTitle = collectTitleKeys(props.anime).some((key) => {
+    if (!key) return false
+    const k = key.replace(/\s+/g, '').toLowerCase()
+    return k === nameKey || (k.length >= 4 && (k.includes(nameKey) || nameKey.includes(k)))
+  })
+  return looksLikeAnimeTitle ? `第 ${currentEpisode.value} 集` : `第 ${currentEpisode.value} 集 · ${name}`
 })
 
 const commentsCountLabel = computed(() => {
@@ -207,6 +217,8 @@ function pickLine(value: 'auto' | PlaybackSourceChoice) {
 
 function onLinePickerPointerDown(event: PointerEvent) {
   const target = event.target as HTMLElement | null
+  // Let the trigger's own click toggle the menu; only outside clicks close it.
+  if (target?.closest?.('.playback-line-picker__trigger')) return
   if (target?.closest?.('.playback-line-picker__menu')) return
   linePickerOpen.value = false
 }
@@ -294,7 +306,10 @@ async function loadComments(reset = true) {
     if (closed || generation !== commentsLoadGeneration) return
     commentsError.value = err instanceof Error ? err.message : '吐槽加载失败'
   } finally {
-    if (generation === commentsLoadGeneration) commentsLoading.value = false
+    if (generation === commentsLoadGeneration) {
+      commentsLoading.value = false
+      if (!commentsError.value) maybeContinueLoading()
+    }
   }
 }
 
@@ -309,15 +324,27 @@ function setupCommentsObserver() {
   commentsObserver?.disconnect()
   commentsObserver = null
   if (!commentsSentinelRef.value || !commentsHasMore.value) return
+  // Desktop: the comments panel scrolls internally; mobile: the theater/page scrolls.
+  const panel = document.querySelector<HTMLElement>('.playback-aside-panel--comments')
+  const usePanelRoot = window.innerWidth > 959 && !!panel
   commentsObserver = new IntersectionObserver(
     (entries) => {
       if (entries.some((entry) => entry.isIntersecting)) void loadComments(false)
     },
-    // Viewport-based root works for both the desktop inner-scroll panel and the
-    // mobile page scroll: the sentinel only crosses the viewport when reached.
-    { rootMargin: '480px 0px' },
+    { root: usePanelRoot ? panel : null, rootMargin: '240px 0px' },
   )
   commentsObserver.observe(commentsSentinelRef.value)
+}
+
+/** Keep loading while the sentinel stays inside the pre-load area (mobile/desktop). */
+function maybeContinueLoading() {
+  if (closed || !commentsHasMore.value || commentsLoading.value) return
+  const sentinel = commentsSentinelRef.value
+  if (!sentinel) return
+  const rect = sentinel.getBoundingClientRect()
+  if (rect.top <= window.innerHeight + 240 && rect.bottom >= -240) {
+    void loadComments(false)
+  }
 }
 
 async function translateComment(id: string, text: string) {
