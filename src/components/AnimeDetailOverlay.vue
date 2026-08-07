@@ -1126,7 +1126,6 @@ function getDetailScrollRoot(): Element | null {
 }
 
 const commentScrollRoot = computed<HTMLElement | null>(() => {
-  if (tab.value !== 'comments') return null
   return getDetailScrollRoot() as HTMLElement | null
 })
 
@@ -2049,7 +2048,7 @@ onUnmounted(() => {
       >
         <img :src="flyerImage" alt="" draggable="false" />
       </div>
-      <BackToTop :scroll-el="commentScrollRoot" :show="tab === 'comments'" />
+      <BackToTop :scroll-el="commentScrollRoot" :show="tab !== 'overview'" />
     </div>
   </Teleport>
 

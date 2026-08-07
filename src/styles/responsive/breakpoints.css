@@ -167,15 +167,15 @@
     --hero-pad-x: 20px;
     --hero-pad-top: 78px;
     --hero-pad-bottom: 118px;
-    --fore-poster-w: min(240px, 64vw);
+    --fore-poster-w: min(220px, 58vw);
     /* Taller copy slot so kicker+title+summary+meta+actions fit; still fixed + clipped */
-    --hero-copy-stage-h: 580px;
+    --hero-copy-stage-h: 440px;
     align-content: start;
     min-height: calc(
       var(--hero-pad-top)
       + var(--hero-copy-stage-h)
       + 34px
-      + min(360px, 96vw)
+      + min(320px, 84vw)
       + var(--hero-pad-bottom)
     );
   }

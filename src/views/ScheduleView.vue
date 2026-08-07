@@ -2,6 +2,7 @@
 import { computed, onMounted } from 'vue'
 import { PhCalendarBlank, PhWarningCircle } from '@phosphor-icons/vue'
 import ScheduleSection from '../components/ScheduleSection.vue'
+import BackToTop from '../components/BackToTop.vue'
 import { useCatalogStore } from '../stores/catalog'
 import { scheduleHasContent } from '../services/schedule'
 
@@ -62,5 +63,6 @@ onMounted(() => {
       </div>
       <ScheduleSection v-else :days="days" page />
     </div>
+    <BackToTop />
   </div>
 </template>
