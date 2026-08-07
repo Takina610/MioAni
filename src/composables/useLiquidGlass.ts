@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } 
 export interface LiquidGlassOptions {
   /** 玻璃厚度（px）。 */
   glassThickness?: number
+  bezelWidth?: number
   /** 折射率，越大折射越强。 */
   ior?: number
   /** 背景模糊量。 */
@@ -30,6 +31,20 @@ let filterSeq = 0
 function nextFilterId(): string {
   filterSeq += 1
   return `liquid-glass-${filterSeq}`
+}
+
+/**
+ * Read the element's actual corner radius in px.
+ * Percentages / oversized values fall back to a circle; sharp corners use a
+ * small fallback radius so the glass edge stays visible.
+ */
+function readCornerRadius(el: HTMLElement, w: number, h: number): number {
+  const max = Math.min(w, h) / 2
+  const first = getComputedStyle(el).borderRadius.split(/\s+/)[0] || ''
+  if (first.endsWith('%')) return max
+  const px = parseFloat(first)
+  if (!Number.isFinite(px) || px <= 0) return Math.min(16, max)
+  return Math.min(px, max)
 }
 
 /** 基于斯涅尔折射近似计算玻璃边缘各处的水平位移量。 */
@@ -64,6 +79,57 @@ function calculateRefractionProfile(
  * 生成位移贴图：红/绿通道编码 X/Y 位移方向，仅玻璃边缘环内生效。
  * 贴图按 scaleFactor 放大，配合 feImage 缩放到元素尺寸，可让位移值随设备像素平滑变化。
  */
+interface RoundedRectEdge {
+  depth: number
+  nx: number
+  ny: number
+}
+
+/** Return the inward edge depth and outward normal for a rounded rectangle. */
+function getRoundedRectEdge(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  radius: number,
+): RoundedRectEdge | null {
+  const halfW = w / 2
+  const halfH = h / 2
+  const cornerW = Math.max(halfW - radius, 0)
+  const cornerH = Math.max(halfH - radius, 0)
+  const ax = Math.abs(x)
+  const ay = Math.abs(y)
+  const qx = ax - cornerW
+  const qy = ay - cornerH
+
+  if (qx > 0 && qy > 0) {
+    const distance = Math.hypot(qx, qy)
+    if (distance > radius || distance < 0.001) return null
+    return {
+      depth: radius - distance,
+      nx: ((Math.sign(x) || 1) * qx) / distance,
+      ny: ((Math.sign(y) || 1) * qy) / distance,
+    }
+  }
+
+  if (qx > 0) {
+    const depth = halfW - ax
+    return depth >= 0 ? { depth, nx: Math.sign(x) || 1, ny: 0 } : null
+  }
+
+  if (qy > 0) {
+    const depth = halfH - ay
+    return depth >= 0 ? { depth, nx: 0, ny: Math.sign(y) || 1 } : null
+  }
+
+  const horizontalDepth = halfW - ax
+  const verticalDepth = halfH - ay
+  if (horizontalDepth <= verticalDepth) {
+    return { depth: horizontalDepth, nx: Math.sign(x) || 1, ny: 0 }
+  }
+  return { depth: verticalDepth, nx: 0, ny: Math.sign(y) || 1 }
+}
+
 function generateDisplacementMap(
   w: number,
   h: number,
@@ -87,32 +153,21 @@ function generateDisplacementMap(
     d[i + 3] = 255
   }
 
+  const W = canvas.width
+  const H = canvas.height
   const R = radius * scaleFactor
-  const BW = bezelWidth * scaleFactor
-  const rSq = R * R
-  const r1Sq = (R + 1) ** 2
-  const rBSq = Math.max(R - BW, 0) ** 2
-  const wB = canvas.width - R * 2
-  const hB = canvas.height - R * 2
+  const BW = Math.max(bezelWidth * scaleFactor, 1)
   const samples = profile.length
 
-  for (let y1 = 0; y1 < canvas.height; y1++) {
-    for (let x1 = 0; x1 < canvas.width; x1++) {
-      const x = x1 < R ? x1 - R : x1 >= canvas.width - R ? x1 - R - wB : 0
-      const y = y1 < R ? y1 - R : y1 >= canvas.height - R ? y1 - R - hB : 0
-      const dSq = x * x + y * y
-      if (dSq > r1Sq || dSq < rBSq) continue
-      const dist = Math.sqrt(dSq)
-      const fromSide = R - dist
-      const op = dSq < rSq ? 1 : 1 - (dist - Math.sqrt(rSq)) / (Math.sqrt(r1Sq) - Math.sqrt(rSq))
-      if (op <= 0 || dist === 0) continue
-      const cos = x / dist
-      const sin = y / dist
-      const bi = Math.min(((fromSide / BW) * samples) | 0, samples - 1)
+  for (let y1 = 0; y1 < H; y1++) {
+    for (let x1 = 0; x1 < W; x1++) {
+      const edge = getRoundedRectEdge(x1 + 0.5 - W / 2, y1 + 0.5 - H / 2, W, H, R)
+      if (!edge || edge.depth > BW) continue
+      const bi = Math.min(Math.max((edge.depth / BW) * samples, 0) | 0, samples - 1)
       const disp = profile[bi] || 0
-      const idx = (y1 * canvas.width + x1) * 4
-      d[idx] = (128 + (-cos * disp * 127 * op) / maxDisp + 0.5) | 0
-      d[idx + 1] = (128 + (-sin * disp * 127 * op) / maxDisp + 0.5) | 0
+      const idx = (y1 * W + x1) * 4
+      d[idx] = (128 + (-edge.nx * disp * 127) / maxDisp + 0.5) | 0
+      d[idx + 1] = (128 + (-edge.ny * disp * 127) / maxDisp + 0.5) | 0
     }
   }
   ctx.putImageData(img, 0, 0)
@@ -137,33 +192,22 @@ function generateSpecularMap(
   const d = img.data
   d.fill(0)
 
+  const W = canvas.width
+  const H = canvas.height
   const R = radius * scaleFactor
-  const BW = bezelWidth * scaleFactor
-  const rSq = R * R
-  const r1Sq = (R + 1) ** 2
-  const rBSq = Math.max(R - BW, 0) ** 2
-  const wB = canvas.width - R * 2
-  const hB = canvas.height - R * 2
+  const BW = Math.max(bezelWidth * scaleFactor, 1)
   const sv = [Math.cos(angle), Math.sin(angle)]
 
-  for (let y1 = 0; y1 < canvas.height; y1++) {
-    for (let x1 = 0; x1 < canvas.width; x1++) {
-      const x = x1 < R ? x1 - R : x1 >= canvas.width - R ? x1 - R - wB : 0
-      const y = y1 < R ? y1 - R : y1 >= canvas.height - R ? y1 - R - hB : 0
-      const dSq = x * x + y * y
-      if (dSq > r1Sq || dSq < rBSq) continue
-      const dist = Math.sqrt(dSq)
-      const fromSide = R - dist
-      const op = dSq < rSq ? 1 : 1 - (dist - Math.sqrt(rSq)) / (Math.sqrt(r1Sq) - Math.sqrt(rSq))
-      if (op <= 0 || dist === 0) continue
-      const cos = x / dist
-      const sin = -y / dist
-      const dot = Math.abs(cos * sv[0] + sin * sv[1])
-      const edge = Math.sqrt(Math.max(0, 1 - (1 - fromSide) ** 2))
+  for (let y1 = 0; y1 < H; y1++) {
+    for (let x1 = 0; x1 < W; x1++) {
+      const geometry = getRoundedRectEdge(x1 + 0.5 - W / 2, y1 + 0.5 - H / 2, W, H, R)
+      if (!geometry || geometry.depth > BW) continue
+      const dot = Math.abs(geometry.nx * sv[0] - geometry.ny * sv[1])
+      const edge = Math.sqrt(Math.max(0, 1 - geometry.depth / BW))
       const coeff = dot * edge
       const col = (255 * coeff) | 0
-      const alpha = (col * coeff * op) | 0
-      const idx = (y1 * canvas.width + x1) * 4
+      const alpha = (col * coeff) | 0
+      const idx = (y1 * W + x1) * 4
       d[idx] = col
       d[idx + 1] = col
       d[idx + 2] = col
@@ -190,20 +234,24 @@ export function useLiquidGlass(
   options: LiquidGlassOptions = {},
 ) {
   const {
-    glassThickness = 12,
+    // Match the reference controls: 200x200, thickness 80, bezel 60.
+    glassThickness = 80,
+    bezelWidth: referenceBezelWidth = 60,
     ior = 3,
     blurAmount = 0.3,
     specularOpacity = 0.5,
     specularSaturation = 4,
-    scaleRatio = 0.8,
-    displacementBlur = 1.2,
-    specularBlur = 1,
+    // Slightly amplify the reference refraction on small UI surfaces.
+    scaleRatio = 1.25,
+    displacementBlur = 0.55,
+    specularBlur = 0.75,
     maxDpr = 3,
   } = options
 
   const filterId = nextFilterId()
   const filterDefs = ref('')
   let svgEl: SVGSVGElement | null = null
+  let resizeObserver: ResizeObserver | null = null
 
   const glassStyle = computed(() => ({
     backdropFilter: `url(#${filterId})`,
@@ -236,17 +284,22 @@ export function useLiquidGlass(
     const h = el.offsetHeight
     if (w < 2 || h < 2) return
 
-    const radius = Math.min(w, h) / 2
-    // 参数按 demo 默认值（300×200 玻璃、bezel 60、thickness 80）等比缩放到元素尺寸。
-    const bezelWidth = Math.min(glassThickness, radius - 1, Math.min(w, h) / 2 - 1)
+    const radius = readCornerRadius(el, w, h)
+    // Keep the reference proportions when the target differs from 200x200.
+    const sizeRatio = Math.min(w, h) / 200
+    const scaledThickness = glassThickness * sizeRatio
+    const scaledBezelWidth = referenceBezelWidth * sizeRatio
+    const bezelWidth = Math.min(scaledBezelWidth, radius - 1, Math.min(w, h) / 2 - 1)
     // 贴图按设备像素比生成（上限 maxDpr），配合滤镜内高斯模糊消除小元素边缘锯齿。
-    const dpr = Math.min(window.devicePixelRatio || 1, maxDpr)
+    // Large elements (e.g. the full-width topbar) cap the map's longest edge
+    // at 1280px so rebuilds stay cheap.
+    const dpr = Math.min(window.devicePixelRatio || 1, maxDpr, 1280 / Math.max(w, h, 1))
 
-    const profile = calculateRefractionProfile(glassThickness, bezelWidth, ior, 128)
+    const profile = calculateRefractionProfile(scaledThickness, bezelWidth, ior, 128)
     let maxDisp = 1
     for (const v of profile) maxDisp = Math.max(maxDisp, Math.abs(v))
     const dispUrl = generateDisplacementMap(w, h, radius, bezelWidth, profile, maxDisp, dpr)
-    const specUrl = generateSpecularMap(w, h, radius, bezelWidth * 2.5, Math.PI / 3, dpr)
+    const specUrl = generateSpecularMap(w, h, radius, bezelWidth, Math.PI / 3, dpr)
     // 略降位移强度，避免边缘过强的像素级拉扯造成的锯齿感。
     const scale = maxDisp * scaleRatio
 
@@ -276,13 +329,26 @@ export function useLiquidGlass(
     resizeTimer = window.setTimeout(rebuild, 150)
   }
 
+  function observeTarget(el: HTMLElement | null | undefined) {
+    resizeObserver?.disconnect()
+    resizeObserver = null
+    if (!el || typeof ResizeObserver === 'undefined') return
+
+    resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(rebuild)
+    })
+    resizeObserver.observe(el)
+  }
+
   // v-if 挂载/卸载导致 target 变化时重建（元素此时可能尚未布局完成，等下一帧）。
   watch(target, (el) => {
+    observeTarget(el)
     if (el) nextTick(rebuild)
   })
 
   onMounted(() => {
     window.addEventListener('resize', onResize)
+    observeTarget(target.value)
     nextTick(() => {
       if (target.value) rebuild()
     })
@@ -291,6 +357,8 @@ export function useLiquidGlass(
   onBeforeUnmount(() => {
     window.removeEventListener('resize', onResize)
     window.clearTimeout(resizeTimer)
+    resizeObserver?.disconnect()
+    resizeObserver = null
     svgEl?.remove()
     svgEl = null
   })

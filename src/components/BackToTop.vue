@@ -101,9 +101,9 @@ onBeforeUnmount(() => {
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background-color: rgba(255, 255, 255, .08);
+  background-color: rgba(255, 255, 255, .06);
   box-shadow:
-    inset 0 0 20px -6px rgba(255, 255, 255, .42),
+    inset 0 0 20px -5px rgba(255, 255, 255, .42),
     0 6px 24px rgba(0, 0, 0, .3);
   color: var(--accent);
   cursor: pointer;

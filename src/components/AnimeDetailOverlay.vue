@@ -28,6 +28,7 @@ import { shouldOfferTranslation, translateToChinese } from '../services/translat
 import { defaultEpisode, isPlaybackEnabled } from '../services/playback'
 import type { AnimeCharacter, AnimeRelation, AnimeStaff, PersonComment, WatchStatus } from '../types/anime'
 import BackToTop from './BackToTop.vue'
+import { useLiquidGlass } from '../composables/useLiquidGlass'
 const AnimePlaybackTheater = defineAsyncComponent(() => import('./AnimePlaybackTheater.vue'))
 
 const store = useDetailOverlayStore()
@@ -39,6 +40,11 @@ const router = useRouter()
 const posterSlotRef = ref<HTMLElement | null>(null)
 const flyerRef = ref<HTMLElement | null>(null)
 const surfaceRef = ref<HTMLElement | null>(null)
+const detailCloseRef = ref<HTMLButtonElement | null>(null)
+const detailBackRef = ref<HTMLButtonElement | null>(null)
+/** Liquid glass backdrop for the top detail controls. */
+const { glassStyle: detailCloseGlassStyle } = useLiquidGlass(detailCloseRef)
+const { glassStyle: detailBackGlassStyle } = useLiquidGlass(detailBackRef)
 // Keep slot mounted for layout parity with flyer target geometry.
 void posterSlotRef
 /** True once flyer has landed and in-flow poster is shown. */
@@ -1545,12 +1551,21 @@ onUnmounted(() => {
         />
         <div class="detail-banner__shade" />
 
-        <button class="detail-close" type="button" aria-label="关闭" @click="dismissToList">
+        <button
+          ref="detailCloseRef"
+          class="detail-close"
+          type="button"
+          :style="detailCloseGlassStyle"
+          aria-label="关闭"
+          @click="dismissToList"
+        >
           <PhX :size="18" weight="bold" />
         </button>
         <button
+          ref="detailBackRef"
           class="detail-back"
           type="button"
+          :style="detailBackGlassStyle"
           aria-label="返回"
           @click="closeOverlay"
         >
