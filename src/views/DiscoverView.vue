@@ -1,10 +1,5 @@
 <script setup lang="ts">
 import { computed, onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
-import '../styles/pages/discover/page.css'
-import '../styles/pages/discover/search.css'
-import '../styles/pages/discover/filters.css'
-import '../styles/pages/discover/results.css'
-import '../styles/pages/discover/loader.css'
 import {
   PhMagnifyingGlass,
   PhWarningCircle,

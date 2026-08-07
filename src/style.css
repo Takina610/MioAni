@@ -20,7 +20,15 @@
 @import './styles/pages/home/closing.css';
 @import './styles/components/progress.css';
 
-/* Shared sliding tabs used by library and detail overlays */
+/* Discover */
+@import './styles/pages/discover/page.css';
+@import './styles/pages/discover/search.css';
+@import './styles/pages/discover/filters.css';
+@import './styles/pages/discover/results.css';
+@import './styles/pages/discover/loader.css';
+
+/* Library (+ shared sliding tabs used by detail overlays) */
+@import './styles/pages/library/page.css';
 @import './styles/pages/library/tabs.css';
 
 /* Intro */
