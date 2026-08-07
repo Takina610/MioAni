@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import '../styles/pages/playback/theater.css'
-import { PhArrowLeft, PhPlay, PhTranslate, PhX } from '@phosphor-icons/vue'
+import { PhArrowLeft, PhCaretDown, PhPlay, PhTranslate, PhX } from '@phosphor-icons/vue'
 import type Artplayer from 'artplayer'
 import { useLibraryStore } from '../stores/library'
 import {
@@ -93,6 +93,15 @@ const bangumiEpisodes = ref<BangumiEpisodeMeta[]>([])
 const asideTab = ref<'channels' | 'comments'>('channels')
 /** Episode-name overlay (player top-left); follows player controls on touch. */
 const epLabelVisible = ref(false)
+/** Auto-translated episode name when Bangumi has no Chinese title. */
+const translatedEpisodeName = ref('')
+/** Custom line picker state (replaces the native <select>). */
+const linePickerOpen = ref(false)
+/** Draggable aside width (0 = default). */
+const asideWidth = ref(0)
+const asideDragging = ref(false)
+let asideDragStartX = 0
+let asideDragStartW = 0
 /** Comments state (lazy-loaded when the comments tab is opened). */
 const comments = ref<PersonComment[]>([])
 const commentsLoading = ref(false)
@@ -157,7 +166,7 @@ const episodeChips = computed(() => {
 
 const currentEpisodeName = computed(() => {
   const meta = bangumiEpisodes.value.find((ep) => ep.sort === currentEpisode.value)
-  return meta?.nameCn || meta?.name || ''
+  return meta?.nameCn || translatedEpisodeName.value || meta?.name || ''
 })
 
 const currentEpisodeLabel = computed(() => {
@@ -170,6 +179,77 @@ const commentsCountLabel = computed(() => {
     ? `${comments.value.length}/${commentsTotal.value}`
     : String(commentsTotal.value || comments.value.length)
 })
+
+const lineOptions = computed(() => [
+  { value: 'auto' as const, label: '自动' },
+  ...sourceOptions.value.map((s) => ({ value: s.id, label: s.label })),
+])
+
+const preferredSourceLabel = computed(() => {
+  return lineOptions.value.find((o) => o.value === preferredSource.value)?.label || '自动'
+})
+
+const defaultAsideWidth = () => Math.min(320, Math.floor(window.innerWidth * 0.28))
+
+function onLinePickerToggle() {
+  linePickerOpen.value = !linePickerOpen.value
+}
+
+function pickLine(value: 'auto' | PlaybackSourceChoice) {
+  if (value === preferredSource.value && playStatus.value !== 'resolving') {
+    linePickerOpen.value = false
+    return
+  }
+  preferredSource.value = value
+  linePickerOpen.value = false
+  onSourceChange()
+}
+
+function onLinePickerPointerDown(event: PointerEvent) {
+  const target = event.target as HTMLElement | null
+  if (target?.closest?.('.playback-line-picker__menu')) return
+  linePickerOpen.value = false
+}
+
+function onResizeHandlePointerDown(event: PointerEvent) {
+  if (window.innerWidth <= 959) return
+  asideDragging.value = true
+  asideDragStartX = event.clientX
+  asideDragStartW = asideWidth.value || defaultAsideWidth()
+  ;(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId)
+  event.preventDefault()
+}
+
+function onResizeHandlePointerMove(event: PointerEvent) {
+  if (!asideDragging.value) return
+  const next = asideDragStartW + asideDragStartX - event.clientX
+  asideWidth.value = Math.min(
+    Math.max(Math.round(next), 240),
+    Math.floor(window.innerWidth * 0.46),
+  )
+}
+
+function onResizeHandlePointerUp(event: PointerEvent) {
+  if (!asideDragging.value) return
+  asideDragging.value = false
+  ;(event.currentTarget as HTMLElement).releasePointerCapture?.(event.pointerId)
+  try {
+    localStorage.setItem('mioani:playback-aside-w', String(asideWidth.value))
+  } catch {
+    // ignore
+  }
+}
+
+function restoreAsideWidth() {
+  try {
+    const saved = Number(localStorage.getItem('mioani:playback-aside-w'))
+    if (Number.isFinite(saved) && saved >= 240 && saved <= window.innerWidth * 0.46) {
+      asideWidth.value = Math.round(saved)
+    }
+  } catch {
+    // ignore
+  }
+}
 
 async function loadBangumiMeta() {
   try {
@@ -744,6 +824,11 @@ function closeTheater() {
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
+    // Close the line picker first; a second Escape closes the theater.
+    if (linePickerOpen.value) {
+      linePickerOpen.value = false
+      return
+    }
     e.preventDefault()
     closeTheater()
   }
@@ -760,7 +845,9 @@ onMounted(() => {
   if (maxEp) episodeCount.value = maxEp
 
   lockBodyScroll()
+  restoreAsideWidth()
   window.addEventListener('keydown', onKeydown)
+  document.addEventListener('pointerdown', onLinePickerPointerDown)
   void loadSourceOptions()
   void loadEpisodeMeta()
   void loadBangumiMeta()
@@ -771,6 +858,7 @@ onBeforeUnmount(() => {
   playGeneration += 1
   commentsObserver?.disconnect()
   commentsObserver = null
+  document.removeEventListener('pointerdown', onLinePickerPointerDown)
   if (!closed) {
     closed = true
     persistPosition()
@@ -811,6 +899,30 @@ watch(
     void nextTick().then(setupCommentsObserver)
   },
 )
+
+// Auto-translate non-Chinese episode names for the overlay when Bangumi lacks name_cn.
+let episodeNameTranslateGeneration = 0
+watch(
+  () => [bangumiEpisodes.value, currentEpisode.value],
+  async () => {
+    const generation = ++episodeNameTranslateGeneration
+    const ep = currentEpisode.value
+    const meta = bangumiEpisodes.value.find((m) => m.sort === ep)
+    const name = meta?.name || ''
+    if (meta?.nameCn || !name || !shouldOfferTranslation(name)) {
+      if (generation === episodeNameTranslateGeneration) translatedEpisodeName.value = ''
+      return
+    }
+    try {
+      const translated = await translateToChinese(name)
+      if (generation === episodeNameTranslateGeneration) {
+        translatedEpisodeName.value = translated
+      }
+    } catch {
+      if (generation === episodeNameTranslateGeneration) translatedEpisodeName.value = ''
+    }
+  },
+)
 </script>
 
 <template>
@@ -845,7 +957,10 @@ watch(
         </div>
       </header>
 
-      <div class="playback-theater-body">
+      <div
+        class="playback-theater-body"
+        :style="{ '--playback-aside-w': asideWidth ? `${asideWidth}px` : undefined }"
+      >
         <main class="playback-theater-main">
           <div class="playback-theater-stage">
             <div v-if="playStatus === 'resolving'" class="playback-theater-state">
@@ -897,6 +1012,17 @@ watch(
         </main>
 
         <aside class="playback-theater-aside" aria-label="播放线路、选集与评论">
+          <div
+            class="playback-resize-handle"
+            :class="{ 'is-dragging': asideDragging }"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整侧栏宽度"
+            @pointerdown="onResizeHandlePointerDown"
+            @pointermove="onResizeHandlePointerMove"
+            @pointerup="onResizeHandlePointerUp"
+            @pointercancel="onResizeHandlePointerUp"
+          />
           <div class="playback-aside-tabs" role="tablist" aria-label="播放器侧栏">
             <button
               type="button"
@@ -925,23 +1051,41 @@ watch(
           >
             <section class="playback-theater-aside-section playback-theater-line-section">
               <h2 id="playback-theater-line-heading" class="playback-theater-aside-title">线路</h2>
-              <label
-                class="playback-theater-source"
-                title="优先线路；失败时自动切换下一线路"
-              >
-                <select
-                  v-model="preferredSource"
-                  class="playback-theater-source-select"
+              <div class="playback-line-picker">
+                <button
+                  type="button"
+                  class="playback-line-picker__trigger"
+                  :class="{ 'is-open': linePickerOpen }"
+                  :aria-expanded="linePickerOpen"
+                  aria-haspopup="listbox"
                   :disabled="playStatus === 'resolving'"
                   aria-labelledby="playback-theater-line-heading"
-                  @change="onSourceChange"
+                  @click="onLinePickerToggle"
                 >
-                  <option value="auto">自动</option>
-                  <option v-for="src in sourceOptions" :key="src.id" :value="src.id">
-                    {{ src.label }}
-                  </option>
-                </select>
-              </label>
+                  <span>{{ preferredSourceLabel }}</span>
+                  <PhCaretDown :size="14" weight="bold" />
+                </button>
+                <Transition name="line-menu">
+                  <div
+                    v-if="linePickerOpen"
+                    class="playback-line-picker__menu"
+                    role="listbox"
+                    aria-label="选择线路"
+                  >
+                    <button
+                      v-for="opt in lineOptions"
+                      :key="opt.value"
+                      type="button"
+                      role="option"
+                      :aria-selected="preferredSource === opt.value"
+                      :class="{ active: preferredSource === opt.value }"
+                      @click="pickLine(opt.value)"
+                    >
+                      {{ opt.label }}
+                    </button>
+                  </div>
+                </Transition>
+              </div>
               <p v-if="activeSourceLabel && preferredSource === 'auto'" class="playback-theater-active-line">
                 当前：{{ activeSourceLabel }}
               </p>
