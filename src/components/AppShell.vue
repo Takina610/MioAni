@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import { PhCompass, PhHouse, PhBooks, PhCalendarBlank, PhMagnifyingGlass, PhDownloadSimple } from '@phosphor-icons/vue'
 import GridTrailBackground from './GridTrailBackground.vue'
 import BackToTop from './BackToTop.vue'
+import { useLiquidGlass } from '../composables/useLiquidGlass'
 import brandLogo from '../assets/MioAni2.webp'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
 import { usePersonOverlayStore } from '../stores/personOverlay'
@@ -21,6 +22,11 @@ const importOpen = ref(false)
 const mobileOpen = ref(false)
 /** Floating capsule chrome after page scroll (desktop + mobile). */
 const topbarCompact = ref(false)
+const topbarRef = ref<HTMLElement | null>(null)
+const mainNavRef = ref<HTMLElement | null>(null)
+/** Liquid glass backdrop for the topbar / main-nav backgrounds. */
+const { glassStyle: topbarGlassStyle } = useLiquidGlass(topbarRef)
+const { glassStyle: mainNavGlassStyle } = useLiquidGlass(mainNavRef)
 const route = useRoute()
 const detailOverlay = useDetailOverlayStore()
 const personOverlay = usePersonOverlayStore()
@@ -239,12 +245,27 @@ onUnmounted(() => {
     <BackToTop :show="showListBackToTop" />
     <a class="skip-link" href="#main-content">跳到主要内容</a>
     <div class="topbar-slot" :class="{ 'is-compact': topbarCompact }">
-      <header class="topbar" :class="{ 'is-compact': topbarCompact }">
+      <header
+        ref="topbarRef"
+        class="topbar"
+        :class="{ 'is-compact': topbarCompact }"
+        :style="topbarGlassStyle"
+      >
         <RouterLink class="brand" to="/" aria-label="MioAni 首页">
           <img class="brand-logo" :src="brandLogo" alt="MioAni" height="56" width="99" decoding="async" fetchpriority="low" />
         </RouterLink>
 
-        <nav :class="['main-nav', { 'is-open': mobileOpen }]" aria-label="主导航">
+        <Teleport to="body">
+        <nav
+          ref="mainNavRef"
+          :class="['main-nav', {
+            'is-open': mobileOpen,
+            'is-compact': topbarCompact,
+            'is-hidden': detailOverlay.open || personOverlay.open || DETAIL_ROUTES.has(String(route.name)),
+          }]"
+          :style="mainNavGlassStyle"
+          aria-label="主导航"
+        >
           <div class="main-nav__panel">
             <RouterLink to="/" @click="mobileOpen = false"><PhHouse :size="18" />首页</RouterLink>
             <RouterLink to="/discover" @click="mobileOpen = false"><PhCompass :size="18" />发现</RouterLink>
@@ -252,6 +273,7 @@ onUnmounted(() => {
             <RouterLink to="/library" @click="mobileOpen = false"><PhBooks :size="18" />追番库</RouterLink>
           </div>
         </nav>
+        </Teleport>
 
         <div class="top-actions">
           <RouterLink class="search-shortcut" to="/discover"><PhMagnifyingGlass :size="18" /><span>搜索</span><kbd>/</kbd></RouterLink>

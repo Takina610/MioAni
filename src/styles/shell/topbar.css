@@ -139,16 +139,22 @@
   Independent of logo / actions width changes → no mid-text jitter on expand.
 */
 .main-nav {
-  position: absolute;
+  position: fixed;
   left: 50%;
-  top: 50%;
-  z-index: 2;
+  top: 36px;
+  z-index: 31;
+  pointer-events: auto;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
   transform: translate3d(-50%, -50%, 0);
   backface-visibility: hidden;
+}
+.main-nav.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 .main-nav__panel {
   display: flex;
@@ -170,7 +176,7 @@
 }
 .main-nav a:hover { color: var(--ink); }
 .main-nav a.router-link-active { background: var(--surface-2); color: var(--ink); }
-.topbar.is-compact .main-nav a.router-link-active {
+.main-nav.is-compact a.router-link-active {
   background: rgba(184, 240, 95, .14);
   color: var(--ink);
 }
@@ -310,5 +316,15 @@
   .menu-button,
   .search-shortcut {
     transition-duration: .01ms !important;
+  }
+}
+
+/* Desktop: liquid-glass capsule behind the centered nav links.
+   The mobile dropdown keeps its own full-width layout/background. */
+@media (min-width: 761px) {
+  .main-nav {
+    padding: 3px;
+    border-radius: 999px;
+    background: rgba(11, 13, 12, .38);
   }
 }

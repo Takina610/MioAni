@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { PhMinus, PhPlus, PhPlay } from '@phosphor-icons/vue'
 import type { Anime } from '../types/anime'
 import { useLibraryStore } from '../stores/library'
 
-defineProps<{ anime: Anime }>()
+const props = defineProps<{ anime: Anime }>()
 const store = useLibraryStore()
 const failed = ref(false)
+/** AniList 的 medium 缩略图在列表里观感差，统一用原图。 */
+const displayImage = computed(() =>
+  props.anime.source === 'anilist' ? props.anime.image : (props.anime.thumb || props.anime.image),
+)
 </script>
 
 <template>
@@ -14,7 +18,7 @@ const failed = ref(false)
     <div v-if="failed || !anime.image" class="row-poster-missing">暂无海报</div>
     <img
       v-else
-      :src="anime.thumb || anime.image"
+      :src="displayImage"
       :alt="`${anime.title} 海报`"
       width="68"
       height="76"
