@@ -242,11 +242,15 @@
   margin: 0 0 18px;
   flex-wrap: nowrap;
   overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior: contain;
+  touch-action: pan-x;
   width: fit-content;
   max-width: 100%;
 }
 .detail-tabs button {
   flex: 0 0 auto;
+  touch-action: manipulation;
   white-space: nowrap;
   font-size: var(--type-small);
   min-height: 34px;

@@ -1,3 +1,5 @@
+import process from 'node:process'
+
 export type DanmuMode = 0 | 1 | 2
 
 export interface AggregatedDanmuComment {
@@ -46,6 +48,13 @@ const SOURCE_ALIASES: Record<string, string> = {
   bilibili1: 'bilibili',
   qq: 'tencent',
   qiyi: 'iqiyi',
+}
+const MATCH_PLATFORMS = ['bilibili1', 'dandan', 'qq', 'qiyi', 'youku', 'imgo'] as const
+
+type UpstreamMatch = {
+  episodeId: number
+  animeTitle: string
+  episodeTitle: string
 }
 
 type DanmuCacheEntry = {
@@ -108,13 +117,17 @@ function normalizeColor(value: unknown): string {
   return `#${Math.round(number).toString(16).padStart(6, '0')}`.toUpperCase()
 }
 
-function sourceLabelsFromComment(comment: Record<string, unknown>, p: string): string[] {
+function sourceLabelsFromComment(
+  comment: Record<string, unknown>,
+  p: string,
+  fallbackSource = UNKNOWN_SOURCE,
+): string[] {
   const pMatch = p.match(/\[([^\]]*)\]\s*$/)
   const tagged = pMatch?.[1] || ''
   const direct = ['source', 'platform', '_sourceLabel']
     .map((key) => asString(comment[key]))
     .find(Boolean)
-  const labels = (tagged || direct || UNKNOWN_SOURCE).split(/[\x26\uFF06]/).map(normalizeSourceId)
+  const labels = (tagged || direct || fallbackSource).split(/[\x26\uFF06]/).map(normalizeSourceId)
   return uniqueStrings(labels)
 }
 
@@ -133,14 +146,20 @@ function sourceCountsFor(comments: AggregatedDanmuComment[]): DanmuSourceCount[]
   return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
 }
 
-export function buildMatchFileName(title: string, episode: number, season = 1): string {
+export function buildMatchFileName(
+  title: string,
+  episode: number,
+  season = 1,
+  platform = '',
+): string {
   const safeTitle = title.trim()
   const safeSeason = Number.isFinite(season) && season > 0 ? Math.floor(season) : 1
   const safeEpisode = Number.isFinite(episode) && episode > 0 ? Math.floor(episode) : 1
-  return `${safeTitle} S${String(safeSeason).padStart(2, '0')}E${String(safeEpisode).padStart(2, '0')}`
+  const platformSuffix = platform.trim() ? `@${platform.trim()}` : ''
+  return `${safeTitle} S${String(safeSeason).padStart(2, '0')}E${String(safeEpisode).padStart(2, '0')}${platformSuffix}`
 }
 
-export function parseDandanComments(payload: unknown): AggregatedDanmuComment[] {
+export function parseDandanComments(payload: unknown, fallbackSource = ''): AggregatedDanmuComment[] {
   const record = asRecord(payload)
   const rawComments = Array.isArray(record?.comments) ? record.comments : []
   const result: AggregatedDanmuComment[] = []
@@ -161,7 +180,7 @@ export function parseDandanComments(payload: unknown): AggregatedDanmuComment[] 
       time: time !== undefined && time >= 0 ? time : undefined,
       mode,
       color: normalizeColor(comment.color ?? colorPart),
-      sources: sourceLabelsFromComment(comment, p),
+      sources: sourceLabelsFromComment(comment, p, fallbackSource || UNKNOWN_SOURCE),
     })
   }
 
@@ -180,7 +199,7 @@ function configuredApi(): { base: string; token: string; timeoutMs: number } | n
   const base = (configuredBase === undefined ? DEFAULT_DANMU_API_BASE : configuredBase)
     .trim()
     .replace(/\/+$/, '')
-  const token = (process.env.DANMU_API_TOKEN || '').trim()
+  const token = (process.env.TOKEN || '').trim()
   if (!base || !token) return null
   const timeout = Number(process.env.DANMU_API_TIMEOUT_MS || DEFAULT_TIMEOUT_MS)
   return {
@@ -311,12 +330,52 @@ async function requestJson(
   }
 }
 
-function firstMatchId(payload: unknown): number | null {
+function parseMatches(payload: unknown): UpstreamMatch[] {
   const record = asRecord(payload)
   const matches = Array.isArray(record?.matches) ? record.matches : []
-  const first = asRecord(matches[0])
-  const episodeId = asFiniteNumber(first?.episodeId)
-  return episodeId !== undefined && episodeId > 0 ? Math.floor(episodeId) : null
+  return matches.flatMap((value): UpstreamMatch[] => {
+    const match = asRecord(value)
+    const episodeId = asFiniteNumber(match?.episodeId)
+    if (episodeId === undefined || episodeId <= 0) return []
+    return [{
+      episodeId: Math.floor(episodeId),
+      animeTitle: asString(match?.animeTitle),
+      episodeTitle: asString(match?.episodeTitle),
+    }]
+  })
+}
+
+function matchLabels(match: UpstreamMatch): string[] {
+  const text = `${match.animeTitle} ${match.episodeTitle}`
+  return [...text.matchAll(/[【\[]([^】\]]+)[】\]]/g)]
+    .flatMap((item) => item[1].split(/[\x26,，]/))
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+function matchMentionsPlatform(match: UpstreamMatch, platform: string): boolean {
+  return matchLabels(match).includes(platform.trim().toLowerCase())
+}
+
+function matchFallbackSource(match: UpstreamMatch): string {
+  const platform = MATCH_PLATFORMS.find((candidate) => matchMentionsPlatform(match, candidate))
+  return platform || ''
+}
+
+function mergeDanmuComments(groups: AggregatedDanmuComment[][]): AggregatedDanmuComment[] {
+  const merged = new Map<string, AggregatedDanmuComment>()
+  for (const comments of groups) {
+    for (const comment of comments) {
+      const key = JSON.stringify([comment.text, comment.time ?? null, comment.mode, comment.color])
+      const previous = merged.get(key)
+      if (!previous) {
+        merged.set(key, { ...comment, sources: [...comment.sources] })
+        continue
+      }
+      previous.sources = uniqueStrings([...previous.sources, ...comment.sources])
+    }
+  }
+  return [...merged.values()]
 }
 
 async function fetchAggregatedDanmuUncached(
@@ -326,7 +385,7 @@ async function fetchAggregatedDanmuUncached(
   const candidates = uniqueStrings([options.title, ...(options.alt || [])])
   if (!candidates.length) return emptyDanmuResponse(true)
 
-  let episodeId: number | null = null
+  let defaultMatch: UpstreamMatch | null = null
   let lastMatchError: unknown = null
   for (const title of candidates) {
     try {
@@ -339,30 +398,70 @@ async function fetchAggregatedDanmuUncached(
         },
         config.timeoutMs,
       )
-      episodeId = firstMatchId(matchPayload)
-      if (episodeId !== null) break
+      defaultMatch = parseMatches(matchPayload)[0] || null
+      if (defaultMatch) break
     } catch (error) {
       lastMatchError = error
     }
   }
 
-  if (episodeId === null && lastMatchError) throw lastMatchError
-  if (episodeId === null) return emptyDanmuResponse(true)
+  const shouldProbePlatforms = !defaultMatch || Boolean(defaultMatch.animeTitle || defaultMatch.episodeTitle)
+  const platformMatches = shouldProbePlatforms
+    ? await Promise.all(MATCH_PLATFORMS.map(async (platform) => {
+        for (const title of candidates) {
+          try {
+            const matchPayload = await requestJson(
+              upstreamUrl(config, '/api/v2/match'),
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify({
+                  fileName: buildMatchFileName(title, options.episode, 1, platform),
+                }),
+              },
+              config.timeoutMs,
+            )
+            const match = parseMatches(matchPayload).find((candidate) =>
+              matchMentionsPlatform(candidate, platform),
+            )
+            if (match) return match
+          } catch (error) {
+            lastMatchError = error
+          }
+        }
+        return null
+      }))
+    : []
 
-  let commentPayload: unknown
-  try {
-    commentPayload = await requestJson(
-      upstreamUrl(config, `/api/v2/comment/${episodeId}?format=json`),
-      { headers: { Accept: 'application/json' } },
-      config.timeoutMs,
-    )
-  } catch (error) {
-    const status = (error as UpstreamError).status
-    if (status === 404) return emptyDanmuResponse(true)
-    throw error
+  const matchesById = new Map<number, UpstreamMatch>()
+  if (defaultMatch) matchesById.set(defaultMatch.episodeId, defaultMatch)
+  for (const match of platformMatches) {
+    if (match) matchesById.set(match.episodeId, match)
   }
 
-  const comments = parseDandanComments(commentPayload)
+  if (!matchesById.size) {
+    if (lastMatchError) throw lastMatchError
+    return emptyDanmuResponse(true)
+  }
+
+  const commentGroups: AggregatedDanmuComment[][] = []
+  let lastCommentError: unknown = null
+  for (const match of matchesById.values()) {
+    try {
+      const commentPayload = await requestJson(
+        upstreamUrl(config, `/api/v2/comment/${match.episodeId}?format=json`),
+        { headers: { Accept: 'application/json' } },
+        config.timeoutMs,
+      )
+      commentGroups.push(parseDandanComments(commentPayload, matchFallbackSource(match)))
+    } catch (error) {
+      if ((error as UpstreamError).status !== 404) lastCommentError = error
+    }
+  }
+
+  if (!commentGroups.length && lastCommentError) throw lastCommentError
+
+  const comments = mergeDanmuComments(commentGroups)
   return {
     available: true,
     count: comments.length,

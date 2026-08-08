@@ -14,10 +14,10 @@ services:
         value: production
       - key: PLAYBACK_DEBUG
         value: '0'
-      # Danmu upstream; the token is supplied through Render's secret prompt.
+      # Danmu upstream; danmu_api reads the secret as TOKEN.
       - key: DANMU_API_BASE
         value: https://mioani-danmu-api.onrender.com
-      - key: DANMU_API_TOKEN
+      - key: TOKEN
         sync: false
       - key: DANMU_API_RETRY_COUNT
         value: '5'
