@@ -320,10 +320,85 @@
   flex: 0 0 auto;
 }
 
+.playback-danmu-section {
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.playback-danmu-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.playback-danmu-count {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: var(--type-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.playback-danmu-sources {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.playback-danmu-source {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 28px;
+  color: var(--ink);
+  font-size: var(--type-micro);
+  cursor: pointer;
+}
+
+.playback-danmu-source input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.playback-danmu-source__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playback-danmu-source__count {
+  color: var(--ink);
+  font-size: var(--type-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.playback-danmu-message {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--type-micro);
+  line-height: 1.35;
+}
+
+.playback-danmu-message.is-error {
+  color: var(--danger, #f28b82);
+}
+
 .playback-theater-episodes-section {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
   overflow: hidden;
+}
+
+.playback-aside-panel--channels {
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .playback-theater-aside-title {
@@ -847,6 +922,9 @@
   }
   .playback-aside-panel,
   .playback-aside-panel--comments {
+    overflow: visible;
+  }
+  .playback-aside-panel--channels {
     overflow: visible;
   }
   .playback-resize-handle {
