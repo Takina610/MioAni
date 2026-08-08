@@ -60,6 +60,8 @@ type DetailTab = 'overview' | 'characters' | 'staff' | 'relations' | 'comments'
 const tab = ref<DetailTab>('overview')
 const tabsRef = ref<HTMLElement | null>(null)
 const indicatorStyle = ref({ width: '0px', transform: 'translateX(0px)' })
+const indicatorPulse = ref(false)
+let indicatorPulseTimer: ReturnType<typeof setTimeout> | null = null
 /** Infinite-scroll batch size for full lists. */
 const EXTRA_BATCH = 12
 type ExtraSection = 'relations' | 'characters' | 'staff'
@@ -964,6 +966,15 @@ function removeFromLibrary() {
 function selectTab(next: DetailTab) {
   if (tab.value === next) return
   tab.value = next
+  indicatorPulse.value = false
+  if (indicatorPulseTimer !== null) clearTimeout(indicatorPulseTimer)
+  requestAnimationFrame(() => {
+    indicatorPulse.value = true
+    indicatorPulseTimer = setTimeout(() => {
+      indicatorPulse.value = false
+      indicatorPulseTimer = null
+    }, 600)
+  })
   // Keep tab body near tabs on mobile — collapse meta when switching away from overview.
   if (next !== 'overview') metaExpanded.value = false
   if (next === 'comments') {
@@ -1474,6 +1485,7 @@ onUnmounted(() => {
   document.documentElement.classList.remove('detail-flight-active')
   if (animTimer) clearTimeout(animTimer)
   if (extraLoadTimer) clearTimeout(extraLoadTimer)
+  if (indicatorPulseTimer !== null) clearTimeout(indicatorPulseTimer)
   extraObserver?.disconnect()
   extraObserver = null
 })
@@ -1670,19 +1682,25 @@ onUnmounted(() => {
           <div class="detail-content">
             <!-- Main column: tabs + body (aligned with left meta top) -->
             <section class="detail-main">
-              <div ref="tabsRef" class="detail-tabs sliding-tabs" role="tablist" aria-label="详情分区">
+              <div ref="tabsRef" class="detail-tabs sliding-tabs radio-group" role="tablist" aria-label="详情分区">
                 <button
                   v-for="item in detailTabs"
                   :key="item.id"
                   type="button"
                   role="tab"
+                  class="radio-option"
                   :aria-selected="tab === item.id"
                   :class="{ active: tab === item.id }"
                   @click="selectTab(item.id)"
                 >
                   {{ item.label }}
                 </button>
-                <span class="sliding-tabs__indicator" :style="indicatorStyle" aria-hidden="true" />
+                <span
+                  class="sliding-tabs__indicator slider"
+                  :class="{ 'is-pulsing': indicatorPulse }"
+                  :style="indicatorStyle"
+                  aria-hidden="true"
+                />
               </div>
               <Transition name="detail-soft" mode="out-in">
                 <div

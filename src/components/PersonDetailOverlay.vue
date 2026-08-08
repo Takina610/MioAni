@@ -31,6 +31,8 @@ type PersonTab = 'profile' | 'works' | 'voices' | 'comments'
 const tab = ref<PersonTab>('profile')
 const tabsRef = ref<HTMLElement | null>(null)
 const indicatorStyle = ref({ width: '0px', transform: 'translateX(0px)' })
+const indicatorPulse = ref(false)
+let indicatorPulseTimer: ReturnType<typeof setTimeout> | null = null
 const metaExpanded = ref(false)
 const summaryTranslation = ref('')
 const summaryTranslating = ref(false)
@@ -373,6 +375,15 @@ function selectTab(next: PersonTab) {
   if (tab.value === next) return
   if (!personTabs.value.some((item) => item.id === next)) return
   tab.value = next
+  indicatorPulse.value = false
+  if (indicatorPulseTimer !== null) clearTimeout(indicatorPulseTimer)
+  requestAnimationFrame(() => {
+    indicatorPulse.value = true
+    indicatorPulseTimer = setTimeout(() => {
+      indicatorPulse.value = false
+      indicatorPulseTimer = null
+    }, 600)
+  })
   if (next !== 'profile') metaExpanded.value = false
   ensureTabData(next)
   void nextTick().then(() => {
@@ -866,6 +877,7 @@ onUnmounted(() => {
   personScrollRef.value?.removeEventListener('wheel', markUserScrollIntent)
   personScrollRef.value?.removeEventListener('touchmove', markUserScrollIntent)
   if (personAnimTimer) window.clearTimeout(personAnimTimer)
+  if (indicatorPulseTimer !== null) clearTimeout(indicatorPulseTimer)
   extraObserver?.disconnect()
 })
 </script>
@@ -1022,19 +1034,25 @@ onUnmounted(() => {
           >
             <!-- Same order as anime detail-content: main first, meta second; mobile reorders via CSS. -->
             <div class="person-main">
-              <div ref="tabsRef" class="person-tabs sliding-tabs" role="tablist" aria-label="人物详情分区">
+              <div ref="tabsRef" class="person-tabs sliding-tabs radio-group" role="tablist" aria-label="人物详情分区">
                 <button
                   v-for="item in personTabs"
                   :key="item.id"
                   type="button"
                   role="tab"
+                  class="radio-option"
                   :aria-selected="tab === item.id"
                   :class="{ active: tab === item.id }"
                   @click="selectTab(item.id)"
                 >
                   {{ item.label }}
                 </button>
-                <span class="sliding-tabs__indicator" :style="indicatorStyle" aria-hidden="true" />
+                <span
+                  class="sliding-tabs__indicator slider"
+                  :class="{ 'is-pulsing': indicatorPulse }"
+                  :style="indicatorStyle"
+                  aria-hidden="true"
+                />
               </div>
 
             <Transition name="detail-soft" mode="out-in">

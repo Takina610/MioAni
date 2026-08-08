@@ -95,6 +95,13 @@ const activeProvider = ref<string>('')
 const bangumiEpisodes = ref<BangumiEpisodeMeta[]>([])
 /** Right-side panel: existing line/episodes vs Bangumi episode comments. */
 const asideTab = ref<'channels' | 'comments'>('channels')
+const asideTabsRef = ref<HTMLElement | null>(null)
+const asideIndicatorStyle = ref({ width: '0px', transform: 'translateX(0px)' })
+const asideIndicatorReady = ref(false)
+const asideIndicatorPulse = ref(false)
+let asideTabsResizeObserver: ResizeObserver | null = null
+let asideIndicatorRaf = 0
+let asideIndicatorPulseTimer: ReturnType<typeof setTimeout> | null = null
 /** Episode-name overlay (player top-left); follows player controls on touch. */
 const epLabelVisible = ref(false)
 /** Auto-translated episode name when Bangumi has no Chinese title. */
@@ -387,8 +394,50 @@ async function translateComment(id: string, text: string) {
 function selectAsideTab(next: 'channels' | 'comments') {
   if (asideTab.value === next) return
   asideTab.value = next
+  asideIndicatorPulse.value = false
+  if (asideIndicatorPulseTimer !== null) clearTimeout(asideIndicatorPulseTimer)
+  requestAnimationFrame(() => {
+    asideIndicatorPulse.value = true
+    asideIndicatorPulseTimer = setTimeout(() => {
+      asideIndicatorPulse.value = false
+      asideIndicatorPulseTimer = null
+    }, 600)
+  })
   if (next === 'comments') ensureComments()
-  void nextTick().then(setupCommentsObserver)
+  void nextTick().then(() => {
+    scheduleAsideIndicator()
+    setupCommentsObserver()
+  })
+}
+
+function updateAsideIndicator() {
+  const root = asideTabsRef.value
+  if (!root || root.getClientRects().length === 0) return
+  const active = root.querySelector<HTMLElement>('button.active')
+  if (!active) {
+    asideIndicatorStyle.value = { width: '0px', transform: 'translateX(0px)' }
+    return
+  }
+  const rootRect = root.getBoundingClientRect()
+  const activeRect = active.getBoundingClientRect()
+  const left = activeRect.left - rootRect.left - root.clientLeft + root.scrollLeft
+  asideIndicatorStyle.value = {
+    width: `${activeRect.width}px`,
+    transform: `translateX(${left}px)`,
+  }
+  if (!asideIndicatorReady.value) {
+    requestAnimationFrame(() => {
+      asideIndicatorReady.value = true
+    })
+  }
+}
+
+function scheduleAsideIndicator() {
+  if (asideIndicatorRaf) cancelAnimationFrame(asideIndicatorRaf)
+  asideIndicatorRaf = requestAnimationFrame(() => {
+    asideIndicatorRaf = 0
+    updateAsideIndicator()
+  })
 }
 
 function destroyPlayer() {
@@ -893,12 +942,26 @@ onMounted(() => {
   void loadEpisodeMeta()
   void loadBangumiMeta()
   void startPlayback(initial)
+  window.addEventListener('resize', scheduleAsideIndicator)
+  void nextTick().then(scheduleAsideIndicator)
+  if (typeof ResizeObserver !== 'undefined' && asideTabsRef.value) {
+    asideTabsResizeObserver = new ResizeObserver(() => scheduleAsideIndicator())
+    asideTabsResizeObserver.observe(asideTabsRef.value)
+    for (const button of asideTabsRef.value.querySelectorAll('button')) {
+      asideTabsResizeObserver.observe(button)
+    }
+  }
 })
 
 onBeforeUnmount(() => {
   playGeneration += 1
   commentsObserver?.disconnect()
   commentsObserver = null
+  asideTabsResizeObserver?.disconnect()
+  asideTabsResizeObserver = null
+  window.removeEventListener('resize', scheduleAsideIndicator)
+  if (asideIndicatorRaf) cancelAnimationFrame(asideIndicatorRaf)
+  if (asideIndicatorPulseTimer !== null) clearTimeout(asideIndicatorPulseTimer)
   document.removeEventListener('pointerdown', onLinePickerPointerDown)
   if (!closed) {
     closed = true
@@ -1064,10 +1127,23 @@ watch(
             @pointerup="onResizeHandlePointerUp"
             @pointercancel="onResizeHandlePointerUp"
           />
-          <div class="playback-aside-tabs" role="tablist" aria-label="播放器侧栏">
+          <div
+            ref="asideTabsRef"
+            class="playback-aside-tabs sliding-tabs radio-group"
+            :class="{ 'is-indicator-ready': asideIndicatorReady }"
+            role="tablist"
+            aria-label="播放器侧栏"
+          >
+            <span
+              class="playback-aside-tabs__indicator sliding-tabs__indicator slider"
+              :class="{ 'is-pulsing': asideIndicatorPulse }"
+              :style="asideIndicatorStyle"
+              aria-hidden="true"
+            />
             <button
               type="button"
               role="tab"
+              class="radio-option"
               :aria-selected="asideTab === 'channels'"
               :class="{ active: asideTab === 'channels' }"
               @click="selectAsideTab('channels')"
@@ -1077,6 +1153,7 @@ watch(
             <button
               type="button"
               role="tab"
+              class="radio-option"
               :aria-selected="asideTab === 'comments'"
               :class="{ active: asideTab === 'comments' }"
               @click="selectAsideTab('comments')"

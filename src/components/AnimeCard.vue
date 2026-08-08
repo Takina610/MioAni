@@ -5,6 +5,7 @@ import { PhPlus, PhCheck, PhStar, PhCaretDown, PhTrash } from '@phosphor-icons/v
 import type { Anime, WatchStatus } from '../types/anime'
 import { useLibraryStore } from '../stores/library'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
+import { useLiquidGlass } from '../composables/useLiquidGlass'
 
 const props = withDefaults(defineProps<{
   anime: Anime
@@ -24,6 +25,12 @@ const route = useRoute()
 const failed = ref(false)
 const menuOpen = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
+const posterActionRef = ref<HTMLButtonElement | null>(null)
+const statusMenuRef = ref<HTMLDivElement | null>(null)
+/** Match detail-back glass strength for the poster action. */
+const { glassStyle: posterActionGlassStyle } = useLiquidGlass(posterActionRef)
+/** Match main-nav glass strength for the expanded status menu. */
+const { glassStyle: statusMenuGlassStyle } = useLiquidGlass(statusMenuRef, { blurAmount: 2.0 })
 const revealed = ref(props.instant)
 const feedback = ref('')
 const flash = ref(false)
@@ -203,8 +210,10 @@ onUnmounted(() => {
 
       <div class="poster-add">
         <button
+          ref="posterActionRef"
           class="poster-action"
           type="button"
+          :style="posterActionGlassStyle"
           :aria-label="inLibrary ? `追番状态：${currentStatusLabel}` : '加入追番库'"
           :title="inLibrary ? `追番状态：${currentStatusLabel}` : '加入追番库'"
           :aria-expanded="menuOpen"
@@ -226,7 +235,9 @@ onUnmounted(() => {
     <Transition name="status-menu">
       <div
         v-if="menuOpen"
+        ref="statusMenuRef"
         class="poster-status-menu"
+        :style="statusMenuGlassStyle"
         role="menu"
         aria-label="选择追番状态"
         @click.stop

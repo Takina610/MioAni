@@ -53,15 +53,16 @@
   min-width: 35px;
   height: 35px;
   padding: 0 8px;
-  border: 0;
+  border: 1px solid rgba(255,255,255,.12);
   border-radius: 999px;
-  background: rgba(11,13,12,.82);
+  background: rgba(11,13,12,.55);
   color: var(--ink);
   opacity: 0;
   transform: scale(.8);
   cursor: pointer;
   transition: .25s var(--ease);
-  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 .poster-action__caret {
   opacity: .75;
@@ -74,8 +75,9 @@
 }
 .poster-action:hover,
 .anime-card.is-menu-open .poster-action {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: rgba(184,240,95,.16);
+  border-color: rgba(184,240,95,.35);
+  color: var(--accent);
 }
 .library-chip {
   position: absolute;
@@ -108,11 +110,17 @@
   z-index: 6;
   width: 128px;
   padding: 8px;
-  border: 1px solid rgba(228,237,230,.14);
+  border: 1px solid rgba(184,240,95,.16);
   border-radius: 12px;
-  background: rgba(16,19,17,.96);
-  box-shadow: 0 16px 40px rgba(0,0,0,.42);
-  backdrop-filter: blur(14px);
+  background:
+    linear-gradient(180deg, rgba(184,240,95,.09), rgba(184,240,95,.02) 55%, transparent),
+    rgba(11,13,12,.55);
+  box-shadow:
+    0 1px 0 rgba(242,245,241,.06) inset,
+    0 10px 36px rgba(0,0,0,.38),
+    0 0 0 1px rgba(0,0,0,.2);
+  -webkit-backdrop-filter: blur(32px) saturate(190%);
+  backdrop-filter: blur(32px) saturate(190%);
   transform-origin: top right;
 }
 .status-menu-enter-active,

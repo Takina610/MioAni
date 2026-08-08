@@ -42,18 +42,62 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
   min-width: 0;
   overflow-x: auto;
   padding: 4px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 25px;
   background: var(--surface);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  isolation: isolate;
+  box-shadow:
+    0 8px 32px color-mix(in srgb, var(--bg) 24%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--ink) 12%, transparent);
   scrollbar-width: none;
+  animation: home-schedule-tabs-in .6s ease-out;
+}
+
+.home-schedule__tabs::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  border-radius: 50px;
+  background: linear-gradient(
+    45deg,
+    transparent,
+    color-mix(in srgb, var(--ink) 10%, transparent),
+    transparent
+  );
+  opacity: .18;
+  pointer-events: none;
+  animation: home-schedule-tabs-shine 3s linear infinite;
 }
 
 .home-schedule__tabs::-webkit-scrollbar {
   display: none;
+}
+
+@keyframes home-schedule-tabs-in {
+  from {
+    opacity: 0;
+    transform: scale(.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes home-schedule-tabs-shine {
+  from {
+    transform: translateX(-100%) rotate(45deg);
+  }
+  to {
+    transform: translateX(100%) rotate(45deg);
+  }
 }
 
 .home-schedule__indicator {
@@ -65,24 +109,48 @@
   width: 0;
   border-radius: 999px;
   background: var(--accent);
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 28%, transparent);
+  box-shadow:
+    0 3px 12px color-mix(in srgb, var(--bg) 24%, transparent),
+    0 1px 4px color-mix(in srgb, var(--bg) 16%, transparent);
   pointer-events: none;
+  will-change: transform, width;
   /* First paint: no transition; after measure, slide like library tabs */
   transition: none;
 }
 
 .home-schedule__tabs.is-indicator-ready .home-schedule__indicator {
   transition:
-    transform .32s var(--ease),
-    width .32s var(--ease);
+    transform .4s cubic-bezier(.68, -.55, .265, 1.55),
+    width .4s cubic-bezier(.68, -.55, .265, 1.55);
+}
+
+.home-schedule__indicator.is-pulsing {
+  animation: home-schedule-indicator-pulse .6s ease-out;
+}
+
+@keyframes home-schedule-indicator-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 3px 12px color-mix(in srgb, var(--bg) 24%, transparent),
+      0 1px 4px color-mix(in srgb, var(--bg) 16%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 5px 20px color-mix(in srgb, var(--accent) 30%, transparent),
+      0 2px 8px color-mix(in srgb, var(--bg) 20%, transparent);
+  }
 }
 
 .home-schedule__tab {
   position: relative;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
   height: 38px;
-  padding: 0 16px;
+  padding: 0;
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -90,11 +158,53 @@
   font: 600 var(--type-body)/1 'Noto Sans SC', sans-serif;
   white-space: nowrap;
   cursor: pointer;
-  transition: color .22s var(--ease);
+  animation: home-schedule-radio-fade-in .5s ease-out backwards;
 }
 
 .home-schedule__tab:hover {
   color: var(--ink);
+}
+
+.home-schedule__tab .radio-label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 16px;
+  border-radius: 25px;
+  color: inherit;
+  cursor: pointer;
+  transition: color .3s ease;
+  user-select: none;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.home-schedule__tab .radio-label::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .3s ease;
+}
+
+.home-schedule__tab .radio-label:hover::before {
+  opacity: 1;
+}
+
+@keyframes home-schedule-radio-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .home-schedule__tab.is-active {
@@ -601,8 +711,11 @@
 
   .home-schedule__tab {
     height: 32px;
-    padding: 0 10px;
     font-size: 11px;
+  }
+
+  .home-schedule__tab .radio-label {
+    padding: 0 10px;
   }
 
   .home-schedule__all {
@@ -647,6 +760,20 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .home-schedule__tabs {
+    animation: none;
+  }
+
+  .home-schedule__tabs::before,
+  .home-schedule__tab,
+  .home-schedule__indicator.is-pulsing {
+    animation: none;
+  }
+
+  .home-schedule__tabs.is-indicator-ready .home-schedule__indicator {
+    transition: none;
+  }
+
   .home-schedule__track {
     scroll-behavior: auto;
   }

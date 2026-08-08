@@ -555,41 +555,26 @@
 
 /* ── Aside tabs (线路/集数 | 评论) ─────────────────────────────────── */
 
-.playback-aside-tabs {
-  display: flex;
-  gap: 4px;
+/* Keep the detail-tab treatment; only the player-specific radii stay smaller. */
+.playback-aside-tabs.sliding-tabs {
   flex: 0 0 auto;
-  padding: 4px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  width: 100%;
+  max-width: 100%;
   border-radius: 10px;
-  background: rgba(255, 255, 255, .05);
-  border: 1px solid var(--line);
 }
-.playback-aside-tabs button {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
+.playback-aside-tabs.sliding-tabs button {
   flex: 1 1 0;
   min-width: 0;
+  gap: 0;
+  font-size: var(--type-small);
   min-height: 34px;
   padding: 0 12px;
-  border: 0;
   border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  font-size: var(--type-small);
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    color .22s ease,
-    background .22s ease;
 }
-.playback-aside-tabs button.active {
-  color: var(--accent);
-  background: rgba(184, 240, 95, .12);
+.playback-aside-tabs.sliding-tabs .playback-aside-tabs__indicator {
+  border-radius: 8px;
 }
 .playback-aside-tabs sup {
   margin-left: 2px;

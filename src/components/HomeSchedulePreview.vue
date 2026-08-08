@@ -35,6 +35,7 @@ const cardRefs = ref<Record<string, HTMLElement | null>>({})
 /** CSS sliding pill (same pattern as library tabs). */
 const indicatorStyle = ref({ width: '0px', transform: 'translateX(0px)' })
 const indicatorReady = ref(false)
+const indicatorPulse = ref(false)
 
 const railHovered = ref(false)
 const marqueeMode = ref(false)
@@ -52,6 +53,7 @@ let io: IntersectionObserver | null = null
 let coarseMq: MediaQueryList | null = null
 let reduceMq: MediaQueryList | null = null
 let wheelBound = false
+let indicatorPulseTimer: ReturnType<typeof setTimeout> | null = null
 
 const tabs = computed(() => [
   { key: 'recent' as TabKey, label: '最近更新' },
@@ -186,6 +188,18 @@ function queueMarqueeRefresh() {
   })
 }
 
+function pulseIndicator() {
+  indicatorPulse.value = false
+  if (indicatorPulseTimer !== null) clearTimeout(indicatorPulseTimer)
+  requestAnimationFrame(() => {
+    indicatorPulse.value = true
+    indicatorPulseTimer = setTimeout(() => {
+      indicatorPulse.value = false
+      indicatorPulseTimer = null
+    }, 600)
+  })
+}
+
 /** Sliding pill — CSS transition (library-tabs pattern), not GSAP. */
 function updateIndicator() {
   const root = tabsRef.value
@@ -271,6 +285,7 @@ function onRailWheel(e: WheelEvent) {
 function selectTab(key: TabKey) {
   if (activeTab.value === key) return
   activeTab.value = key
+  pulseIndicator()
   // Indicator moves immediately via watch + CSS transition
   void nextTick(() => {
     queueIndicator()
@@ -399,6 +414,7 @@ onUnmounted(() => {
   reduceMq?.removeEventListener('change', onResize)
   if (measureRaf) cancelAnimationFrame(measureRaf)
   if (layoutRaf) cancelAnimationFrame(layoutRaf)
+  if (indicatorPulseTimer !== null) clearTimeout(indicatorPulseTimer)
   unbind()
   if (marqueeRef.value) gsap.killTweensOf(marqueeRef.value)
   gsap.killTweensOf(marqueeX)
@@ -421,27 +437,29 @@ onUnmounted(() => {
 
       <div
         ref="tabsRef"
-        class="home-schedule__tabs"
+        class="home-schedule__tabs radio-group"
         :class="{ 'is-indicator-ready': indicatorReady }"
         role="tablist"
         aria-label="放送日筛选"
       >
         <span
-          class="home-schedule__indicator"
+          class="home-schedule__indicator slider"
+          :class="{ 'is-pulsing': indicatorPulse }"
           :style="indicatorStyle"
           aria-hidden="true"
         />
         <button
-          v-for="tab in tabs"
+          v-for="(tab, index) in tabs"
           :key="String(tab.key)"
           type="button"
           role="tab"
-          class="home-schedule__tab"
+          class="home-schedule__tab radio-option"
+          :style="{ animationDelay: `${(index + 1) * 0.1}s` }"
           :class="{ 'is-active': activeTab === tab.key }"
           :aria-selected="activeTab === tab.key"
           @click="selectTab(tab.key)"
         >
-          {{ tab.label }}
+          <span class="radio-label">{{ tab.label }}</span>
         </button>
       </div>
 

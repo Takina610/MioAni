@@ -3,12 +3,47 @@
 .library-tabs {
   position: relative;
   display: flex;
-  gap: 4px;
+  gap: 0;
   min-width: 0;
   padding: 4px;
   border-radius: 12px;
   background: rgba(18, 21, 19, .72);
   border: 1px solid rgba(228, 237, 230, .08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  isolation: isolate;
+  box-shadow:
+    0 8px 32px color-mix(in srgb, var(--bg) 24%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--ink) 12%, transparent);
+  animation: sliding-tabs-in .6s ease-out;
+}
+
+.sliding-tabs::before,
+.library-tabs::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(
+    45deg,
+    transparent,
+    color-mix(in srgb, var(--ink) 10%, transparent),
+    transparent
+  );
+  opacity: .18;
+  pointer-events: none;
+  animation: sliding-tabs-shine 3s linear infinite;
+}
+
+@keyframes sliding-tabs-in {
+  from { opacity: 0; transform: scale(.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes sliding-tabs-shine {
+  from { transform: translateX(-100%) rotate(45deg); }
+  to { transform: translateX(100%) rotate(45deg); }
 }
 .sliding-tabs button,
 .library-tabs button {
@@ -27,7 +62,41 @@
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
-  transition: color .22s ease;
+  transition: color .3s ease;
+  animation: sliding-tabs-option-in .5s ease-out backwards;
+}
+.sliding-tabs button:nth-of-type(1),
+.library-tabs button:nth-of-type(1) { animation-delay: .1s; }
+.sliding-tabs button:nth-of-type(2),
+.library-tabs button:nth-of-type(2) { animation-delay: .2s; }
+.sliding-tabs button:nth-of-type(3),
+.library-tabs button:nth-of-type(3) { animation-delay: .3s; }
+.sliding-tabs button:nth-of-type(4),
+.library-tabs button:nth-of-type(4) { animation-delay: .4s; }
+.sliding-tabs button:nth-of-type(5),
+.library-tabs button:nth-of-type(5) { animation-delay: .5s; }
+
+@keyframes sliding-tabs-option-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.sliding-tabs button::before,
+.library-tabs button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .3s ease;
+}
+
+.sliding-tabs button:hover::before,
+.library-tabs button:hover::before {
+  opacity: 1;
 }
 .sliding-tabs button.active,
 .library-tabs button.active {
@@ -43,6 +112,7 @@
   border-radius: 9px;
   background: var(--accent);
   box-shadow: 0 8px 22px rgba(184, 240, 95, .22);
+  will-change: transform, width;
   /* Default: no slide until first measure (library sets .is-indicator-ready) */
   transition: none;
   pointer-events: none;
@@ -52,15 +122,34 @@
 .library-tabs.is-indicator-ready .sliding-tabs__indicator,
 .library-tabs.is-indicator-ready .library-tabs__indicator {
   transition:
-    transform .32s var(--ease),
-    width .32s var(--ease);
+    transform .4s cubic-bezier(.68, -.55, .265, 1.55),
+    width .4s cubic-bezier(.68, -.55, .265, 1.55);
 }
 /* Detail / person tabs measure on open; keep motion enabled after first paint */
 .detail-tabs .sliding-tabs__indicator,
 .person-tabs .sliding-tabs__indicator {
   transition:
-    transform .32s var(--ease),
-    width .32s var(--ease);
+    transform .4s cubic-bezier(.68, -.55, .265, 1.55),
+    width .4s cubic-bezier(.68, -.55, .265, 1.55);
+}
+
+.sliding-tabs__indicator.is-pulsing,
+.library-tabs__indicator.is-pulsing {
+  animation: sliding-tabs-indicator-pulse .6s ease-out;
+}
+
+@keyframes sliding-tabs-indicator-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 3px 12px color-mix(in srgb, var(--bg) 24%, transparent),
+      0 1px 4px color-mix(in srgb, var(--bg) 16%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 5px 20px color-mix(in srgb, var(--accent) 30%, transparent),
+      0 2px 8px color-mix(in srgb, var(--bg) 20%, transparent);
+  }
 }
 .library-tabs sup {
   margin-left: 6px;
@@ -71,4 +160,17 @@
 .library-tabs button:not(.active) sup {
   color: var(--accent);
   opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sliding-tabs,
+  .library-tabs,
+  .sliding-tabs::before,
+  .library-tabs::before,
+  .sliding-tabs button,
+  .library-tabs button,
+  .sliding-tabs__indicator.is-pulsing,
+  .library-tabs__indicator.is-pulsing {
+    animation: none;
+  }
 }

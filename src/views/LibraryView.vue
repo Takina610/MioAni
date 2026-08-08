@@ -17,10 +17,12 @@ const sentinelRef = ref<HTMLElement | null>(null)
 const indicatorStyle = ref({ width: '0px', transform: 'translateX(0px)' })
 /** First paint: no slide transition from 0-width ghost. */
 const indicatorReady = ref(false)
+const indicatorPulse = ref(false)
 let observer: IntersectionObserver | null = null
 let loadTimer: ReturnType<typeof setTimeout> | null = null
 let tabsResizeObserver: ResizeObserver | null = null
 let measureRaf = 0
+let indicatorPulseTimer: ReturnType<typeof setTimeout> | null = null
 
 const filtered = computed(() =>
   tab.value === 'all' ? store.items : store.items.filter((item) => item.status === tab.value),
@@ -98,6 +100,15 @@ function setTab(next: LibraryTab) {
   loadingMore.value = false
   tab.value = next
   visibleCount.value = PAGE_SIZE
+  indicatorPulse.value = false
+  if (indicatorPulseTimer !== null) clearTimeout(indicatorPulseTimer)
+  requestAnimationFrame(() => {
+    indicatorPulse.value = true
+    indicatorPulseTimer = setTimeout(() => {
+      indicatorPulse.value = false
+      indicatorPulseTimer = null
+    }, 600)
+  })
 }
 
 function loadMore() {
@@ -185,6 +196,7 @@ onUnmounted(() => {
   tabsResizeObserver?.disconnect()
   tabsResizeObserver = null
   if (loadTimer) clearTimeout(loadTimer)
+  if (indicatorPulseTimer !== null) clearTimeout(indicatorPulseTimer)
   if (measureRaf) cancelAnimationFrame(measureRaf)
   window.removeEventListener('resize', scheduleIndicator)
 })
@@ -227,7 +239,7 @@ onUnmounted(() => {
       <div class="library-toolbar">
         <div
           ref="tabsRef"
-          class="library-tabs sliding-tabs"
+          class="library-tabs sliding-tabs radio-group"
           :class="{ 'is-indicator-ready': indicatorReady }"
           role="tablist"
           aria-label="追番分类"
@@ -238,13 +250,19 @@ onUnmounted(() => {
             type="button"
             role="tab"
             :aria-selected="tab === item.id"
+            class="radio-option"
             :class="{ active: tab === item.id }"
             @click="setTab(item.id)"
           >
             {{ item.label }}
             <sup>{{ tabCount(item.id) }}</sup>
           </button>
-          <span class="library-tabs__indicator sliding-tabs__indicator" :style="indicatorStyle" aria-hidden="true" />
+          <span
+            class="library-tabs__indicator sliding-tabs__indicator slider"
+            :class="{ 'is-pulsing': indicatorPulse }"
+            :style="indicatorStyle"
+            aria-hidden="true"
+          />
         </div>
         <span>{{ displayed.length }}{{ hasMore ? ` / ${filtered.length}` : '' }} 部作品</span>
       </div>
