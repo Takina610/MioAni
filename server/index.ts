@@ -10,6 +10,7 @@ import {
   listProviders,
   resolvePlayback,
 } from './stream-sources/index.js'
+import { emptyDanmuResponse, fetchAggregatedDanmu } from './danmu-api.js'
 
 const app = express()
 const PORT = Number(process.env.PORT || 8787)
@@ -124,6 +125,36 @@ app.get('/api/playback/episodes', async (req, res) => {
   } catch (err) {
     res.status(502).json({
       error: err instanceof Error ? err.message : String(err),
+    })
+  }
+})
+
+app.get('/api/playback/danmu', async (req, res) => {
+  try {
+    const title = typeof req.query.title === 'string' ? req.query.title.trim() : ''
+    const episodeRaw = typeof req.query.episode === 'string' ? req.query.episode : ''
+    const episode = Number(episodeRaw)
+    const alt = parseAlt(req.query.alt)
+    if (!title) {
+      res.status(400).json({ error: 'missing title' })
+      return
+    }
+    if (!Number.isFinite(episode) || episode < 1) {
+      res.status(400).json({ error: 'invalid episode' })
+      return
+    }
+
+    const result = await fetchAggregatedDanmu({
+      title,
+      alt,
+      episode: Math.floor(episode),
+    })
+    res.json(result)
+  } catch (err) {
+    console.warn('[danmu] upstream unavailable', err instanceof Error ? err.message : err)
+    res.json({
+      ...emptyDanmuResponse(true),
+      warning: 'upstream_unavailable',
     })
   }
 })

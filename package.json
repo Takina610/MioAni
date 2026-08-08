@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently -k -n api,web -c magenta,cyan \"npm:dev:api\" \"npm:dev:web\"",
     "dev:web": "vite",
-    "dev:api": "tsx watch server/index.ts",
+    "dev:api": "node --env-file-if-exists=.env.local --import tsx --watch server/index.ts",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "start:api": "tsx server/index.ts",

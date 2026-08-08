@@ -25,6 +25,18 @@ import {
   setLastPlayedEpisode,
   setWatchPosition,
 } from '../services/playback'
+import {
+  fetchAggregatedDanmu,
+  filterDanmuBySource,
+  readDanmuMargin,
+  readDanmuSourcePreferences,
+  writeDanmuMargin,
+  writeDanmuSourcePreferences,
+  type AggregatedDanmuComment,
+  type DanmuMargin,
+  type DanmuSourceCount,
+  type DanmuSourcePreferences,
+} from '../services/danmu'
 import type { Anime } from '../types/anime'
 import type { PersonComment } from '../types/anime'
 import type {
@@ -40,6 +52,19 @@ type PlayerModules = {
   artplayerPluginAutoThumbnail: typeof import('artplayer-plugin-auto-thumbnail').default
   artplayerPluginDanmuku: typeof import('artplayer-plugin-danmuku').default
   artplayerPluginVttThumbnail: typeof import('artplayer-plugin-vtt-thumbnail').default
+}
+
+type PlayerDanmu = {
+  text: string
+  time?: number
+  mode?: 0 | 1 | 2
+  color?: string
+  border?: boolean
+}
+
+type DanmukuPlugin = {
+  config: (option: { danmuku: PlayerDanmu[] }) => unknown
+  load: () => unknown
 }
 
 let playerModulesPromise: Promise<PlayerModules> | null = null
@@ -125,14 +150,26 @@ const commentsLoadedFor = ref<number | null>(null)
 const commentTranslations = ref<Record<string, string>>({})
 const commentTranslating = ref<Record<string, boolean>>({})
 const commentTranslateErrors = ref<Record<string, string>>({})
+const remoteDanmus = ref<AggregatedDanmuComment[]>([])
+const danmuSourceCounts = ref<DanmuSourceCount[]>([])
+const danmuTotalCount = ref(0)
+const danmuSourcePreferences = ref<DanmuSourcePreferences>(readDanmuSourcePreferences())
+const danmuLoading = ref(false)
+const danmuAvailable = ref(false)
+const danmuError = ref('')
 
 let art: Artplayer | null = null
+let danmukuPlugin: DanmukuPlugin | null = null
 let closed = false
 let playGeneration = 0
 let completedMarked = false
 let positionTimer: ReturnType<typeof setInterval> | null = null
 let commentsObserver: IntersectionObserver | null = null
 let commentsLoadGeneration = 0
+let danmuAbortController: AbortController | null = null
+let danmuLoadGeneration = 0
+let danmuReloadGeneration = 0
+let danmuReloadQueue = Promise.resolve()
 
 const titleKeys = computed(() => pickPlaybackTitle(props.anime))
 const titleLabel = computed(() => titleKeys.value.title || props.anime.title)
@@ -212,6 +249,18 @@ const lineOptions = computed(() => [
 
 const preferredSourceLabel = computed(() => {
   return lineOptions.value.find((o) => o.value === preferredSource.value)?.label || '自动'
+})
+
+const visibleRemoteDanmus = computed(() =>
+  filterDanmuBySource(remoteDanmus.value, danmuSourcePreferences.value),
+)
+
+const danmuSourceRows = computed(() => danmuSourceCounts.value)
+
+const danmuCountLabel = computed(() => {
+  if (danmuLoading.value) return '加载中'
+  if (!danmuAvailable.value) return '未配置'
+  return `${visibleRemoteDanmus.value.length}/${danmuTotalCount.value}`
 })
 
 const defaultAsideWidth = () => Math.min(320, Math.floor(window.innerWidth * 0.28))
@@ -440,7 +489,110 @@ function scheduleAsideIndicator() {
   })
 }
 
+function resetDanmuState() {
+  remoteDanmus.value = []
+  danmuSourceCounts.value = []
+  danmuTotalCount.value = 0
+  danmuAvailable.value = false
+  danmuError.value = ''
+}
+
+function invalidateDanmuLoad() {
+  danmuLoadGeneration += 1
+  danmuAbortController?.abort()
+  danmuAbortController = null
+  danmuLoading.value = false
+}
+
+function toPlayerDanmu(comment: AggregatedDanmuComment): PlayerDanmu {
+  return {
+    text: comment.text,
+    // artplayer-plugin-danmuku treats time=0 as "use current time".
+    time: comment.time === 0 ? 0.001 : comment.time,
+    mode: comment.mode,
+    color: comment.color,
+  }
+}
+
+async function reloadDanmuku() {
+  const reloadGeneration = ++danmuReloadGeneration
+  const reload = async () => {
+    const plugin = danmukuPlugin
+    if (!plugin || closed || reloadGeneration !== danmuReloadGeneration) return
+    const localDanmus = props.anime.id
+      ? loadLocalDanmus(props.anime.id, currentEpisode.value)
+      : []
+    plugin.config({
+      danmuku: [...localDanmus, ...visibleRemoteDanmus.value.map(toPlayerDanmu)],
+    })
+    await Promise.resolve(plugin.load())
+  }
+  const pending = danmuReloadQueue.then(reload, reload)
+  danmuReloadQueue = pending.catch(() => {})
+  await pending
+}
+
+function isDanmuAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError'
+}
+
+async function loadDanmuForEpisode(episode: number, generation: number) {
+  if (closed || generation !== playGeneration) return
+  danmuAbortController?.abort()
+  const controller = new AbortController()
+  const requestGeneration = ++danmuLoadGeneration
+  danmuAbortController = controller
+  danmuLoading.value = true
+  danmuError.value = ''
+  try {
+    const result = await fetchAggregatedDanmu({
+      title: titleKeys.value.title,
+      alt: titleKeys.value.alt,
+      episode,
+      signal: controller.signal,
+    })
+    if (
+      closed ||
+      generation !== playGeneration ||
+      requestGeneration !== danmuLoadGeneration
+    ) return
+    remoteDanmus.value = result.comments
+    danmuSourceCounts.value = result.sourceCounts
+    danmuTotalCount.value = result.count
+    danmuAvailable.value = result.available
+    danmuError.value = result.warning === 'upstream_unavailable' ? '弹幕服务暂时不可用' : ''
+    await reloadDanmuku()
+  } catch (error) {
+    if (
+      closed ||
+      generation !== playGeneration ||
+      requestGeneration !== danmuLoadGeneration ||
+      isDanmuAbortError(error)
+    ) return
+    danmuError.value = '弹幕加载失败'
+  } finally {
+    if (requestGeneration === danmuLoadGeneration) {
+      danmuLoading.value = false
+      if (danmuAbortController === controller) danmuAbortController = null
+    }
+  }
+}
+
+function isDanmuSourceEnabled(sourceId: string): boolean {
+  return danmuSourcePreferences.value[sourceId] !== false
+}
+
+function onDanmuSourceChange(sourceId: string, event: Event) {
+  const input = event.target as HTMLInputElement | null
+  if (!input) return
+  const next = { ...danmuSourcePreferences.value, [sourceId]: input.checked }
+  danmuSourcePreferences.value = next
+  writeDanmuSourcePreferences(next)
+  void reloadDanmuku()
+}
+
 function destroyPlayer() {
+  danmuReloadGeneration += 1
   if (positionTimer) {
     clearInterval(positionTimer)
     positionTimer = null
@@ -453,6 +605,7 @@ function destroyPlayer() {
     }
     art = null
   }
+  danmukuPlugin = null
 }
 
 function getVideoEl(): HTMLVideoElement | null {
@@ -503,22 +656,33 @@ function startPositionLoop() {
   }, 5000)
 }
 
-function applyResume(video: HTMLVideoElement) {
+function applyResume(video: HTMLVideoElement): Promise<void> {
   const pos = getWatchPosition(props.anime.id, currentEpisode.value)
-  if (pos <= 0) return
-  const seek = () => {
-    try {
-      if (Number.isFinite(video.duration) && video.duration > 0) {
-        video.currentTime = Math.min(pos, Math.max(0, video.duration - 1))
-      } else {
-        video.currentTime = pos
+  if (pos <= 0) return Promise.resolve()
+  return new Promise((resolve) => {
+    let settled = false
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null
+    const seek = () => {
+      if (settled) return
+      settled = true
+      if (fallbackTimer) clearTimeout(fallbackTimer)
+      try {
+        if (Number.isFinite(video.duration) && video.duration > 0) {
+          video.currentTime = Math.min(pos, Math.max(0, video.duration - 1))
+        } else {
+          video.currentTime = pos
+        }
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
+      resolve()
     }
-  }
-  if (video.readyState >= 1) seek()
-  else video.addEventListener('loadedmetadata', seek, { once: true })
+    if (video.readyState >= 1) seek()
+    else {
+      video.addEventListener('loadedmetadata', seek, { once: true })
+      fallbackTimer = setTimeout(seek, 1000)
+    }
+  })
 }
 
 function isAbortError(err: unknown): boolean {
@@ -575,6 +739,7 @@ async function createArtplayer(url: string, kind: PlayableStream['kind'], usePro
         volume: 0.85,
         autoplay: true,
         pip: true,
+        playbackRate: true,
         fullscreen: true,
         fullscreenWeb: true,
         miniProgressBar: true,
@@ -610,7 +775,7 @@ async function createArtplayer(url: string, kind: PlayableStream['kind'], usePro
             color: '#FFFFFF',
             mode: 0,
             modes: [0, 1, 2],
-            margin: [10, '15%'],
+            margin: readDanmuMargin(),
             antiOverlap: true,
             synchronousPlayback: true,
             visible: true,
@@ -673,10 +838,15 @@ async function createArtplayer(url: string, kind: PlayableStream['kind'], usePro
                   fail(new Error('playback_aborted'))
                   return
                 }
-                applyResume(video)
-                void video.play().catch(() => {})
-                startPositionLoop()
-                ok()
+                void applyResume(video).then(() => {
+                  if (closed || generation !== playGeneration) {
+                    fail(new Error('playback_aborted'))
+                    return
+                  }
+                  void video.play().catch(() => {})
+                  startPositionLoop()
+                  ok()
+                })
               })
               hls.on(playerModules.Hls.Events.ERROR, (_e, data) => {
                 if (!data.fatal || settled) return
@@ -688,10 +858,15 @@ async function createArtplayer(url: string, kind: PlayableStream['kind'], usePro
               })
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
               video.src = src
-              applyResume(video)
-              void video.play().catch(() => {})
-              startPositionLoop()
-              ok()
+              void applyResume(video).then(() => {
+                if (closed || generation !== playGeneration) {
+                  fail(new Error('playback_aborted'))
+                  return
+                }
+                void video.play().catch(() => {})
+                startPositionLoop()
+                ok()
+              })
             } else {
               fail(new Error('HLS not supported'))
             }
@@ -707,6 +882,16 @@ async function createArtplayer(url: string, kind: PlayableStream['kind'], usePro
             : undefined,
       })
 
+      const plugins = (art as unknown as { plugins?: { artplayerPluginDanmuku?: DanmukuPlugin } }).plugins
+      danmukuPlugin = plugins?.artplayerPluginDanmuku || null
+
+      art.on('artplayerPluginDanmuku:config', (option: unknown) => {
+        const margin = (option as { margin?: unknown } | null)?.margin
+        if (Array.isArray(margin) && margin.length === 2) {
+          writeDanmuMargin(margin as DanmuMargin)
+        }
+      })
+
       art.on('ready', () => {
         if (closed || generation !== playGeneration) {
           fail(new Error('playback_aborted'))
@@ -720,9 +905,14 @@ async function createArtplayer(url: string, kind: PlayableStream['kind'], usePro
           /\/index\/listres\//i.test(playUrl)
         // HLS settles via Hls.Events.MANIFEST_PARSED; progressive/embed settle on ready.
         if (!isHlsLike && video) {
-          applyResume(video)
-          startPositionLoop()
-          ok()
+          void applyResume(video).then(() => {
+            if (closed || generation !== playGeneration) {
+              fail(new Error('playback_aborted'))
+              return
+            }
+            startPositionLoop()
+            ok()
+          })
         }
       })
 
@@ -847,6 +1037,8 @@ async function startPlayback(episode?: number) {
   if (props.anime.id) setLastPlayedEpisode(props.anime.id, ep)
 
   const generation = ++playGeneration
+  invalidateDanmuLoad()
+  resetDanmuState()
   destroyPlayer()
   playStatus.value = 'resolving'
   playError.value = ''
@@ -872,6 +1064,7 @@ async function startPlayback(episode?: number) {
     if (result.episodeCount) episodeCount.value = result.episodeCount
     if (result.provider) activeProvider.value = result.provider
     await tryPlayWithFallback(result.stream, generation)
+    if ((playStatus.value as string) === 'playing') void loadDanmuForEpisode(ep, generation)
   } catch (err) {
     if (closed || generation !== playGeneration || isAbortError(err)) return
     playStatus.value = 'error'
@@ -906,6 +1099,7 @@ function closeTheater() {
   if (closed) return
   closed = true
   playGeneration += 1
+  invalidateDanmuLoad()
   persistPosition()
   destroyPlayer()
   unlockBodyScroll()
@@ -955,6 +1149,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   playGeneration += 1
+  invalidateDanmuLoad()
   commentsObserver?.disconnect()
   commentsObserver = null
   asideTabsResizeObserver?.disconnect()
@@ -1229,6 +1424,35 @@ watch(
                   {{ ep.index }}
                 </button>
               </nav>
+            </section>
+
+            <section class="playback-theater-aside-section playback-danmu-section">
+              <div class="playback-danmu-heading">
+                <h2 id="playback-theater-danmu-heading" class="playback-theater-aside-title">弹幕来源</h2>
+                <span
+                  class="playback-danmu-count"
+                  title="来源数量是聚合服务返回的近似覆盖数"
+                  aria-live="polite"
+                >
+                  {{ danmuCountLabel }}
+                </span>
+              </div>
+              <div v-if="danmuSourceRows.length" class="playback-danmu-sources">
+                <label v-for="source in danmuSourceRows" :key="source.id" class="playback-danmu-source">
+                  <input
+                    type="checkbox"
+                    :checked="isDanmuSourceEnabled(source.id)"
+                    :aria-label="`启用${source.label}弹幕`"
+                    @change="onDanmuSourceChange(source.id, $event)"
+                  />
+                  <span class="playback-danmu-source__label">{{ source.label }}</span>
+                  <strong class="playback-danmu-source__count">{{ source.count }}</strong>
+                </label>
+              </div>
+              <p v-if="danmuError" class="playback-danmu-message is-error">{{ danmuError }}</p>
+              <p v-else-if="danmuLoading" class="playback-danmu-message">正在获取弹幕</p>
+              <p v-else-if="danmuAvailable && !remoteDanmus.length" class="playback-danmu-message">本集暂无弹幕</p>
+              <p v-else-if="!danmuAvailable" class="playback-danmu-message">服务端未配置弹幕</p>
             </section>
           </div>
 
