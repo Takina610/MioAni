@@ -19,7 +19,7 @@ export interface AggregatedDanmuResponse {
   count: number
   comments: AggregatedDanmuComment[]
   sourceCounts: DanmuSourceCount[]
-  warning?: 'upstream_unavailable'
+  warning?: 'not_configured' | 'upstream_unavailable'
 }
 
 export interface FetchAggregatedDanmuOptions {
@@ -33,7 +33,9 @@ interface UpstreamError extends Error {
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000
-const DEFAULT_RETRY_COUNT = 1
+const DEFAULT_DANMU_API_BASE = 'https://mioani-danmu-api.onrender.com'
+const DEFAULT_RETRY_COUNT = 5
+const MAX_RETRY_COUNT = 5
 const DEFAULT_RETRY_DELAY_MS = 250
 const DEFAULT_CACHE_TTL_MS = 5 * 60_000
 const DEFAULT_EMPTY_CACHE_TTL_MS = 30_000
@@ -174,7 +176,10 @@ export function emptyDanmuResponse(
 }
 
 function configuredApi(): { base: string; token: string; timeoutMs: number } | null {
-  const base = (process.env.DANMU_API_BASE || '').trim().replace(/\/+$/, '')
+  const configuredBase = process.env.DANMU_API_BASE
+  const base = (configuredBase === undefined ? DEFAULT_DANMU_API_BASE : configuredBase)
+    .trim()
+    .replace(/\/+$/, '')
   const token = (process.env.DANMU_API_TOKEN || '').trim()
   if (!base || !token) return null
   const timeout = Number(process.env.DANMU_API_TIMEOUT_MS || DEFAULT_TIMEOUT_MS)
@@ -192,7 +197,7 @@ function upstreamUrl(config: { base: string; token: string }, path: string): str
 function retryCount(): number {
   const configured = Number(process.env.DANMU_API_RETRY_COUNT || DEFAULT_RETRY_COUNT)
   return Number.isFinite(configured) && configured >= 0
-    ? Math.min(Math.floor(configured), 4)
+    ? Math.min(Math.floor(configured), MAX_RETRY_COUNT)
     : DEFAULT_RETRY_COUNT
 }
 
@@ -370,7 +375,7 @@ export function fetchAggregatedDanmu(
   options: FetchAggregatedDanmuOptions,
 ): Promise<AggregatedDanmuResponse> {
   const config = configuredApi()
-  if (!config) return Promise.resolve(emptyDanmuResponse(false))
+  if (!config) return Promise.resolve(emptyDanmuResponse(false, 'not_configured'))
 
   const candidates = uniqueStrings([options.title, ...(options.alt || [])])
   if (!candidates.length) return Promise.resolve(emptyDanmuResponse(true))

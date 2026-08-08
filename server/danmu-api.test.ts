@@ -80,6 +80,7 @@ describe('danmu-api helpers', () => {
         count: 0,
         comments: [],
         sourceCounts: [],
+        warning: 'not_configured',
       })
       expect(upstreamFetch).not.toHaveBeenCalled()
     } finally {
@@ -145,6 +146,40 @@ describe('danmu-api helpers', () => {
         count: 1,
       })
       expect(upstreamFetch).toHaveBeenCalledTimes(3)
+    } finally {
+      vi.unstubAllGlobals()
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('keeps retrying through five transient failures before loading comments', async () => {
+    const upstreamFetch = vi.fn()
+    vi.stubEnv('DANMU_API_BASE', 'https://danmu.example.test')
+    vi.stubEnv('DANMU_API_TOKEN', 'secret-token')
+    vi.stubEnv('DANMU_API_RETRY_COUNT', '5')
+    vi.stubEnv('DANMU_API_RETRY_DELAY_MS', '0')
+    vi.stubGlobal('fetch', upstreamFetch)
+    for (let index = 0; index < 5; index += 1) {
+      upstreamFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ errorMessage: 'bad gateway' }), { status: 502 }),
+      )
+    }
+    upstreamFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ matches: [{ episodeId: 42 }] }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ comments: [{ p: '2,1,25,255', m: 'hello' }] }), {
+          status: 200,
+        }),
+      )
+
+    try {
+      await expect(fetchAggregatedDanmu({ title: 'My Anime', episode: 1 })).resolves.toMatchObject({
+        available: true,
+        count: 1,
+      })
+      expect(upstreamFetch).toHaveBeenCalledTimes(7)
     } finally {
       vi.unstubAllGlobals()
       vi.unstubAllEnvs()

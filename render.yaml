@@ -14,6 +14,17 @@ services:
         value: production
       - key: PLAYBACK_DEBUG
         value: '0'
+      # Danmu upstream; the token is supplied through Render's secret prompt.
+      - key: DANMU_API_BASE
+        value: https://mioani-danmu-api.onrender.com
+      - key: DANMU_API_TOKEN
+        sync: false
+      - key: DANMU_API_RETRY_COUNT
+        value: '5'
+      - key: DANMU_API_RETRY_DELAY_MS
+        value: '250'
+      - key: DANMU_API_CACHE_TTL_MS
+        value: '300000'
       # 可选：限制跨域，多个前端用逗号分隔
       # - key: CORS_ORIGIN
       #   value: https://ani.tak1na.cn

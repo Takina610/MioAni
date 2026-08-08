@@ -30,6 +30,19 @@ describe('danmu service', () => {
     ])
   })
 
+  it('keeps comments usable when an upstream adapter marks the response unavailable', () => {
+    const result = normalizeDanmuResponse({
+      available: false,
+      comments: [{ text: 'loaded despite stale flag', sources: ['bilibili'] }],
+    })
+
+    expect(result).toMatchObject({
+      available: true,
+      count: 1,
+    })
+    expect(result.comments[0].text).toBe('loaded despite stale flag')
+  })
+
   it('keeps merged comments when at least one source remains enabled', () => {
     const comments = normalizeDanmuResponse({
       comments: [

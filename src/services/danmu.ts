@@ -19,7 +19,7 @@ export interface AggregatedDanmuResponse {
   count: number
   comments: AggregatedDanmuComment[]
   sourceCounts: DanmuSourceCount[]
-  warning?: 'upstream_unavailable'
+  warning?: 'not_configured' | 'upstream_unavailable'
 }
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') || '/api'
@@ -136,9 +136,11 @@ export function normalizeDanmuResponse(value: unknown): AggregatedDanmuResponse 
   }
   const sourceCounts = [...sourceCountMap.values()]
 
-  const warning = record?.warning === 'upstream_unavailable' ? record.warning : undefined
+  const warning = record?.warning === 'upstream_unavailable' || record?.warning === 'not_configured'
+    ? record.warning
+    : undefined
   return {
-    available: record?.available !== false,
+    available: record?.available !== false || comments.length > 0,
     count: Math.max(0, Math.floor(asNumber(record?.count) ?? comments.length)),
     comments,
     sourceCounts: sourceCounts.length ? sourceCounts : sourceCountsFromComments(comments),
