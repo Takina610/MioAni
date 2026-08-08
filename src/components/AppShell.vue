@@ -24,9 +24,9 @@ const mobileOpen = ref(false)
 const topbarCompact = ref(false)
 const topbarRef = ref<HTMLElement | null>(null)
 const mainNavRef = ref<HTMLElement | null>(null)
-/** Liquid glass backdrop for the topbar / main-nav backgrounds. */
+/** Liquid glass backdrop for the compact topbar / main-nav. */
 const { glassStyle: topbarGlassStyle } = useLiquidGlass(topbarRef)
-const { glassStyle: mainNavGlassStyle } = useLiquidGlass(mainNavRef)
+const { glassStyle: mainNavGlassStyle } = useLiquidGlass(mainNavRef, { blurAmount: 2.0 })
 const route = useRoute()
 const detailOverlay = useDetailOverlayStore()
 const personOverlay = usePersonOverlayStore()
@@ -249,7 +249,7 @@ onUnmounted(() => {
         ref="topbarRef"
         class="topbar"
         :class="{ 'is-compact': topbarCompact }"
-        :style="topbarGlassStyle"
+        :style="topbarCompact ? topbarGlassStyle : undefined"
       >
         <RouterLink class="brand" to="/" aria-label="MioAni 首页">
           <img class="brand-logo" :src="brandLogo" alt="MioAni" height="56" width="99" decoding="async" fetchpriority="low" />
@@ -263,7 +263,7 @@ onUnmounted(() => {
             'is-compact': topbarCompact,
             'is-hidden': detailOverlay.open || personOverlay.open || DETAIL_ROUTES.has(String(route.name)),
           }]"
-          :style="mainNavGlassStyle"
+          :style="topbarCompact ? mainNavGlassStyle : undefined"
           aria-label="主导航"
         >
           <div class="main-nav__panel">

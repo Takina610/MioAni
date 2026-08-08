@@ -181,6 +181,13 @@
   color: var(--ink);
 }
 
+@media (min-width: 761px) {
+  .main-nav {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
+
 .top-actions {
   grid-column: 2;
   justify-self: end;
@@ -244,7 +251,10 @@
   cursor: pointer;
   transition: transform .25s var(--ease), box-shadow .25s ease, height .35s var(--ease), border-radius .35s var(--ease), padding .35s var(--ease);
 }
-.import-button:hover, .api-error button:hover, .error-state button:hover {
+.import-button:hover {
+  box-shadow: 0 10px 30px rgba(184,240,95,.18);
+}
+.api-error button:hover, .error-state button:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 30px rgba(184,240,95,.18);
 }
@@ -316,15 +326,5 @@
   .menu-button,
   .search-shortcut {
     transition-duration: .01ms !important;
-  }
-}
-
-/* Desktop: liquid-glass capsule behind the centered nav links.
-   The mobile dropdown keeps its own full-width layout/background. */
-@media (min-width: 761px) {
-  .main-nav {
-    padding: 3px;
-    border-radius: 999px;
-    background: rgba(11, 13, 12, .38);
   }
 }

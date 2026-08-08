@@ -17,7 +17,14 @@ const visible = ref(false)
 const btnRef = ref<HTMLButtonElement | null>(null)
 
 /** iOS 26 风格液态玻璃边缘折射，具体实现见 useLiquidGlass。 */
-const { glassStyle } = useLiquidGlass(btnRef)
+const { glassStyle } = useLiquidGlass(btnRef, {
+  // Keep the small circular control's edge refraction aligned with its 56px surface.
+  glassThickness: 43,
+  bezelWidth: 43,
+  scaleRatio: 0.8,
+  displacementBlur: 1.2,
+  specularBlur: 1,
+})
 
 function onScroll() {
   const el = props.scrollEl

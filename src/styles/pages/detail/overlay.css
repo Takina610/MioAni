@@ -110,6 +110,7 @@ body.detail-scroll-lock {
   initial-value: 0%;
 }
 .detail-surface {
+  --detail-banner-fade-height: min(320px, 42vh);
   --reveal-x: 50%;
   --reveal-y: 42%;
   --reveal-r: 0%;
@@ -210,13 +211,29 @@ body.detail-scroll-lock {
   top: 0;
   left: 0;
   right: 0;
-  height: min(220px, 28vh);
+  height: var(--detail-banner-fade-height);
   background-color: #101512;
   background-size: cover;
   background-position: center top;
   background-repeat: no-repeat;
   filter: saturate(.9);
   opacity: .5;
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    #000 0%,
+    #000 56%,
+    rgba(0,0,0,.52) 78%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    180deg,
+    #000 0%,
+    #000 56%,
+    rgba(0,0,0,.52) 78%,
+    transparent 100%
+  );
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
   /* Avoid blank→image paint flash when CSS bg URL swaps */
   transition: none;
 }
@@ -228,9 +245,16 @@ body.detail-scroll-lock {
   top: 0;
   left: 0;
   right: 0;
-  height: min(260px, 34vh);
+  height: var(--detail-banner-fade-height);
+  /* Dissolve into the surface so the veil does not leave a horizontal seam. */
   background:
-    linear-gradient(180deg, rgba(15,19,17,.2), rgba(15,19,17,.88) 72%, #0f1311),
+    linear-gradient(
+      180deg,
+      rgba(15,19,17,.2) 0%,
+      rgba(15,19,17,.88) 56%,
+      rgba(15,19,17,.52) 78%,
+      rgba(15,19,17,0) 100%
+    ),
     radial-gradient(ellipse 50% 60% at 80% 0%, rgba(184,240,95,.1), transparent 60%);
   pointer-events: none;
 }
