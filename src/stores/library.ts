@@ -1,6 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import type { Anime, ImportResult, WatchStatus } from '../types/anime'
+import { normalizeWatchStatus } from '../types/anime'
 import { findMatchingAnime, isSameAnime } from '../utils/animeIdentity'
 import { isAnimeReleasing } from '../services/libraryProgress'
 
@@ -9,6 +10,34 @@ const PROFILE_KEY = 'mioani-profile-v1'
 
 function mergeLinkedIds(...lists: Array<string[] | undefined>): string[] {
   return [...new Set(lists.flatMap((list) => list || []).filter(Boolean))]
+}
+
+function todayStamp(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function applyStatusDates(anime: Anime, status: WatchStatus): void {
+  if (status === 'watching' || status === 'completed') {
+    anime.startedAt ||= todayStamp()
+  }
+  if (status === 'completed') anime.completedAt ||= todayStamp()
+  else anime.completedAt = undefined
+}
+
+function normalizeUserScore(value: number): number {
+  const clamped = Math.max(0, Math.min(10, value))
+  return Math.round(clamped)
+}
+
+function normalizeLibraryItem(item: Anime): Anime {
+  const status = normalizeWatchStatus(item.status)
+  const userScore = item.userScore == null ? undefined : normalizeUserScore(item.userScore)
+  if (status === item.status && userScore === item.userScore) return item
+  return { ...item, status, userScore }
 }
 
 function mergeAnimeRecord(existing: Anime, incoming: Anime): Anime {
@@ -28,7 +57,7 @@ function mergeAnimeRecord(existing: Anime, incoming: Anime): Anime {
       : (incoming.titles?.cn || existing.titles?.cn || incoming.title || existing.title),
     originalTitle: existing.originalTitle || incoming.originalTitle,
     // Prefer imported progress/status from the latest import, else keep local.
-    status: incoming.status || existing.status,
+    status: normalizeWatchStatus(incoming.status || existing.status),
     watched: Math.max(existing.watched || 0, incoming.watched || 0),
     score: incoming.score || existing.score,
     image: incoming.image || existing.image,
@@ -45,13 +74,18 @@ function mergeAnimeRecord(existing: Anime, incoming: Anime): Anime {
     nextEpisode: incoming.airingStatus === 'finished'
       ? undefined
       : (incoming.nextEpisode || existing.nextEpisode),
+    userScore: incoming.userScore == null && existing.userScore == null
+      ? undefined
+      : normalizeUserScore(incoming.userScore ?? existing.userScore ?? 0),
+    startedAt: incoming.startedAt ?? existing.startedAt,
+    completedAt: incoming.completedAt ?? existing.completedAt,
   }
 }
 
 export const useLibraryStore = defineStore('library', () => {
   const saved = localStorage.getItem(STORAGE_KEY)
   const savedProfile = localStorage.getItem(PROFILE_KEY)
-  const items = ref<Anime[]>(saved ? JSON.parse(saved) : [])
+  const items = ref<Anime[]>(saved ? JSON.parse(saved).map(normalizeLibraryItem) : [])
   const profile = ref<{ name: string; sources: string[] }>(
     savedProfile ? JSON.parse(savedProfile) : { name: '未登录', sources: [] },
   )
@@ -59,8 +93,22 @@ export const useLibraryStore = defineStore('library', () => {
   const completed = computed(() => items.value.filter((item) => item.status === 'completed'))
   const planned = computed(() => items.value.filter((item) => item.status === 'planned'))
   const watchedEpisodes = computed(() => items.value.reduce((sum, item) => sum + item.watched, 0))
+  const libraryIdIndex = computed(() => {
+    const index = new Map<string, Anime>()
+    for (const item of items.value) {
+      index.set(item.id, item)
+      for (const linkedId of item.linkedIds || []) index.set(linkedId, item)
+    }
+    return index
+  })
 
   function findInLibrary(anime: Pick<Anime, 'id' | 'title' | 'originalTitle' | 'titles' | 'year' | 'episodes' | 'linkedIds'>) {
+    const direct = libraryIdIndex.value.get(anime.id)
+    if (direct) return direct
+    for (const linkedId of anime.linkedIds || []) {
+      const linked = libraryIdIndex.value.get(linkedId)
+      if (linked) return linked
+    }
     return findMatchingAnime(items.value, anime)
   }
 
@@ -69,9 +117,11 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   function add(anime: Anime, status: WatchStatus = 'planned') {
+    status = normalizeWatchStatus(status)
     const existing = findInLibrary(anime)
     if (existing) {
       existing.status = status
+      applyStatusDates(existing, status)
       existing.linkedIds = mergeLinkedIds(existing.linkedIds, anime.linkedIds, [existing.id, anime.id])
       if (status === 'completed' && anime.episodes) {
         existing.watched = Math.max(existing.watched || 0, anime.episodes)
@@ -85,30 +135,60 @@ export const useLibraryStore = defineStore('library', () => {
       }
       return
     }
-    items.value.unshift({
+    const item: Anime = {
       ...anime,
       status,
       watched: status === 'completed' ? (anime.episodes || 0) : 0,
       linkedIds: mergeLinkedIds(anime.linkedIds, [anime.id]),
-    })
+    }
+    applyStatusDates(item, status)
+    items.value.unshift(item)
   }
 
   function updateProgress(id: string, value: number) {
     const anime = items.value.find((item) => item.id === id || item.linkedIds?.includes(id))
     if (!anime) return
-    anime.watched = Math.max(0, Math.min(value, anime.episodes || value))
+    const numericValue = Number.isFinite(value) ? Math.floor(value) : 0
+    anime.watched = Math.max(0, Math.min(numericValue, anime.episodes || numericValue))
+    if (anime.watched > 0) anime.startedAt ||= todayStamp()
+    if (anime.status === 'planned' && anime.watched > 0) anime.status = 'watching'
     if (
       anime.episodes
       && anime.watched >= anime.episodes
       && !isAnimeReleasing(anime)
     ) {
       anime.status = 'completed'
+      anime.completedAt ||= todayStamp()
+    } else if (anime.status === 'completed') {
+      anime.status = 'watching'
+      anime.completedAt = undefined
     }
   }
 
   function setStatus(id: string, status: WatchStatus) {
     const anime = items.value.find((item) => item.id === id || item.linkedIds?.includes(id))
-    if (anime) anime.status = status
+    if (anime) {
+      const normalizedStatus = normalizeWatchStatus(status)
+      anime.status = normalizedStatus
+      applyStatusDates(anime, normalizedStatus)
+    }
+  }
+
+  function setUserScore(id: string, value: number | null) {
+    const anime = items.value.find((item) => item.id === id || item.linkedIds?.includes(id))
+    if (!anime) return
+    if (value === null || !Number.isFinite(value)) {
+      delete anime.userScore
+      return
+    }
+    anime.userScore = normalizeUserScore(value)
+  }
+
+  function setWatchDates(id: string, startedAt?: string, completedAt?: string) {
+    const anime = items.value.find((item) => item.id === id || item.linkedIds?.includes(id))
+    if (!anime) return
+    anime.startedAt = startedAt || undefined
+    anime.completedAt = completedAt || undefined
   }
 
   function remove(id: string) {
@@ -133,7 +213,7 @@ export const useLibraryStore = defineStore('library', () => {
         next[index] = mergeAnimeRecord(next[index], incoming)
       } else {
         next.unshift({
-          ...incoming,
+          ...normalizeLibraryItem(incoming),
           linkedIds: mergeLinkedIds(incoming.linkedIds, [incoming.id]),
         })
       }
@@ -158,6 +238,8 @@ export const useLibraryStore = defineStore('library', () => {
     add,
     updateProgress,
     setStatus,
+    setUserScore,
+    setWatchDates,
     remove,
     mergeImport,
   }

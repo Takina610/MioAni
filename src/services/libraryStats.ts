@@ -25,7 +25,6 @@ const STATUS_LABELS: Record<WatchStatus, string> = {
   watching: '在看',
   completed: '看过',
   planned: '想看',
-  paused: '暂停',
   dropped: '搁置',
 }
 

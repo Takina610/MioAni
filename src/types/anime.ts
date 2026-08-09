@@ -1,5 +1,20 @@
-export type WatchStatus = 'watching' | 'completed' | 'planned' | 'paused' | 'dropped'
+export type WatchStatus = 'watching' | 'completed' | 'planned' | 'dropped'
 export type AiringStatus = 'releasing' | 'finished' | 'not_yet_released' | 'unknown'
+
+/** Collapse legacy hold and dropped source statuses into one shared state. */
+export function normalizeWatchStatus(value: unknown): WatchStatus {
+  switch (value) {
+    case 'watching':
+    case 'completed':
+    case 'planned':
+    case 'dropped':
+      return value
+    case 'paused':
+      return 'dropped'
+    default:
+      return 'planned'
+  }
+}
 
 export interface AnimeTitles {
   cn?: string
@@ -25,6 +40,12 @@ export interface Anime {
   episodes: number
   watched: number
   status: WatchStatus
+  /** Personal score from 0 to 10, separate from the catalog score. */
+  userScore?: number
+  /** Local calendar date when watching first started, formatted as YYYY-MM-DD. */
+  startedAt?: string
+  /** Local calendar date when the title was completed, formatted as YYYY-MM-DD. */
+  completedAt?: string
   tags: string[]
   summary: string
   airDay?: string
