@@ -30,6 +30,7 @@
 /* Library (+ shared sliding tabs used by detail overlays) */
 @import './styles/pages/library/page.css';
 @import './styles/pages/library/tabs.css';
+@import './styles/pages/stats/page.css';
 
 /* Intro */
 @import './styles/pages/intro/overlay.css';

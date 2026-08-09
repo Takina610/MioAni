@@ -2,6 +2,7 @@ import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import type { Anime, ImportResult, WatchStatus } from '../types/anime'
 import { findMatchingAnime, isSameAnime } from '../utils/animeIdentity'
+import { isAnimeReleasing } from '../services/libraryProgress'
 
 const STORAGE_KEY = 'mioani-library-v1'
 const PROFILE_KEY = 'mioani-profile-v1'
@@ -40,6 +41,10 @@ function mergeAnimeRecord(existing: Anime, incoming: Anime): Anime {
       ? (existing.source === 'bangumi' ? existing.id : incoming.id)
       : existing.id,
     source: existing.source === 'bangumi' || incoming.source === 'bangumi' ? 'bangumi' : incoming.source,
+    airingStatus: incoming.airingStatus || existing.airingStatus,
+    nextEpisode: incoming.airingStatus === 'finished'
+      ? undefined
+      : (incoming.nextEpisode || existing.nextEpisode),
   }
 }
 
@@ -92,7 +97,13 @@ export const useLibraryStore = defineStore('library', () => {
     const anime = items.value.find((item) => item.id === id || item.linkedIds?.includes(id))
     if (!anime) return
     anime.watched = Math.max(0, Math.min(value, anime.episodes || value))
-    if (anime.episodes && anime.watched >= anime.episodes) anime.status = 'completed'
+    if (
+      anime.episodes
+      && anime.watched >= anime.episodes
+      && !isAnimeReleasing(anime)
+    ) {
+      anime.status = 'completed'
+    }
   }
 
   function setStatus(id: string, status: WatchStatus) {

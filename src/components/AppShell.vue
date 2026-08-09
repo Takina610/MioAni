@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { PhCompass, PhHouse, PhBooks, PhCalendarBlank, PhMagnifyingGlass, PhDownloadSimple } from '@phosphor-icons/vue'
+import { PhChartLineUp, PhCompass, PhHouse, PhBooks, PhCalendarBlank, PhMagnifyingGlass, PhDownloadSimple } from '@phosphor-icons/vue'
 import GridTrailBackground from './GridTrailBackground.vue'
 import BackToTop from './BackToTop.vue'
 import { useLiquidGlass } from '../composables/useLiquidGlass'
@@ -15,8 +15,9 @@ const PersonDetailOverlay = defineAsyncComponent(() => import('./PersonDetailOve
 const DiscoverView = defineAsyncComponent(() => import('../views/DiscoverView.vue'))
 const LibraryView = defineAsyncComponent(() => import('../views/LibraryView.vue'))
 const ScheduleView = defineAsyncComponent(() => import('../views/ScheduleView.vue'))
+const StatsView = defineAsyncComponent(() => import('../views/StatsView.vue'))
 
-type ListKey = 'home' | 'discover' | 'schedule' | 'library'
+type ListKey = 'home' | 'discover' | 'schedule' | 'library' | 'stats'
 
 const importOpen = ref(false)
 const mobileOpen = ref(false)
@@ -33,7 +34,7 @@ const personOverlay = usePersonOverlayStore()
 
 /** Back-to-top for the window-scrolling list pages (home/discover/schedule/library). */
 const showListBackToTop = computed(() =>
-  ['discover', 'schedule', 'library'].includes(String(route.name)),
+  ['discover', 'schedule', 'library', 'stats'].includes(String(route.name)),
 )
 
 const COMPACT_ON = 56
@@ -51,6 +52,7 @@ const mountedLists = reactive<Record<ListKey, boolean>>({
   discover: false,
   schedule: false,
   library: false,
+  stats: false,
 })
 /** Scroll Y frozen when entering detail; restored only after overlay fully closes. */
 const scrollY = ref(0)
@@ -59,6 +61,7 @@ const scrollByList = reactive<Record<ListKey, number>>({
   discover: 0,
   schedule: 0,
   library: 0,
+  stats: 0,
 })
 /** Soft topbar re-entry when leaving anime detail for a list page. */
 const returningFromDetail = ref(false)
@@ -77,6 +80,7 @@ function listKeyFromRouteName(name: unknown): ListKey {
   if (name === 'discover') return 'discover'
   if (name === 'schedule') return 'schedule'
   if (name === 'library') return 'library'
+  if (name === 'stats') return 'stats'
   return 'home'
 }
 
@@ -84,11 +88,16 @@ function listKeyFromPath(path: string): ListKey {
   if (path.includes('/library')) return 'library'
   if (path.includes('/schedule')) return 'schedule'
   if (path.includes('/discover')) return 'discover'
+  if (path.includes('/stats')) return 'stats'
   return 'home'
 }
 
 function isListRouteName(name: unknown): boolean {
-  return name === 'home' || name === 'discover' || name === 'schedule' || name === 'library'
+  return name === 'home'
+    || name === 'discover'
+    || name === 'schedule'
+    || name === 'library'
+    || name === 'stats'
 }
 
 function ensureMounted(key: ListKey) {
@@ -271,6 +280,7 @@ onUnmounted(() => {
             <RouterLink to="/discover" @click="mobileOpen = false"><PhCompass :size="18" />发现</RouterLink>
             <RouterLink to="/schedule" @click="mobileOpen = false"><PhCalendarBlank :size="18" />时间表</RouterLink>
             <RouterLink to="/library" @click="mobileOpen = false"><PhBooks :size="18" />追番库</RouterLink>
+            <RouterLink to="/stats" @click="mobileOpen = false"><PhChartLineUp :size="18" />统计</RouterLink>
           </div>
         </nav>
         </Teleport>
@@ -329,6 +339,14 @@ onUnmounted(() => {
         :aria-hidden="activeList !== 'library'"
       >
         <LibraryView v-if="mountedLists.library" />
+      </div>
+      <div
+        class="list-layer"
+        data-list="stats"
+        :class="{ 'is-active': activeList === 'stats' }"
+        :aria-hidden="activeList !== 'stats'"
+      >
+        <StatsView v-if="mountedLists.stats" />
       </div>
     </main>
     <footer class="site-footer"><span>MioAni</span><p>数据来自 Bangumi 与 AniList</p><div><a href="https://bangumi.tv" target="_blank">Bangumi</a><a href="https://anilist.co" target="_blank">AniList</a></div></footer>

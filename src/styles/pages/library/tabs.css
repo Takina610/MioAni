@@ -36,6 +36,11 @@
   animation: sliding-tabs-shine 3s linear infinite;
 }
 
+/* The detail tab bar is sticky and must remain a stable touch boundary. */
+.detail-tabs::before {
+  display: none;
+}
+
 @keyframes sliding-tabs-in {
   from { opacity: 0; transform: scale(.9); }
   to { opacity: 1; transform: scale(1); }

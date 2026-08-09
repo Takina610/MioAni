@@ -19,12 +19,13 @@ export interface AggregatedDanmuResponse {
   count: number
   comments: AggregatedDanmuComment[]
   sourceCounts: DanmuSourceCount[]
-  warning?: 'upstream_unavailable'
+  warning?: 'not_configured' | 'upstream_unavailable'
 }
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') || '/api'
 const DANMU_SOURCES_KEY = 'mioani:danmu-source-preferences'
 const DANMU_SETTINGS_KEY = 'mioani:danmu-settings'
+const DANMU_REQUEST_TIMEOUT_MS = 45_000
 const SOURCE_ALIASES: Record<string, string> = {
   bilibili1: 'bilibili',
   qq: 'tencent',
@@ -136,9 +137,11 @@ export function normalizeDanmuResponse(value: unknown): AggregatedDanmuResponse 
   }
   const sourceCounts = [...sourceCountMap.values()]
 
-  const warning = record?.warning === 'upstream_unavailable' ? record.warning : undefined
+  const warning = record?.warning === 'upstream_unavailable' || record?.warning === 'not_configured'
+    ? record.warning
+    : undefined
   return {
-    available: record?.available !== false,
+    available: record?.available !== false || comments.length > 0,
     count: Math.max(0, Math.floor(asNumber(record?.count) ?? comments.length)),
     comments,
     sourceCounts: sourceCounts.length ? sourceCounts : sourceCountsFromComments(comments),
@@ -152,6 +155,16 @@ export async function fetchAggregatedDanmu(options: {
   episode: number
   signal?: AbortSignal
 }): Promise<AggregatedDanmuResponse> {
+  const controller = new AbortController()
+  let timedOut = false
+  if (options.signal?.aborted) controller.abort()
+  const timeout = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, DANMU_REQUEST_TIMEOUT_MS)
+  const abortFromCaller = () => controller.abort()
+  options.signal?.addEventListener('abort', abortFromCaller, { once: true })
+
   const params = new URLSearchParams({
     title: options.title.trim(),
     episode: String(Math.floor(options.episode)),
@@ -159,12 +172,20 @@ export async function fetchAggregatedDanmu(options: {
   for (const alt of options.alt || []) {
     if (alt.trim()) params.append('alt', alt.trim())
   }
-  const response = await fetch(`${API_BASE}/playback/danmu?${params}`, { signal: options.signal })
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(text || `HTTP ${response.status}`)
+  try {
+    const response = await fetch(`${API_BASE}/playback/danmu?${params}`, { signal: controller.signal })
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(text || `HTTP ${response.status}`)
+    }
+    return normalizeDanmuResponse(await response.json())
+  } catch (error) {
+    if (timedOut) throw new Error('danmu_client_timeout')
+    throw error
+  } finally {
+    clearTimeout(timeout)
+    options.signal?.removeEventListener('abort', abortFromCaller)
   }
-  return normalizeDanmuResponse(await response.json())
 }
 
 export type DanmuSourcePreferences = Record<string, boolean>

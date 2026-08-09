@@ -38,6 +38,64 @@
 .poster-wrap img { width: 100%; height: 100%; object-fit: cover; filter: saturate(.85); transition: transform .5s var(--ease),filter .3s ease; }
 .anime-card:hover .poster-wrap img { transform: scale(1.035); filter: saturate(1.08); }
 .poster-missing, .row-poster-missing { display: grid; place-items: center; height: 100%; color: var(--muted); background: var(--surface-2); font-size: var(--type-micro); }
+.anime-card-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  margin-top: 8px;
+  padding: 5px 6px 5px 8px;
+  border: 1px solid rgba(228,237,230,.1);
+  border-radius: 7px;
+  background: rgba(18,21,19,.72);
+  color: var(--muted);
+  font: 600 10px/1.2 monospace;
+}
+.anime-card-progress.has-update {
+  border-color: rgba(239, 90, 110, .42);
+  color: var(--ink);
+}
+.anime-card-progress__copy {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.anime-card-progress__update {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #ff8794;
+}
+.anime-card-progress__update i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ff5e70;
+  box-shadow: 0 0 8px rgba(255,94,112,.7);
+}
+.anime-card-progress__advance {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(255,135,148,.45);
+  border-radius: 5px;
+  background: rgba(255,94,112,.12);
+  color: #ff9aa5;
+  cursor: pointer;
+  transition: background .2s ease, color .2s ease, transform .2s ease;
+}
+.anime-card-progress__advance:hover,
+.anime-card-progress__advance:focus-visible {
+  background: #ff7180;
+  color: #240d11;
+  transform: translateY(-1px);
+}
 .rank-number { position: absolute; left: 8px; bottom: 8px; padding: 6px 7px; border-radius: 5px; background: rgba(11,13,12,.8); color: var(--accent); font: 700 14px/1 monospace; backdrop-filter: blur(8px); }
 .poster-add {
   position: absolute;

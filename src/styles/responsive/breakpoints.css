@@ -171,30 +171,30 @@
   }
   .hero-carousel {
     --hero-pad-x: 20px;
-    --hero-pad-top: 78px;
-    --hero-pad-bottom: 118px;
-    --fore-poster-w: min(220px, 58vw);
-    /* Taller copy slot so kicker+title+summary+meta+actions fit; still fixed + clipped */
-    --hero-copy-stage-h: 440px;
+    --hero-pad-top: 64px;
+    --hero-pad-bottom: 92px;
+    --fore-poster-w: min(190px, 54vw);
+    /* Keep the mobile hero compact while leaving room for all primary actions. */
+    --hero-copy-stage-h: 370px;
     align-content: start;
     min-height: calc(
       var(--hero-pad-top)
       + var(--hero-copy-stage-h)
-      + 34px
-      + min(320px, 84vw)
+      + 28px
+      + min(300px, 80vw)
       + var(--hero-pad-bottom)
     );
   }
   .hero-status { top: 22px; }
   .hero-stage {
-    min-height: calc(var(--hero-copy-stage-h) + 34px + min(360px, 96vw));
+    min-height: calc(var(--hero-copy-stage-h) + 28px + min(320px, 86vw));
     align-items: start;
   }
   .hero-fore {
     grid-template-columns: 1fr;
     grid-template-rows: var(--hero-copy-stage-h) auto;
     align-items: start;
-    gap: 34px;
+    gap: 28px;
   }
   .hero-fore-copy {
     align-self: start;
@@ -220,10 +220,26 @@
   .hero-copy-window--original { margin-top: 10px; }
   .hero-copy-window--summary { margin-top: 16px; }
   .hero-copy-window--meta { margin-top: 16px; }
-  .hero-copy-window--actions { margin: 20px -4px -4px; }
+  .hero-copy-window--actions { margin: 16px -4px -4px; }
   .hero-fore-poster {
     width: var(--fore-poster-w);
     justify-self: center;
+  }
+  .detail-scroll { overscroll-behavior: contain; }
+  .detail-tabs {
+    position: sticky;
+    top: max(56px, calc(env(safe-area-inset-top) + 48px));
+    z-index: 8;
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 18px;
+    padding: 4px;
+    background: rgba(14, 18, 15, .94);
+    box-shadow:
+      0 12px 24px rgba(7, 10, 8, .3),
+      0 0 0 1px rgba(228, 237, 230, .06);
+    -webkit-backdrop-filter: blur(18px) saturate(125%);
+    backdrop-filter: blur(18px) saturate(125%);
   }
   /* 移动端竖图：焦点偏上，少裁脸/标题 */
   .hero-depth-next-img,

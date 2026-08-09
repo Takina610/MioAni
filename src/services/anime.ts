@@ -18,7 +18,7 @@ import {
   buildBgmCharacterId,
   buildBgmPersonId,
 } from './personIds'
-import type { Anime, AnimeDetail, ImportResult, WatchStatus } from '../types/anime'
+import type { AiringStatus, Anime, AnimeDetail, ImportResult, WatchStatus } from '../types/anime'
 import type {
   DiscoverFilters,
   DiscoverGenreOption,
@@ -74,6 +74,13 @@ function formatAiring(seconds?: number): string | undefined {
   return `${hours} 小时后更新`
 }
 
+function mapAiringStatus(value: unknown): AiringStatus {
+  if (value === 'RELEASING') return 'releasing'
+  if (value === 'FINISHED') return 'finished'
+  if (value === 'NOT_YET_RELEASED') return 'not_yet_released'
+  return 'unknown'
+}
+
 async function aniListRequest(
   query: string,
   variables: Record<string, unknown> = {},
@@ -118,6 +125,7 @@ function mapAniList(media: any, entry?: any): Anime {
     episodes: resolveAniListEpisodes(media),
     watched: entry?.progress || 0,
     status: statusMap[entry?.status] ?? 'planned',
+    airingStatus: mapAiringStatus(media.status),
     tags: media.genres?.slice(0, 3) || [],
     summary: '',
     nextEpisode: formatAiring(media.nextAiringEpisode?.timeUntilAiring),
@@ -138,7 +146,7 @@ function resolveAniListEpisodes(media: {
   return 0
 }
 
-const mediaFields = `id title { romaji native english } coverImage { extraLarge large medium } bannerImage averageScore popularity seasonYear season episodes genres nextAiringEpisode { episode timeUntilAiring airingAt }`
+const mediaFields = `id title { romaji native english } coverImage { extraLarge large medium } bannerImage averageScore popularity seasonYear season episodes genres status nextAiringEpisode { episode timeUntilAiring airingAt }`
 
 function currentSeason() {
   const month = new Date().getMonth() + 1
@@ -279,6 +287,7 @@ export async function fetchBangumiCalendarDetailed(
           : dayJsWeekday
 
       const anime = mapBangumi(item)
+      anime.airingStatus = 'releasing'
       anime.airWeekday = jsWeekday
       anime.airDay = weekdayLabel(jsWeekday)
       if (airTime) anime.airTime = airTime

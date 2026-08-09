@@ -140,6 +140,18 @@ function stopIntroWaitingState() {
   introWaitingStatusIndex = 0
 }
 
+function cancelIntro() {
+  introGeneration += 1
+  stopIntroWaitingState()
+  introTimeline?.kill()
+  introContext?.revert()
+  introTimeline = null
+  introContext = null
+  introVisible.value = false
+  introIsFinishing.value = false
+  setIntroDocumentState(false)
+}
+
 function scheduleIntroWaitingProgress(generation: number) {
   if (
     generation !== introGeneration
@@ -895,6 +907,7 @@ watch(
   () => route.name,
   (name) => {
     document.body.classList.toggle('home-page-active', name === 'home')
+    if (name !== 'home' && introVisible.value) cancelIntro()
   },
   { immediate: true },
 )
@@ -922,13 +935,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  introGeneration += 1
-  stopIntroWaitingState()
-  introTimeline?.kill()
-  introContext?.revert()
-  introTimeline = null
-  introContext = null
-  setIntroDocumentState(false)
+  cancelIntro()
   document.body.classList.remove('home-page-active')
   stopAutoplayProgress(true)
   document.removeEventListener('visibilitychange', handleVisibilityChange)

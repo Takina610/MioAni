@@ -4,6 +4,7 @@ import HomeView from './views/HomeView.vue'
 const DiscoverView = () => import('./views/DiscoverView.vue')
 const LibraryView = () => import('./views/LibraryView.vue')
 const ScheduleView = () => import('./views/ScheduleView.vue')
+const StatsView = () => import('./views/StatsView.vue')
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -12,6 +13,7 @@ export const router = createRouter({
     { path: '/discover', name: 'discover', component: DiscoverView },
     { path: '/schedule', name: 'schedule', component: ScheduleView },
     { path: '/library', name: 'library', component: LibraryView },
+    { path: '/stats', name: 'stats', component: StatsView },
     // Overlay route: keeps list under the expanded card detail.
     {
       path: '/anime/:id',

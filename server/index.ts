@@ -153,7 +153,7 @@ app.get('/api/playback/danmu', async (req, res) => {
   } catch (err) {
     console.warn('[danmu] upstream unavailable', err instanceof Error ? err.message : err)
     res.json({
-      ...emptyDanmuResponse(true),
+      ...emptyDanmuResponse(false),
       warning: 'upstream_unavailable',
     })
   }
