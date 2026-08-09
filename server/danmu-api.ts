@@ -35,6 +35,7 @@ interface UpstreamError extends Error {
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000
+const DEFAULT_TOTAL_TIMEOUT_MS = 45_000
 const DEFAULT_DANMU_API_BASE = 'https://mioani-danmu-api.onrender.com'
 const DEFAULT_RETRY_COUNT = 5
 const MAX_RETRY_COUNT = 5
@@ -194,7 +195,12 @@ export function emptyDanmuResponse(
   return { available, count: 0, comments: [], sourceCounts: [], ...(warning ? { warning } : {}) }
 }
 
-function configuredApi(): { base: string; token: string; timeoutMs: number } | null {
+function configuredApi(): {
+  base: string
+  token: string
+  timeoutMs: number
+  totalTimeoutMs: number
+} | null {
   const configuredBase = process.env.DANMU_API_BASE
   const base = (configuredBase === undefined ? DEFAULT_DANMU_API_BASE : configuredBase)
     .trim()
@@ -202,10 +208,17 @@ function configuredApi(): { base: string; token: string; timeoutMs: number } | n
   const token = (process.env.TOKEN || '').trim()
   if (!base || !token) return null
   const timeout = Number(process.env.DANMU_API_TIMEOUT_MS || DEFAULT_TIMEOUT_MS)
+  const totalTimeout = Number(
+    process.env.DANMU_API_TOTAL_TIMEOUT_MS || DEFAULT_TOTAL_TIMEOUT_MS,
+  )
   return {
     base,
     token,
     timeoutMs: Number.isFinite(timeout) && timeout > 0 ? timeout : DEFAULT_TIMEOUT_MS,
+    totalTimeoutMs:
+      Number.isFinite(totalTimeout) && totalTimeout > 0
+        ? totalTimeout
+        : DEFAULT_TOTAL_TIMEOUT_MS,
   }
 }
 
@@ -277,16 +290,35 @@ function shouldRetry(error: unknown): boolean {
   return error instanceof Error && (error.message === 'danmu_api_timeout' || error.name === 'TypeError')
 }
 
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.resolve()
+  return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout>
+    const cleanup = () => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', abort)
+    }
+    const finish = () => {
+      cleanup()
+      resolve()
+    }
+    const abort = () => {
+      finish()
+    }
+    timer = setTimeout(finish, ms)
+    signal?.addEventListener('abort', abort, { once: true })
+  })
 }
 
 async function requestJsonOnce(
   url: string,
   init: RequestInit,
   timeoutMs: number,
+  parentSignal?: AbortSignal,
 ): Promise<unknown> {
   const controller = new AbortController()
+  const abortFromParent = () => controller.abort()
+  parentSignal?.addEventListener('abort', abortFromParent, { once: true })
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const response = await fetch(url, { ...init, signal: controller.signal })
@@ -305,12 +337,16 @@ async function requestJsonOnce(
     }
     return payload
   } catch (error) {
+    if (parentSignal?.aborted) {
+      throw new Error('danmu_api_total_timeout')
+    }
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('danmu_api_timeout')
     }
     throw error
   } finally {
     clearTimeout(timer)
+    parentSignal?.removeEventListener('abort', abortFromParent)
   }
 }
 
@@ -318,14 +354,16 @@ async function requestJson(
   url: string,
   init: RequestInit,
   timeoutMs: number,
+  parentSignal?: AbortSignal,
 ): Promise<unknown> {
   const maxRetries = retryCount()
   for (let attempt = 0; ; attempt += 1) {
+    if (parentSignal?.aborted) throw new Error('danmu_api_total_timeout')
     try {
-      return await requestJsonOnce(url, init, timeoutMs)
+      return await requestJsonOnce(url, init, timeoutMs, parentSignal)
     } catch (error) {
       if (attempt >= maxRetries || !shouldRetry(error)) throw error
-      await wait(retryDelayMs() * 2 ** attempt)
+      await wait(retryDelayMs() * 2 ** attempt, parentSignal)
     }
   }
 }
@@ -381,6 +419,7 @@ function mergeDanmuComments(groups: AggregatedDanmuComment[][]): AggregatedDanmu
 async function fetchAggregatedDanmuUncached(
   config: { base: string; token: string; timeoutMs: number },
   options: FetchAggregatedDanmuOptions,
+  signal?: AbortSignal,
 ): Promise<AggregatedDanmuResponse> {
   const candidates = uniqueStrings([options.title, ...(options.alt || [])])
   if (!candidates.length) return emptyDanmuResponse(true)
@@ -397,6 +436,7 @@ async function fetchAggregatedDanmuUncached(
           body: JSON.stringify({ fileName: buildMatchFileName(title, options.episode) }),
         },
         config.timeoutMs,
+        signal,
       )
       defaultMatch = parseMatches(matchPayload)[0] || null
       if (defaultMatch) break
@@ -420,6 +460,7 @@ async function fetchAggregatedDanmuUncached(
                 }),
               },
               config.timeoutMs,
+              signal,
             )
             const match = parseMatches(matchPayload).find((candidate) =>
               matchMentionsPlatform(candidate, platform),
@@ -444,20 +485,32 @@ async function fetchAggregatedDanmuUncached(
     return emptyDanmuResponse(true)
   }
 
-  const commentGroups: AggregatedDanmuComment[][] = []
-  let lastCommentError: unknown = null
-  for (const match of matchesById.values()) {
-    try {
-      const commentPayload = await requestJson(
-        upstreamUrl(config, `/api/v2/comment/${match.episodeId}?format=json`),
+  const commentResults = await Promise.all(
+    [...matchesById.values()].map(async (match) => {
+      try {
+        const commentPayload = await requestJson(
+          upstreamUrl(config, `/api/v2/comment/${match.episodeId}?format=json`),
         { headers: { Accept: 'application/json' } },
         config.timeoutMs,
+        signal,
       )
-      commentGroups.push(parseDandanComments(commentPayload, matchFallbackSource(match)))
-    } catch (error) {
-      if ((error as UpstreamError).status !== 404) lastCommentError = error
-    }
-  }
+        return {
+          comments: parseDandanComments(commentPayload, matchFallbackSource(match)),
+          error: null,
+        }
+      } catch (error) {
+        return {
+          comments: [] as AggregatedDanmuComment[],
+          error: (error as UpstreamError).status === 404 ? null : error,
+        }
+      }
+    }),
+  )
+
+  const commentGroups = commentResults
+    .map((result) => result.comments)
+    .filter((comments) => comments.length > 0)
+  const lastCommentError = commentResults.find((result) => result.error)?.error || null
 
   if (!commentGroups.length && lastCommentError) throw lastCommentError
 
@@ -486,12 +539,15 @@ export function fetchAggregatedDanmu(
   const current = danmuInFlight.get(key)
   if (current) return current
 
-  const pending = fetchAggregatedDanmuUncached(config, options)
+  const controller = new AbortController()
+  const deadline = setTimeout(() => controller.abort(), config.totalTimeoutMs)
+  const pending = fetchAggregatedDanmuUncached(config, options, controller.signal)
     .then((value) => {
       storeDanmuCache(key, value)
       return value
     })
     .finally(() => {
+      clearTimeout(deadline)
       if (danmuInFlight.get(key) === pending) danmuInFlight.delete(key)
     })
   danmuInFlight.set(key, pending)

@@ -54,6 +54,8 @@ type PlayerModules = {
   artplayerPluginVttThumbnail: typeof import('artplayer-plugin-vtt-thumbnail').default
 }
 
+type PlaybackRateValue = 0.5 | 0.75 | 1 | 1.25 | 1.5 | 1.75 | 2
+
 type PlayerDanmu = {
   text: string
   time?: number
@@ -157,6 +159,7 @@ const danmuSourcePreferences = ref<DanmuSourcePreferences>(readDanmuSourcePrefer
 const danmuLoading = ref(false)
 const danmuAvailable = ref(false)
 const danmuError = ref('')
+const danmuListOpen = ref(false)
 
 let art: Artplayer | null = null
 let danmukuPlugin: DanmukuPlugin | null = null
@@ -262,6 +265,14 @@ const danmuCountLabel = computed(() => {
   if (!danmuAvailable.value) return '未配置'
   return `${visibleRemoteDanmus.value.length}/${danmuTotalCount.value}`
 })
+
+function formatDanmuTime(time?: number): string {
+  if (time === undefined || !Number.isFinite(time) || time < 0) return '--:--'
+  const totalSeconds = Math.floor(time)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = String(totalSeconds % 60).padStart(2, '0')
+  return `${minutes}:${seconds}`
+}
 
 const defaultAsideWidth = () => Math.min(320, Math.floor(window.innerWidth * 0.28))
 
@@ -495,6 +506,7 @@ function resetDanmuState() {
   danmuTotalCount.value = 0
   danmuAvailable.value = false
   danmuError.value = ''
+  danmuListOpen.value = false
 }
 
 function invalidateDanmuLoad() {
@@ -536,6 +548,10 @@ function isDanmuAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError'
 }
 
+function isDanmuTimeoutError(error: unknown): boolean {
+  return error instanceof Error && error.message === 'danmu_client_timeout'
+}
+
 async function loadDanmuForEpisode(episode: number, generation: number) {
   if (closed || generation !== playGeneration) return
   danmuAbortController?.abort()
@@ -562,14 +578,14 @@ async function loadDanmuForEpisode(episode: number, generation: number) {
     danmuAvailable.value = result.available
     danmuError.value = result.warning === 'upstream_unavailable' ? '弹幕服务暂时不可用' : ''
     await reloadDanmuku()
-  } catch (error) {
+    } catch (error) {
     if (
       closed ||
       generation !== playGeneration ||
       requestGeneration !== danmuLoadGeneration ||
       isDanmuAbortError(error)
     ) return
-    danmuError.value = '弹幕加载失败'
+    danmuError.value = isDanmuTimeoutError(error) ? '弹幕服务响应超时' : '弹幕加载失败'
   } finally {
     if (requestGeneration === danmuLoadGeneration) {
       danmuLoading.value = false
@@ -689,6 +705,10 @@ function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.message === 'playback_aborted'
 }
 
+function formatPlaybackRate(rate: number): string {
+  return rate === 1 ? '1.0x' : `${rate}x`
+}
+
 async function createArtplayer(url: string, kind: PlayableStream['kind'], useProxy: boolean, generation: number): Promise<void> {
   if (closed || generation !== playGeneration) {
     throw new Error('playback_aborted')
@@ -732,6 +752,9 @@ async function createArtplayer(url: string, kind: PlayableStream['kind'], usePro
       const localDanmus = props.anime.id
         ? loadLocalDanmus(props.anime.id, episodeForDanmu)
         : []
+      const playbackRates = (
+        playerModules.Artplayer as unknown as { PLAYBACK_RATE: number[] }
+      ).PLAYBACK_RATE
 
       art = new playerModules.Artplayer({
         container: host,
@@ -739,7 +762,27 @@ async function createArtplayer(url: string, kind: PlayableStream['kind'], usePro
         volume: 0.85,
         autoplay: true,
         pip: true,
-        playbackRate: true,
+        setting: true,
+        controls: [
+          {
+            name: 'playback-rate',
+            position: 'right',
+            index: 25,
+            tooltip: '播放倍速',
+            html: formatPlaybackRate(1),
+            selector: playbackRates.map((rate) => ({
+              value: rate,
+              html: formatPlaybackRate(rate),
+              default: rate === 1,
+            })),
+            onSelect(this: { playbackRate: number }, item: { value?: string | number; html: string }) {
+              const rate = Number(item.value)
+              if (!Number.isFinite(rate)) return item.html
+              this.playbackRate = rate as PlaybackRateValue
+              return item.html
+            },
+          },
+        ],
         fullscreen: true,
         fullscreenWeb: true,
         miniProgressBar: true,
@@ -1402,6 +1445,42 @@ watch(
               <p v-if="activeSourceLabel && preferredSource === 'auto'" class="playback-theater-active-line">
                 当前：{{ activeSourceLabel }}
               </p>
+            </section>
+
+            <section class="playback-theater-aside-section playback-danmu-list-section">
+              <button
+                type="button"
+                class="playback-danmu-list-toggle"
+                :class="{ 'is-open': danmuListOpen }"
+                :aria-expanded="danmuListOpen"
+                aria-controls="playback-danmu-list"
+                @click="danmuListOpen = !danmuListOpen"
+              >
+                <span class="playback-danmu-list-toggle__label">弹幕列表</span>
+                <span class="playback-danmu-list-toggle__count">
+                  {{ visibleRemoteDanmus.length }} 条
+                </span>
+                <PhCaretDown :size="16" weight="bold" />
+              </button>
+              <div
+                v-show="danmuListOpen"
+                id="playback-danmu-list"
+                class="playback-danmu-list"
+                role="region"
+                aria-label="弹幕列表"
+              >
+                <p v-if="danmuLoading" class="playback-danmu-list__empty">正在获取弹幕</p>
+                <p v-else-if="danmuError" class="playback-danmu-list__empty is-error">{{ danmuError }}</p>
+                <p v-else-if="!visibleRemoteDanmus.length" class="playback-danmu-list__empty">
+                  暂无可显示的弹幕
+                </p>
+                <ul v-else>
+                  <li v-for="(comment, index) in visibleRemoteDanmus" :key="`${comment.time ?? 'na'}-${index}`">
+                    <time>{{ formatDanmuTime(comment.time) }}</time>
+                    <span>{{ comment.text }}</span>
+                  </li>
+                </ul>
+              </div>
             </section>
 
             <section class="playback-theater-aside-section playback-theater-episodes-section">

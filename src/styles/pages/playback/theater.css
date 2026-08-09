@@ -173,6 +173,17 @@
   height: 100% !important;
 }
 
+.playback-theater-player .art-control-playback-rate {
+  min-width: 46px;
+}
+
+.playback-theater-player .art-control-playback-rate .art-selector-value {
+  justify-content: center;
+  min-width: 46px;
+  padding: 0 6px;
+  font-variant-numeric: tabular-nums;
+}
+
 .playback-theater-state {
   position: absolute;
   inset: 0;
@@ -322,7 +333,16 @@
 
 .playback-danmu-section {
   flex: 0 0 auto;
-  gap: 8px;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.playback-danmu-section .playback-theater-aside-title {
+  font-size: var(--type-small);
+  letter-spacing: 0.04em;
 }
 
 .playback-danmu-heading {
@@ -336,31 +356,31 @@
 .playback-danmu-count {
   flex: 0 0 auto;
   color: var(--muted);
-  font-size: var(--type-micro);
+  font-size: var(--type-small);
   font-variant-numeric: tabular-nums;
 }
 
 .playback-danmu-sources {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 
 .playback-danmu-source {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
-  min-height: 28px;
+  min-height: 36px;
   color: var(--ink);
-  font-size: var(--type-micro);
+  font-size: var(--type-small);
   cursor: pointer;
 }
 
 .playback-danmu-source input {
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
   margin: 0;
   accent-color: var(--accent);
 }
@@ -375,7 +395,7 @@
 
 .playback-danmu-source__count {
   color: var(--ink);
-  font-size: var(--type-micro);
+  font-size: var(--type-small);
   font-variant-numeric: tabular-nums;
 }
 
@@ -391,7 +411,8 @@
 }
 
 .playback-theater-episodes-section {
-  flex: 0 0 auto;
+  flex: 0 0 220px;
+  height: 220px;
   min-height: 0;
   overflow: hidden;
 }
@@ -408,6 +429,117 @@
   letter-spacing: 0.08em;
   text-transform: none;
   color: var(--muted);
+}
+
+.playback-danmu-list-section {
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.playback-danmu-list-toggle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease;
+}
+
+.playback-danmu-list-toggle:hover,
+.playback-danmu-list-toggle.is-open {
+  border-color: rgba(184, 240, 95, .42);
+  background: rgba(184, 240, 95, .09);
+}
+
+.playback-danmu-list-toggle svg {
+  color: var(--muted);
+  transition: transform .2s ease, color .2s ease;
+}
+
+.playback-danmu-list-toggle.is-open svg {
+  color: var(--accent);
+  transform: rotate(180deg);
+}
+
+.playback-danmu-list-toggle__label {
+  min-width: 0;
+  font-size: var(--type-small);
+  font-weight: 700;
+}
+
+.playback-danmu-list-toggle__count {
+  color: var(--muted);
+  font-size: var(--type-micro);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.playback-danmu-list {
+  height: 220px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, .18);
+  scrollbar-width: thin;
+}
+
+.playback-danmu-list ul {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+}
+
+.playback-danmu-list li {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+  padding: 7px 10px;
+  color: color-mix(in srgb, var(--ink) 86%, transparent);
+  font-size: var(--type-micro);
+  line-height: 1.45;
+}
+
+.playback-danmu-list li:nth-child(2n) {
+  background: rgba(255, 255, 255, .025);
+}
+
+.playback-danmu-list time {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.playback-danmu-list li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.playback-danmu-list__empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  margin: 0;
+  padding: 18px;
+  color: var(--muted);
+  font-size: var(--type-small);
+  text-align: center;
+}
+
+.playback-danmu-list__empty.is-error {
+  color: var(--danger, #f28b82);
 }
 
 /* ── Custom line picker (replaces native <select>) ─────────────────── */
@@ -939,12 +1071,19 @@
   }
 
   .playback-theater-episodes-section {
-    overflow: visible;
+    flex: 0 0 220px;
+    height: 220px;
+    overflow: hidden;
   }
 
   .playback-theater-episodes {
-    overflow: visible;
+    height: 100%;
+    overflow-y: auto;
     max-height: none;
+  }
+
+  .playback-danmu-list {
+    height: 220px;
   }
 }
 

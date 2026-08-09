@@ -271,6 +271,28 @@ describe('danmu-api helpers', () => {
     }
   })
 
+  it('stops an upstream request when the aggregate deadline is reached', async () => {
+    const upstreamFetch = vi.fn((_: string, init?: RequestInit) => new Promise<Response>((_, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+    }))
+    vi.stubEnv('DANMU_API_BASE', 'https://danmu.example.test')
+    vi.stubEnv('TOKEN', 'secret-token')
+    vi.stubEnv('DANMU_API_TOTAL_TIMEOUT_MS', '10')
+    vi.stubEnv('DANMU_API_TIMEOUT_MS', '1000')
+    vi.stubEnv('DANMU_API_RETRY_DELAY_MS', '0')
+    vi.stubGlobal('fetch', upstreamFetch)
+
+    try {
+      await expect(fetchAggregatedDanmu({ title: 'Slow Anime', episode: 1 })).rejects.toThrow(
+        'danmu_api_total_timeout',
+      )
+      expect(upstreamFetch).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.unstubAllGlobals()
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('deduplicates concurrent requests and caches the result', async () => {
     const upstreamFetch = vi.fn()
     vi.stubEnv('DANMU_API_BASE', 'https://danmu.example.test')

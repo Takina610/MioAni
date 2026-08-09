@@ -23,6 +23,8 @@ services:
         value: '5'
       - key: DANMU_API_RETRY_DELAY_MS
         value: '250'
+      - key: DANMU_API_TOTAL_TIMEOUT_MS
+        value: '45000'
       - key: DANMU_API_CACHE_TTL_MS
         value: '300000'
       # 可选：限制跨域，多个前端用逗号分隔
