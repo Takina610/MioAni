@@ -59,6 +59,7 @@ const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
   { value: 'watching', label: '在看' },
   { value: 'completed', label: '看过' },
   { value: 'planned', label: '想看' },
+  { value: 'dropped', label: '搁置' },
 ]
 
 // Cross-source identity: Bangumi and AniList of the same show share library status.
@@ -298,23 +299,35 @@ onUnmounted(() => {
                 : 0"
         >{{ anime.episodes }}话</span>
       </p>
-      <div v-if="inLibrary" class="anime-card-progress" :class="{ 'has-update': libraryProgress.canAdvance }">
+      <div
+        v-if="inLibrary && libraryItem?.status !== 'planned'"
+        class="anime-card-progress"
+        :class="{
+          'is-tracking': libraryProgress.mode === 'tracking',
+          'is-catching-up': libraryProgress.mode === 'catching-up',
+        }"
+      >
         <div class="anime-card-progress__copy">
           <span>已看 {{ libraryProgress.watched }}{{ libraryProgress.available ? ` / ${libraryProgress.available}` : '' }} 集</span>
-          <span v-if="libraryProgress.canAdvance" class="anime-card-progress__update">
-            <i aria-hidden="true" />有更新
+          <span v-if="libraryProgress.mode" class="anime-card-progress__update">
+            <i aria-hidden="true" />{{ libraryProgress.mode === 'tracking' ? '追番' : '补番' }}
           </span>
         </div>
-        <button
-          v-if="libraryProgress.canAdvance"
-          class="anime-card-progress__advance"
-          type="button"
-          aria-label="标记看到下一集"
-          title="标记看到下一集"
-          @click="advanceProgress"
-        >
-          <PhPlus :size="14" weight="bold" />
-        </button>
+        <div class="anime-card-progress__actions">
+          <span v-if="libraryItem?.userScore != null" class="anime-card-progress__score">
+            <PhStar :size="12" weight="fill" />{{ libraryItem.userScore.toFixed(1) }}
+          </span>
+          <button
+            v-if="libraryProgress.canAdvance"
+            class="anime-card-progress__advance"
+            type="button"
+            aria-label="标记看到下一集"
+            title="标记看到下一集"
+            @click="advanceProgress"
+          >
+            <PhPlus :size="14" weight="bold" />
+          </button>
+        </div>
       </div>
     </div>
   </article>

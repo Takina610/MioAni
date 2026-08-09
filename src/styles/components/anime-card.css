@@ -43,17 +43,23 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 28px;
-  margin-top: 8px;
+  height: 34px;
+  min-height: 34px;
+  margin-top: 0;
   padding: 5px 6px 5px 8px;
+  box-sizing: border-box;
   border: 1px solid rgba(228,237,230,.1);
   border-radius: 7px;
   background: rgba(18,21,19,.72);
   color: var(--muted);
   font: 600 10px/1.2 monospace;
 }
-.anime-card-progress.has-update {
+.anime-card-progress.is-tracking {
   border-color: rgba(239, 90, 110, .42);
+  color: var(--ink);
+}
+.anime-card-progress.is-catching-up {
+  border-color: rgba(95, 180, 240, .42);
   color: var(--ink);
 }
 .anime-card-progress__copy {
@@ -63,18 +69,45 @@
   min-width: 0;
   white-space: nowrap;
 }
+.anime-card-progress__actions {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 7px;
+}
+.anime-card-progress__score {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--accent);
+  font-weight: 700;
+}
+.anime-card-progress__score svg {
+  color: var(--accent);
+}
 .anime-card-progress__update {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+}
+.anime-card-progress.is-tracking .anime-card-progress__update {
   color: #ff8794;
+}
+.anime-card-progress.is-catching-up .anime-card-progress__update {
+  color: #8fd7ff;
 }
 .anime-card-progress__update i {
   width: 5px;
   height: 5px;
   border-radius: 50%;
+}
+.anime-card-progress.is-tracking .anime-card-progress__update i {
   background: #ff5e70;
   box-shadow: 0 0 8px rgba(255,94,112,.7);
+}
+.anime-card-progress.is-catching-up .anime-card-progress__update i {
+  background: #5fb4f0;
+  box-shadow: 0 0 8px rgba(95,180,240,.7);
 }
 .anime-card-progress__advance {
   display: grid;
@@ -95,6 +128,16 @@
   background: #ff7180;
   color: #240d11;
   transform: translateY(-1px);
+}
+.anime-card-progress.is-catching-up .anime-card-progress__advance {
+  border-color: rgba(95,180,240,.45);
+  background: rgba(95,180,240,.14);
+  color: #8fd7ff;
+}
+.anime-card-progress.is-catching-up .anime-card-progress__advance:hover,
+.anime-card-progress.is-catching-up .anime-card-progress__advance:focus-visible {
+  background: #6bbef2;
+  color: #09202d;
 }
 .rank-number { position: absolute; left: 8px; bottom: 8px; padding: 6px 7px; border-radius: 5px; background: rgba(11,13,12,.8); color: var(--accent); font: 700 14px/1 monospace; backdrop-filter: blur(8px); }
 .poster-add {
@@ -275,14 +318,19 @@
 .poster-status-menu__remove svg {
   color: var(--danger) !important;
 }
-.anime-meta { padding: 12px 2px 0; }
+.anime-meta {
+  display: grid;
+  grid-template-rows: auto auto 34px;
+  row-gap: 8px;
+  padding: 12px 2px 0;
+}
 .anime-meta h3 { overflow: hidden; margin: 0; font-size: var(--type-card-title); line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
 .anime-meta p {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   align-items: center;
   gap: 4px;
-  margin: 7px 0 0;
+  margin: 0;
   color: var(--muted);
   font: var(--type-micro)/1 monospace;
 }
@@ -401,7 +449,7 @@
     line-height: 1.35;
   }
   .anime-meta p {
-    margin: 5px 0 0;
+    margin: 0;
     font-size: 10px;
   }
 }

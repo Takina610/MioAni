@@ -6,7 +6,7 @@ import AnimeCard from '../components/AnimeCard.vue'
 import { useLibraryStore } from '../stores/library'
 const store = useLibraryStore()
 const route = useRoute()
-type LibraryTab = 'all' | 'watching' | 'completed' | 'planned'
+type LibraryTab = 'all' | 'watching' | 'completed' | 'planned' | 'dropped'
 
 const PAGE_SIZE = 24
 const tab = ref<LibraryTab>('all')
@@ -24,6 +24,19 @@ let tabsResizeObserver: ResizeObserver | null = null
 let measureRaf = 0
 let indicatorPulseTimer: ReturnType<typeof setTimeout> | null = null
 
+const statusCounts = computed(() => {
+  const counts: Record<LibraryTab, number> = {
+    all: store.items.length,
+    watching: 0,
+    completed: 0,
+    planned: 0,
+    dropped: 0,
+  }
+  for (const item of store.items) {
+    if (item.status in counts) counts[item.status as Exclude<LibraryTab, 'all'>] += 1
+  }
+  return counts
+})
 const filtered = computed(() =>
   tab.value === 'all' ? store.items : store.items.filter((item) => item.status === tab.value),
 )
@@ -35,11 +48,11 @@ const tabs = [
   { id: 'watching', label: '在看' },
   { id: 'completed', label: '看过' },
   { id: 'planned', label: '想看' },
+  { id: 'dropped', label: '搁置' },
 ] as const
 
 function tabCount(id: LibraryTab) {
-  if (id === 'all') return store.items.length
-  return store.items.filter((anime) => anime.status === id).length
+  return statusCounts.value[id]
 }
 
 function updateIndicator() {
@@ -140,7 +153,7 @@ watch(tab, async () => {
 })
 
 watch(
-  () => store.items.length,
+  () => filtered.value.length,
   async () => {
     // Keep current window if possible when list mutates (add/remove).
     visibleCount.value = Math.min(
@@ -158,10 +171,11 @@ watch(
 // Counts change button width — remeasure when any tab count shifts.
 watch(
   () => [
-    store.items.length,
-    store.watching.length,
-    store.completed.length,
-    store.items.filter((i) => i.status === 'planned').length,
+    statusCounts.value.all,
+    statusCounts.value.watching,
+    statusCounts.value.completed,
+    statusCounts.value.planned,
+    statusCounts.value.dropped,
   ],
   () => {
     void measureIndicator()
@@ -267,12 +281,13 @@ onUnmounted(() => {
         <span>{{ displayed.length }}{{ hasMore ? ` / ${filtered.length}` : '' }} 部作品</span>
       </div>
 
-      <div v-if="filtered.length" :key="tab" class="catalog-grid library-grid">
+      <div v-if="filtered.length" class="catalog-grid library-grid">
         <AnimeCard
           v-for="(anime, index) in displayed"
           :key="anime.id"
           :anime="anime"
           :index="index + 1"
+          instant
         />
       </div>
       <div v-else class="library-empty">

@@ -56,17 +56,26 @@ type PlayerModules = {
 
 type PlaybackRateValue = 0.5 | 0.75 | 1 | 1.25 | 1.5 | 1.75 | 2
 
+type DanmuState = 'wait' | 'ready' | 'emit' | 'stop'
+
 type PlayerDanmu = {
+  id?: string
   text: string
   time?: number
   mode?: 0 | 1 | 2
   color?: string
   border?: boolean
+  sources?: string[]
+  $state?: DanmuState
+  $ref?: HTMLElement | null
 }
 
 type DanmukuPlugin = {
   config: (option: { danmuku: PlayerDanmu[] }) => unknown
-  load: () => unknown
+  load: (danmuku?: PlayerDanmu[]) => unknown
+  queue?: PlayerDanmu[]
+  states?: Partial<Record<DanmuState, PlayerDanmu[]>>
+  makeWait?: (danmu: PlayerDanmu) => unknown
 }
 
 let playerModulesPromise: Promise<PlayerModules> | null = null
@@ -254,8 +263,15 @@ const preferredSourceLabel = computed(() => {
   return lineOptions.value.find((o) => o.value === preferredSource.value)?.label || '自动'
 })
 
+const visibleRemoteDanmuEntries = computed(() =>
+  remoteDanmus.value.flatMap((comment, index) => {
+    const visible = filterDanmuBySource([comment], danmuSourcePreferences.value).length > 0
+    return visible ? [{ id: `remote:${index}`, comment }] : []
+  }),
+)
+
 const visibleRemoteDanmus = computed(() =>
-  filterDanmuBySource(remoteDanmus.value, danmuSourcePreferences.value),
+  visibleRemoteDanmuEntries.value.map(({ comment }) => comment),
 )
 
 const danmuSourceRows = computed(() => danmuSourceCounts.value)
@@ -516,13 +532,35 @@ function invalidateDanmuLoad() {
   danmuLoading.value = false
 }
 
-function toPlayerDanmu(comment: AggregatedDanmuComment): PlayerDanmu {
+function toPlayerDanmu(comment: AggregatedDanmuComment, id: string): PlayerDanmu {
   return {
+    id,
     text: comment.text,
     // artplayer-plugin-danmuku treats time=0 as "use current time".
     time: comment.time === 0 ? 0.001 : comment.time,
     mode: comment.mode,
     color: comment.color,
+    sources: comment.sources,
+  }
+}
+
+function getLocalPlayerDanmus(): PlayerDanmu[] {
+  if (!props.anime.id) return []
+  return loadLocalDanmus(props.anime.id, currentEpisode.value).map((danmu, index) => ({
+    ...danmu,
+    id: `local:${index}`,
+  }))
+}
+
+function removePlayerDanmu(plugin: DanmukuPlugin, danmu: PlayerDanmu) {
+  plugin.makeWait?.(danmu)
+  if (plugin.states) {
+    for (const state of Object.keys(plugin.states) as DanmuState[]) {
+      plugin.states[state] = plugin.states[state]?.filter((item) => item !== danmu)
+    }
+  }
+  if (plugin.queue) {
+    plugin.queue = plugin.queue.filter((item) => item !== danmu)
   }
 }
 
@@ -531,13 +569,27 @@ async function reloadDanmuku() {
   const reload = async () => {
     const plugin = danmukuPlugin
     if (!plugin || closed || reloadGeneration !== danmuReloadGeneration) return
-    const localDanmus = props.anime.id
-      ? loadLocalDanmus(props.anime.id, currentEpisode.value)
-      : []
+    const desiredDanmus = [
+      ...getLocalPlayerDanmus(),
+      ...visibleRemoteDanmuEntries.value.map(({ id, comment }) => toPlayerDanmu(comment, id)),
+    ]
     plugin.config({
-      danmuku: [...localDanmus, ...visibleRemoteDanmus.value.map(toPlayerDanmu)],
+      danmuku: desiredDanmus,
     })
-    await Promise.resolve(plugin.load())
+
+    // Artplayer's load() without arguments clears every active danmu. Keep the
+    // existing queue and reconcile only entries affected by source preferences.
+    if (!plugin.queue || !plugin.states || !plugin.makeWait) {
+      await Promise.resolve(plugin.load())
+      return
+    }
+    const desiredIds = new Set(desiredDanmus.map((danmu) => danmu.id).filter(Boolean))
+    for (const danmu of [...plugin.queue]) {
+      if (danmu.id && !desiredIds.has(danmu.id)) removePlayerDanmu(plugin, danmu)
+    }
+    const existingIds = new Set(plugin.queue.map((danmu) => danmu.id).filter(Boolean))
+    const missing = desiredDanmus.filter((danmu) => danmu.id && !existingIds.has(danmu.id))
+    if (missing.length) await Promise.resolve(plugin.load(missing))
   }
   const pending = danmuReloadQueue.then(reload, reload)
   danmuReloadQueue = pending.catch(() => {})
@@ -750,7 +802,10 @@ async function createArtplayer(url: string, kind: PlayableStream['kind'], usePro
     try {
       const episodeForDanmu = currentEpisode.value
       const localDanmus = props.anime.id
-        ? loadLocalDanmus(props.anime.id, episodeForDanmu)
+        ? loadLocalDanmus(props.anime.id, episodeForDanmu).map((danmu, index) => ({
+            ...danmu,
+            id: `local:${index}`,
+          }))
         : []
       const playbackRates = (
         playerModules.Artplayer as unknown as { PLAYBACK_RATE: number[] }
@@ -768,7 +823,6 @@ async function createArtplayer(url: string, kind: PlayableStream['kind'], usePro
             name: 'playback-rate',
             position: 'right',
             index: 25,
-            tooltip: '播放倍速',
             html: formatPlaybackRate(1),
             selector: playbackRates.map((rate) => ({
               value: rate,
@@ -828,9 +882,10 @@ async function createArtplayer(url: string, kind: PlayableStream['kind'], usePro
             theme: 'dark',
             heatmap: false,
             async beforeEmit(danmu) {
+              const playerDanmu = danmu as PlayerDanmu
               const text = (danmu?.text || '').trim()
               if (!text || text.length > 100) return false
-              if (props.anime.id) {
+              if (props.anime.id && !playerDanmu.sources?.length) {
                 saveLocalDanmu(props.anime.id, episodeForDanmu, {
                   text,
                   time: typeof danmu.time === 'number' ? danmu.time : undefined,

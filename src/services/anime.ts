@@ -47,7 +47,7 @@ export {
 } from './discoverFilters'
 
 const statusMap: Record<string, WatchStatus> = {
-  CURRENT: 'watching', COMPLETED: 'completed', PLANNING: 'planned', PAUSED: 'paused', DROPPED: 'dropped',
+  CURRENT: 'watching', COMPLETED: 'completed', PLANNING: 'planned', PAUSED: 'dropped', DROPPED: 'dropped',
 }
 
 const BANGUMI_SEARCH_PAGE_LIMIT = 20
@@ -79,6 +79,16 @@ function mapAiringStatus(value: unknown): AiringStatus {
   if (value === 'FINISHED') return 'finished'
   if (value === 'NOT_YET_RELEASED') return 'not_yet_released'
   return 'unknown'
+}
+
+function formatAniListDate(value: any): string | undefined {
+  const year = Number(value?.year)
+  const month = Number(value?.month)
+  const day = Number(value?.day)
+  if (!Number.isInteger(year) || year < 1) return undefined
+  if (!Number.isInteger(month) || month < 1 || month > 12) return undefined
+  if (!Number.isInteger(day) || day < 1 || day > new Date(year, month, 0).getDate()) return undefined
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
 async function aniListRequest(
@@ -125,6 +135,8 @@ function mapAniList(media: any, entry?: any): Anime {
     episodes: resolveAniListEpisodes(media),
     watched: entry?.progress || 0,
     status: statusMap[entry?.status] ?? 'planned',
+    startedAt: formatAniListDate(entry?.startedAt),
+    completedAt: formatAniListDate(entry?.completedAt),
     airingStatus: mapAiringStatus(media.status),
     tags: media.genres?.slice(0, 3) || [],
     summary: '',
@@ -328,7 +340,7 @@ export function scheduleFromAniListSeasonal(
 export { emptyWeekSchedule }
 
 export async function importAniList(username: string): Promise<ImportResult> {
-  const query = `query ($name: String) { MediaListCollection(userName: $name, type: ANIME) { lists { entries { status progress score media { ${mediaFields} } } } } }`
+  const query = `query ($name: String) { MediaListCollection(userName: $name, type: ANIME) { lists { entries { status progress score startedAt { year month day } completedAt { year month day } media { ${mediaFields} } } } } }`
   const data = await aniListRequest(query, { name: username })
   const entries = data.MediaListCollection.lists.flatMap((list: any) => list.entries)
   return { source: 'anilist', items: entries.map((entry: any) => mapAniList(entry.media, entry)), username }
@@ -462,7 +474,7 @@ export async function importBangumi(username: string): Promise<ImportResult> {
     offset += payload.data.length
     if (payload.data.length < 50 || offset >= payload.total) break
   } while (offset < 1000)
-  const typeMap: Record<number, WatchStatus> = { 1: 'planned', 2: 'completed', 3: 'watching', 4: 'paused', 5: 'dropped' }
+  const typeMap: Record<number, WatchStatus> = { 1: 'planned', 2: 'completed', 3: 'watching', 4: 'dropped', 5: 'dropped' }
   const items = all.map((entry: any) => ({ ...mapBangumi({ ...entry.subject, subject_id: entry.subject_id, ep_status: entry.ep_status }), status: typeMap[entry.type] ?? 'planned' }))
   return { source: 'bangumi', items, username }
 }

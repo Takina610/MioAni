@@ -659,6 +659,39 @@
   align-content: start;
 }
 
+/* Shared narrow scrollbar for the two dense playback lists. */
+.playback-danmu-list,
+.playback-theater-episodes {
+  scrollbar-color: rgba(184, 240, 95, .62) rgba(255, 255, 255, .08);
+  scrollbar-gutter: stable;
+}
+.playback-danmu-list::-webkit-scrollbar,
+.playback-theater-episodes::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+.playback-danmu-list::-webkit-scrollbar-track,
+.playback-theater-episodes::-webkit-scrollbar-track {
+  border-radius: 99px;
+  background: rgba(255, 255, 255, .08);
+}
+.playback-danmu-list::-webkit-scrollbar-thumb,
+.playback-theater-episodes::-webkit-scrollbar-thumb {
+  border: 1px solid rgba(12, 15, 13, .78);
+  border-radius: 99px;
+  background: rgba(184, 240, 95, .62);
+}
+.playback-danmu-list::-webkit-scrollbar-thumb:hover,
+.playback-theater-episodes::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+.playback-danmu-list::-webkit-scrollbar-button,
+.playback-theater-episodes::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 .playback-ep-chip {
   display: inline-flex;
   align-items: center;

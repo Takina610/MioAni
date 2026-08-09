@@ -15,7 +15,9 @@ import {
   PhHash,
   PhArrowLeft,
   PhClock,
+  PhCaretLeft,
   PhCaretDown,
+  PhCaretRight,
   PhTranslate,
   PhPlay,
 } from '@phosphor-icons/vue'
@@ -280,6 +282,236 @@ function applySurfaceReveal(open: boolean, withTransition: boolean) {
 const display = computed(() => store.detail || store.seed)
 const libraryItem = computed(() => (display.value ? library.findInLibrary(display.value) : undefined))
 const detail = computed(() => store.detail)
+const watchedDraft = ref('')
+const userScoreDraft = ref('')
+const startedAtDraft = ref('')
+const completedAtDraft = ref('')
+const scoreOptions = Array.from({ length: 10 }, (_, index) => index + 1)
+type DateDraftField = 'startedAt' | 'completedAt'
+type CalendarView = 'days' | 'months' | 'years'
+const activeDatePicker = ref<DateDraftField | null>(null)
+const calendarView = ref<CalendarView>('days')
+const calendarMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
+const calendarYearStart = ref(Math.floor(new Date().getFullYear() / 12) * 12)
+const libraryRecordRef = ref<HTMLElement | null>(null)
+const libraryRecordHeight = ref(0)
+let libraryRecordResizeObserver: ResizeObserver | null = null
+
+const detailContentStyle = computed(() => ({
+  '--detail-library-record-offset': libraryRecordHeight.value
+    ? `${libraryRecordHeight.value + 18}px`
+    : '0px',
+}))
+
+function syncLibraryDrafts(): void {
+  watchedDraft.value = libraryItem.value ? String(Math.max(0, libraryItem.value.watched || 0)) : ''
+  userScoreDraft.value = libraryItem.value?.userScore == null
+    ? ''
+    : String(libraryItem.value.userScore)
+  startedAtDraft.value = libraryItem.value?.startedAt || ''
+  completedAtDraft.value = libraryItem.value?.completedAt || ''
+}
+
+function draftText(value: unknown): string {
+  return value == null ? '' : String(value).trim()
+}
+
+function parseWatchedDraft(fallback: number): number {
+  const value = Number(watchedDraft.value)
+  if (!Number.isFinite(value)) return fallback
+  const max = display.value?.episodes || value
+  return Math.max(0, Math.min(Math.floor(value), max))
+}
+
+function parseUserScoreDraft(): number | null {
+  const raw = draftText(userScoreDraft.value)
+  if (!raw) return null
+  const score = Number(raw)
+  return Number.isFinite(score) ? score : null
+}
+
+function parseDateDraft(value: unknown): string | undefined {
+  const raw = draftText(value)
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : undefined
+}
+
+const selectedUserScore = computed(() => {
+  const score = Number(userScoreDraft.value)
+  return Number.isInteger(score) && score >= 1 && score <= 10 ? score : null
+})
+
+function dateStamp(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function dateFromStamp(value: unknown): Date | null {
+  const stamp = parseDateDraft(value)
+  if (!stamp) return null
+  const [year, month, day] = stamp.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
+    ? date
+    : null
+}
+
+function dateDraftValue(field: DateDraftField): string {
+  return field === 'startedAt' ? startedAtDraft.value : completedAtDraft.value
+}
+
+function dateDraftLabel(value: unknown): string {
+  const stamp = parseDateDraft(value)
+  return stamp ? stamp.replace(/-/g, '/') : '未设置'
+}
+
+const calendarYearLabel = computed(() => `${calendarMonth.value.getFullYear()}年`)
+const calendarMonthLabel = computed(() => `${calendarMonth.value.getMonth() + 1}月`)
+const calendarYearRangeLabel = computed(() => `${calendarYearStart.value} - ${calendarYearStart.value + 11}`)
+const calendarMonths = Array.from({ length: 12 }, (_, month) => month)
+const calendarYears = computed(() => (
+  Array.from({ length: 12 }, (_, index) => calendarYearStart.value + index)
+))
+
+const calendarDays = computed(() => {
+  const year = calendarMonth.value.getFullYear()
+  const month = calendarMonth.value.getMonth()
+  const firstDay = (new Date(year, month, 1).getDay() + 6) % 7
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cells: Array<{ key: string; stamp?: string; day?: number }> = []
+  for (let index = 0; index < firstDay; index += 1) {
+    cells.push({ key: `empty-${index}` })
+  }
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const stamp = dateStamp(new Date(year, month, day))
+    cells.push({ key: stamp, stamp, day })
+  }
+  return cells
+})
+
+function openDatePicker(field: DateDraftField): void {
+  if (activeDatePicker.value === field) {
+    activeDatePicker.value = null
+    return
+  }
+  const selected = dateFromStamp(dateDraftValue(field)) || new Date()
+  calendarMonth.value = new Date(selected.getFullYear(), selected.getMonth(), 1)
+  calendarYearStart.value = Math.floor(selected.getFullYear() / 12) * 12
+  calendarView.value = 'days'
+  activeDatePicker.value = field
+}
+
+function changeCalendarMonth(delta: number): void {
+  if (calendarView.value === 'years') {
+    calendarYearStart.value += delta * 12
+    return
+  }
+  const yearDelta = calendarView.value === 'months' ? delta : 0
+  calendarMonth.value = new Date(
+    calendarMonth.value.getFullYear() + yearDelta,
+    calendarMonth.value.getMonth() + (calendarView.value === 'days' ? delta : 0),
+    1,
+  )
+  calendarYearStart.value = Math.floor(calendarMonth.value.getFullYear() / 12) * 12
+}
+
+function selectCalendarYear(year: number): void {
+  calendarMonth.value = new Date(year, calendarMonth.value.getMonth(), 1)
+  calendarYearStart.value = Math.floor(year / 12) * 12
+  calendarView.value = 'months'
+}
+
+function selectCalendarMonth(month: number): void {
+  calendarMonth.value = new Date(calendarMonth.value.getFullYear(), month, 1)
+  calendarView.value = 'days'
+}
+
+function selectDate(field: DateDraftField, stamp: string): void {
+  if (field === 'startedAt') startedAtDraft.value = stamp
+  else completedAtDraft.value = stamp
+  activeDatePicker.value = null
+  persistLibraryRecord()
+}
+
+function clearDate(field: DateDraftField): void {
+  if (field === 'startedAt') startedAtDraft.value = ''
+  else completedAtDraft.value = ''
+  activeDatePicker.value = null
+  persistLibraryRecord()
+}
+
+function isDateSelected(field: DateDraftField, stamp?: string): boolean {
+  return Boolean(stamp && parseDateDraft(dateDraftValue(field)) === stamp)
+}
+
+function isToday(stamp?: string): boolean {
+  return Boolean(stamp && stamp === dateStamp(new Date()))
+}
+
+function onDatePickerPointerDown(event: PointerEvent): void {
+  const target = event.target as HTMLElement | null
+  if (!target?.closest('.detail-library-date-picker')) activeDatePicker.value = null
+}
+
+const libraryRecordDirty = computed(() => {
+  const item = libraryItem.value
+  if (!item) return false
+  return parseWatchedDraft(item.watched || 0) !== (item.watched || 0)
+    || parseUserScoreDraft() !== (item.userScore ?? null)
+    || parseDateDraft(startedAtDraft.value) !== (item.startedAt || undefined)
+    || parseDateDraft(completedAtDraft.value) !== (item.completedAt || undefined)
+})
+
+function normalizeLibraryDrafts(): void {
+  const item = libraryItem.value
+  if (!item) return
+  if (!draftText(watchedDraft.value)) {
+    watchedDraft.value = String(item.watched || 0)
+  } else {
+    const value = Number(watchedDraft.value)
+    if (!Number.isFinite(value)) {
+      watchedDraft.value = String(item.watched || 0)
+    } else {
+      const max = display.value?.episodes || value
+      const watched = Math.max(0, Math.min(Math.floor(value), max))
+      watchedDraft.value = String(watched)
+    }
+  }
+  const rawScore = draftText(userScoreDraft.value)
+  if (!rawScore) {
+    userScoreDraft.value = ''
+  } else {
+    const score = Number(rawScore)
+    if (!Number.isFinite(score)) {
+      userScoreDraft.value = item.userScore == null ? '' : String(item.userScore)
+    } else {
+      userScoreDraft.value = String(score)
+    }
+  }
+  startedAtDraft.value = parseDateDraft(startedAtDraft.value) || ''
+  completedAtDraft.value = parseDateDraft(completedAtDraft.value) || ''
+}
+
+function persistLibraryRecord(): void {
+  const item = libraryItem.value
+  if (!item) return
+  normalizeLibraryDrafts()
+  if (!libraryRecordDirty.value) return
+  library.updateProgress(item.id, parseWatchedDraft(item.watched || 0))
+  library.setUserScore(item.id, parseUserScoreDraft())
+  library.setWatchDates(item.id, parseDateDraft(startedAtDraft.value), parseDateDraft(completedAtDraft.value))
+  syncLibraryDrafts()
+}
+
+function selectUserScore(score: number | null): void {
+  userScoreDraft.value = score == null ? '' : String(score)
+  persistLibraryRecord()
+}
+
+function onLibraryRecordBlur(): void {
+  persistLibraryRecord()
+}
 
 const detailTabs = computed<{ id: DetailTab; label: string }[]>(() => {
   const tabs: { id: DetailTab; label: string }[] = [
@@ -401,8 +633,8 @@ const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
   { value: 'watching', label: '在看' },
   { value: 'completed', label: '看过' },
   { value: 'planned', label: '想看' },
+  { value: 'dropped', label: '搁置' },
 ]
-
 const playbackEnabled = isPlaybackEnabled()
 const showPlayback = ref(false)
 const playbackEpisode = ref(1)
@@ -785,6 +1017,7 @@ async function popDetailStack(_opts: { fromBrowserBack?: boolean } = {}) {
  * Never flash the parent anime: person surface covers immediately.
  */
 async function resumeSuspendedPersonFromAnime() {
+  persistLibraryRecord()
   if (!personOverlay.hasSuspendedPerson) return false
   const personId = personOverlay.detail?.id || personOverlay.seed?.id
   if (!personId) return false
@@ -826,6 +1059,7 @@ async function resumeSuspendedPersonFromAnime() {
 /** Fully dismiss overlay to list (X button / final back). */
 async function dismissToList() {
   if (!store.open || store.phase === 'collapsing' || closing) return
+  persistLibraryRecord()
   closing = true
   if (animTimer) clearTimeout(animTimer)
 
@@ -914,6 +1148,7 @@ async function dismissToList() {
 
 async function closeOverlay() {
   if (!store.open || store.phase === 'collapsing' || store.phase === 'returning' || closing) return
+  persistLibraryRecord()
 
   // Anime work opened from CV/person: always restore person first (never flash parent anime).
   if (personOverlay.hasSuspendedPerson) {
@@ -947,6 +1182,10 @@ watch(
 
 function onKeydown(event: KeyboardEvent) {
   if (event.key !== 'Escape' || !store.open) return
+  if (activeDatePicker.value) {
+    activeDatePicker.value = null
+    return
+  }
   // Theater owns Escape while open.
   if (showPlayback.value) return
   if (store.canPopDetail) void closeOverlay()
@@ -1197,6 +1436,36 @@ watch(
   },
 )
 
+watch(
+  () => [
+    store.activeId,
+    libraryItem.value?.id,
+    libraryItem.value?.watched,
+    libraryItem.value?.userScore,
+    libraryItem.value?.status,
+    libraryItem.value?.startedAt,
+    libraryItem.value?.completedAt,
+  ] as const,
+  syncLibraryDrafts,
+  { immediate: true },
+)
+
+watch(
+  libraryRecordRef,
+  (recordHeader) => {
+    const record = recordHeader?.closest<HTMLElement>('.detail-library-record') || null
+    libraryRecordResizeObserver?.disconnect()
+    libraryRecordResizeObserver = null
+    libraryRecordHeight.value = record?.offsetHeight || 0
+    if (!record || typeof ResizeObserver === 'undefined') return
+    libraryRecordResizeObserver = new ResizeObserver(() => {
+      libraryRecordHeight.value = record.offsetHeight
+    })
+    libraryRecordResizeObserver.observe(record)
+  },
+  { flush: 'post' },
+)
+
 watch(tab, async () => {
   await nextTick()
   updateTabIndicator()
@@ -1251,6 +1520,7 @@ async function openPersonEntity(opts: {
   if (!opts.id || !parsePersonId(opts.id)) return
   if (closing || store.phase === 'expanding' || store.phase === 'returning' || store.phase === 'collapsing') return
   if (personOverlay.open) return
+  persistLibraryRecord()
   // Snapshot anime UI (tab/scroll/extras) so return keeps 角色/制作人员 list.
   captureLayerUi(store.topLayer?.key)
   const routeName = personRouteName(parsePersonId(opts.id)!.kind)
@@ -1303,6 +1573,7 @@ function openStaffDetail(st: AnimeStaff, event?: Event) {
 async function openRelated(rel: AnimeRelation, event: Event) {
   if (!rel.id || rel.id === display.value?.id) return
   if (closing || store.phase === 'expanding' || store.phase === 'returning' || store.phase === 'collapsing') return
+  persistLibraryRecord()
 
   const thumb = (event.currentTarget as HTMLElement | null)
     ?.querySelector?.('img, .relation-card__ph') as Element | null
@@ -1344,6 +1615,7 @@ watch(
   () => [store.open, store.phase, store.activeId] as const,
   async ([open, phase]) => {
     if (!open) {
+      persistLibraryRecord()
       settled.value = false
       contentReady.value = false
       flyerImage.value = ''
@@ -1383,6 +1655,7 @@ watch(
         && name !== 'person-detail'
         && !closing
       ) {
+        persistLibraryRecord()
         store.finishClose()
         settled.value = false
         contentReady.value = false
@@ -1472,6 +1745,7 @@ function onResize() {
 
 onMounted(() => {
   document.addEventListener('keydown', onKeydown)
+  document.addEventListener('pointerdown', onDatePickerPointerDown)
   window.addEventListener('resize', onResize)
   if (route.name === 'anime-detail' && typeof route.params.id === 'string' && !store.open) {
     void store.reopenFromRoute(route.params.id, '/')
@@ -1480,12 +1754,15 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  persistLibraryRecord()
   document.removeEventListener('keydown', onKeydown)
+  document.removeEventListener('pointerdown', onDatePickerPointerDown)
   window.removeEventListener('resize', onResize)
   document.documentElement.classList.remove('detail-flight-active')
   if (animTimer) clearTimeout(animTimer)
   if (extraLoadTimer) clearTimeout(extraLoadTimer)
   if (indicatorPulseTimer !== null) clearTimeout(indicatorPulseTimer)
+  libraryRecordResizeObserver?.disconnect()
   extraObserver?.disconnect()
   extraObserver = null
 })
@@ -1676,10 +1953,272 @@ onUnmounted(() => {
                   移出
                 </button>
               </div>
+
+              <section v-if="libraryItem" class="detail-library-record" aria-label="我的观看记录">
+                <div ref="libraryRecordRef" class="detail-library-record__head">
+                  <span>MY RECORD</span>
+                </div>
+                <div class="detail-library-record__grid">
+                  <label class="detail-library-field">
+                    <span>观看集数</span>
+                    <span class="detail-library-input-wrap">
+                      <input
+                        v-model="watchedDraft"
+                        class="detail-library-input"
+                        type="number"
+                        min="0"
+                        :max="display.episodes || undefined"
+                        step="1"
+                        inputmode="numeric"
+                        aria-label="观看集数"
+                        @blur="onLibraryRecordBlur"
+                      />
+                      <em>/ {{ display.episodes || '—' }}</em>
+                    </span>
+                  </label>
+                  <label class="detail-library-field">
+                    <span>我的评分</span>
+                    <div class="detail-score-timeline" role="radiogroup" aria-label="我的评分">
+                      <div class="detail-score-timeline__track">
+                        <button
+                          v-for="score in scoreOptions"
+                          :key="score"
+                          type="button"
+                          class="detail-score-timeline__point"
+                          :class="{ active: selectedUserScore === score }"
+                          role="radio"
+                          :aria-checked="selectedUserScore === score"
+                          :aria-label="`${score} 分`"
+                          @click="selectUserScore(score)"
+                        >
+                          <i />
+                          <span>{{ score }}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+                <div class="detail-library-record__dates">
+                  <label class="detail-library-field">
+                    <span>开始观看日期</span>
+                    <div class="detail-library-date-picker">
+                      <button
+                        type="button"
+                        class="detail-library-date-trigger"
+                        :class="{ 'is-open': activeDatePicker === 'startedAt' }"
+                        :aria-expanded="activeDatePicker === 'startedAt'"
+                        aria-haspopup="dialog"
+                        aria-label="选择开始观看日期"
+                        @click.stop="openDatePicker('startedAt')"
+                      >
+                        <PhCalendarBlank :size="14" weight="bold" />
+                        <strong>{{ dateDraftLabel(startedAtDraft) }}</strong>
+                        <PhCaretDown :size="13" weight="bold" />
+                      </button>
+                      <div
+                        v-if="activeDatePicker === 'startedAt'"
+                        class="detail-library-date-popover"
+                        role="dialog"
+                        aria-label="选择开始观看日期"
+                        @click.stop
+                      >
+                        <div class="detail-library-date-popover__head">
+                          <button
+                            type="button"
+                            :aria-label="calendarView === 'years' ? '上十二年' : calendarView === 'months' ? '上一年' : '上个月'"
+                            @click="changeCalendarMonth(-1)"
+                          >
+                            <PhCaretLeft :size="14" weight="bold" />
+                          </button>
+                          <div class="detail-library-date-popover__selectors">
+                            <button
+                              type="button"
+                              :class="{ active: calendarView === 'years' }"
+                              @click="calendarView = 'years'"
+                            >
+                              {{ calendarView === 'years' ? calendarYearRangeLabel : calendarYearLabel }}
+                            </button>
+                            <button
+                              type="button"
+                              :class="{ active: calendarView === 'months' }"
+                              @click="calendarView = 'months'"
+                            >
+                              {{ calendarMonthLabel }}
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            :aria-label="calendarView === 'years' ? '下十二年' : calendarView === 'months' ? '下一年' : '下个月'"
+                            @click="changeCalendarMonth(1)"
+                          >
+                            <PhCaretRight :size="14" weight="bold" />
+                          </button>
+                        </div>
+                        <div v-if="calendarView === 'days'" class="detail-library-date-popover__day-view">
+                          <div class="detail-library-date-popover__weekdays" aria-hidden="true">
+                            <span v-for="weekday in ['一', '二', '三', '四', '五', '六', '日']" :key="weekday">
+                              {{ weekday }}
+                            </span>
+                          </div>
+                          <div class="detail-library-date-popover__days">
+                            <button
+                              v-for="cell in calendarDays"
+                              :key="cell.key"
+                              type="button"
+                              :disabled="!cell.stamp"
+                              :class="{ selected: isDateSelected('startedAt', cell.stamp), today: isToday(cell.stamp) }"
+                              @click="cell.stamp && selectDate('startedAt', cell.stamp)"
+                            >
+                              {{ cell.day }}
+                            </button>
+                          </div>
+                        </div>
+                        <div v-else-if="calendarView === 'months'" class="detail-library-date-popover__months">
+                          <button
+                            v-for="month in calendarMonths"
+                            :key="month"
+                            type="button"
+                            :class="{ selected: calendarMonth.getMonth() === month }"
+                            @click="selectCalendarMonth(month)"
+                          >
+                            {{ month + 1 }}月
+                          </button>
+                        </div>
+                        <div v-else class="detail-library-date-popover__years">
+                          <button
+                            v-for="year in calendarYears"
+                            :key="year"
+                            type="button"
+                            :class="{ selected: calendarMonth.getFullYear() === year }"
+                            @click="selectCalendarYear(year)"
+                          >
+                            {{ year }}
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          class="detail-library-date-popover__clear"
+                          @click="clearDate('startedAt')"
+                        >
+                          <PhX :size="13" weight="bold" />
+                          清除日期
+                        </button>
+                      </div>
+                    </div>
+                  </label>
+                  <label class="detail-library-field">
+                    <span>结束观看日期</span>
+                    <div class="detail-library-date-picker">
+                      <button
+                        type="button"
+                        class="detail-library-date-trigger"
+                        :class="{ 'is-open': activeDatePicker === 'completedAt' }"
+                        :aria-expanded="activeDatePicker === 'completedAt'"
+                        aria-haspopup="dialog"
+                        aria-label="选择结束观看日期"
+                        @click.stop="openDatePicker('completedAt')"
+                      >
+                        <PhCalendarBlank :size="14" weight="bold" />
+                        <strong>{{ dateDraftLabel(completedAtDraft) }}</strong>
+                        <PhCaretDown :size="13" weight="bold" />
+                      </button>
+                      <div
+                        v-if="activeDatePicker === 'completedAt'"
+                        class="detail-library-date-popover"
+                        role="dialog"
+                        aria-label="选择结束观看日期"
+                        @click.stop
+                      >
+                        <div class="detail-library-date-popover__head">
+                          <button
+                            type="button"
+                            :aria-label="calendarView === 'years' ? '上十二年' : calendarView === 'months' ? '上一年' : '上个月'"
+                            @click="changeCalendarMonth(-1)"
+                          >
+                            <PhCaretLeft :size="14" weight="bold" />
+                          </button>
+                          <div class="detail-library-date-popover__selectors">
+                            <button
+                              type="button"
+                              :class="{ active: calendarView === 'years' }"
+                              @click="calendarView = 'years'"
+                            >
+                              {{ calendarView === 'years' ? calendarYearRangeLabel : calendarYearLabel }}
+                            </button>
+                            <button
+                              type="button"
+                              :class="{ active: calendarView === 'months' }"
+                              @click="calendarView = 'months'"
+                            >
+                              {{ calendarMonthLabel }}
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            :aria-label="calendarView === 'years' ? '下十二年' : calendarView === 'months' ? '下一年' : '下个月'"
+                            @click="changeCalendarMonth(1)"
+                          >
+                            <PhCaretRight :size="14" weight="bold" />
+                          </button>
+                        </div>
+                        <div v-if="calendarView === 'days'" class="detail-library-date-popover__day-view">
+                          <div class="detail-library-date-popover__weekdays" aria-hidden="true">
+                            <span v-for="weekday in ['一', '二', '三', '四', '五', '六', '日']" :key="weekday">
+                              {{ weekday }}
+                            </span>
+                          </div>
+                          <div class="detail-library-date-popover__days">
+                            <button
+                              v-for="cell in calendarDays"
+                              :key="cell.key"
+                              type="button"
+                              :disabled="!cell.stamp"
+                              :class="{ selected: isDateSelected('completedAt', cell.stamp), today: isToday(cell.stamp) }"
+                              @click="cell.stamp && selectDate('completedAt', cell.stamp)"
+                            >
+                              {{ cell.day }}
+                            </button>
+                          </div>
+                        </div>
+                        <div v-else-if="calendarView === 'months'" class="detail-library-date-popover__months">
+                          <button
+                            v-for="month in calendarMonths"
+                            :key="month"
+                            type="button"
+                            :class="{ selected: calendarMonth.getMonth() === month }"
+                            @click="selectCalendarMonth(month)"
+                          >
+                            {{ month + 1 }}月
+                          </button>
+                        </div>
+                        <div v-else class="detail-library-date-popover__years">
+                          <button
+                            v-for="year in calendarYears"
+                            :key="year"
+                            type="button"
+                            :class="{ selected: calendarMonth.getFullYear() === year }"
+                            @click="selectCalendarYear(year)"
+                          >
+                            {{ year }}
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          class="detail-library-date-popover__clear"
+                          @click="clearDate('completedAt')"
+                        >
+                          <PhX :size="13" weight="bold" />
+                          清除日期
+                        </button>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </section>
             </div>
           </section>
 
-          <div class="detail-content">
+          <div class="detail-content" :style="detailContentStyle">
             <!-- Main column: tabs + body (aligned with left meta top) -->
             <section class="detail-main">
               <div ref="tabsRef" class="detail-tabs sliding-tabs radio-group" role="tablist" aria-label="详情分区">
