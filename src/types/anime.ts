@@ -1,4 +1,5 @@
 export type WatchStatus = 'watching' | 'completed' | 'planned' | 'paused' | 'dropped'
+export type AiringStatus = 'releasing' | 'finished' | 'not_yet_released' | 'unknown'
 
 export interface AnimeTitles {
   cn?: string
@@ -33,6 +34,8 @@ export interface Anime {
   airWeekday?: number
   airDate?: string
   nextEpisode?: string
+  /** Catalog airing state; releasing items expose their latest available episode. */
+  airingStatus?: AiringStatus
   popularity?: number
   /** Linked ids from other sources after merge, e.g. ['bgm-123', 'anilist-456'] */
   linkedIds?: string[]

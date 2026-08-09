@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { PhPlus, PhCheck, PhStar, PhCaretDown, PhTrash } from '@phosphor-icons/vue'
 import type { Anime, WatchStatus } from '../types/anime'
 import { useLibraryStore } from '../stores/library'
+import { getLibraryProgress } from '../services/libraryProgress'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
 import { useLiquidGlass } from '../composables/useLiquidGlass'
 
@@ -63,6 +64,8 @@ const STATUS_OPTIONS: { value: WatchStatus; label: string }[] = [
 // Cross-source identity: Bangumi and AniList of the same show share library status.
 const libraryItem = computed(() => store.findInLibrary(props.anime))
 const inLibrary = computed(() => Boolean(libraryItem.value))
+const trackedAnime = computed(() => libraryItem.value || props.anime)
+const libraryProgress = computed(() => getLibraryProgress(trackedAnime.value))
 const currentStatusLabel = computed(() =>
   STATUS_OPTIONS.find((opt) => opt.value === libraryItem.value?.status)?.label || '已加入',
 )
@@ -119,6 +122,15 @@ function removeFromLibrary(event: Event) {
   store.remove(libraryItem.value?.id || props.anime.id)
   menuOpen.value = false
   showFeedback('已从列表删除')
+}
+
+function advanceProgress(event: MouseEvent) {
+  event.preventDefault()
+  event.stopPropagation()
+  if (!libraryProgress.value.canAdvance) return
+  const id = libraryItem.value?.id || props.anime.id
+  store.updateProgress(id, libraryProgress.value.watched + 1)
+  showFeedback(`已看到第 ${libraryProgress.value.watched + 1} 集`)
 }
 
 function onDocPointerDown(event: PointerEvent) {
@@ -286,6 +298,24 @@ onUnmounted(() => {
                 : 0"
         >{{ anime.episodes }}话</span>
       </p>
+      <div v-if="inLibrary" class="anime-card-progress" :class="{ 'has-update': libraryProgress.canAdvance }">
+        <div class="anime-card-progress__copy">
+          <span>已看 {{ libraryProgress.watched }}{{ libraryProgress.available ? ` / ${libraryProgress.available}` : '' }} 集</span>
+          <span v-if="libraryProgress.canAdvance" class="anime-card-progress__update">
+            <i aria-hidden="true" />有更新
+          </span>
+        </div>
+        <button
+          v-if="libraryProgress.canAdvance"
+          class="anime-card-progress__advance"
+          type="button"
+          aria-label="标记看到下一集"
+          title="标记看到下一集"
+          @click="advanceProgress"
+        >
+          <PhPlus :size="14" weight="bold" />
+        </button>
+      </div>
     </div>
   </article>
 </template>
