@@ -1805,7 +1805,7 @@ onUnmounted(() => {
               : undefined"
           />
           <div class="detail-banner__shade" />
-          <div class="detail-scroll">
+          <div class="detail-scroll" data-lenis-prevent>
             <section class="detail-header">
               <div class="detail-poster-slot">
                 <img
@@ -1862,7 +1862,7 @@ onUnmounted(() => {
           返回
         </button>
 
-        <div class="detail-scroll">
+        <div class="detail-scroll" data-lenis-prevent>
           <section class="detail-header">
             <!-- In-flow poster slot: empty during flight, holds real poster after land -->
             <div ref="posterSlotRef" class="detail-poster-slot">

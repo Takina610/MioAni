@@ -1,5 +1,7 @@
 * { box-sizing: border-box; }
 html { color-scheme: dark; scroll-behavior: smooth; }
+/* Lenis owns smoothing while active; avoid CSS + Lenis double-ease. */
+html.lenis { scroll-behavior: auto; }
 body { margin: 0; min-width: 320px; min-height: 100dvh; overflow-x: hidden; background: var(--bg); }
 
 /* Hide scrollbars site-wide (scroll still works). Keep visible only on filter menus. */

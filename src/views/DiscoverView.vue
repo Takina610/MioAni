@@ -375,6 +375,7 @@ watch(sentinel, () => setupObserver())
               <div
                 v-if="openDropdown === 'genre'"
                 class="filter-dropdown__menu filter-dropdown__menu--genre"
+                data-lenis-prevent
                 role="listbox"
                 aria-label="类型（可多选）"
                 aria-multiselectable="true"
@@ -435,7 +436,7 @@ watch(sentinel, () => setupObserver())
                 <span>{{ yearLabel }}</span>
                 <PhCaretDown :size="14" aria-hidden="true" />
               </button>
-              <ul v-if="openDropdown === 'year'" class="filter-dropdown__menu" role="listbox" aria-label="年份">
+              <ul v-if="openDropdown === 'year'" class="filter-dropdown__menu" data-lenis-prevent role="listbox" aria-label="年份">
                 <li>
                   <button
                     type="button"
@@ -477,7 +478,7 @@ watch(sentinel, () => setupObserver())
                 <span>{{ seasonLabel }}</span>
                 <PhCaretDown :size="14" aria-hidden="true" />
               </button>
-              <ul v-if="openDropdown === 'season'" class="filter-dropdown__menu" role="listbox" aria-label="季度">
+              <ul v-if="openDropdown === 'season'" class="filter-dropdown__menu" data-lenis-prevent role="listbox" aria-label="季度">
                 <li v-for="opt in SEASON_OPTIONS" :key="opt.label">
                   <button
                     type="button"
@@ -507,7 +508,7 @@ watch(sentinel, () => setupObserver())
                 <span>{{ statusLabel }}</span>
                 <PhCaretDown :size="14" aria-hidden="true" />
               </button>
-              <ul v-if="openDropdown === 'status'" class="filter-dropdown__menu" role="listbox" aria-label="状态">
+              <ul v-if="openDropdown === 'status'" class="filter-dropdown__menu" data-lenis-prevent role="listbox" aria-label="状态">
                 <li v-for="opt in STATUS_OPTIONS" :key="opt.value">
                   <button
                     type="button"
@@ -537,7 +538,7 @@ watch(sentinel, () => setupObserver())
                 <span>{{ sortLabel }}</span>
                 <PhCaretDown :size="14" aria-hidden="true" />
               </button>
-              <ul v-if="openDropdown === 'sort'" class="filter-dropdown__menu" role="listbox" aria-label="排序">
+              <ul v-if="openDropdown === 'sort'" class="filter-dropdown__menu" data-lenis-prevent role="listbox" aria-label="排序">
                 <li v-for="opt in SORT_OPTIONS" :key="opt.value">
                   <button
                     type="button"

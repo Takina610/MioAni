@@ -921,6 +921,7 @@ onUnmounted(() => {
         <div
           ref="personScrollRef"
           class="person-scroll"
+          data-lenis-prevent
           @scroll="onPersonScroll"
           @wheel.passive="markUserScrollIntent"
           @touchmove.passive="markUserScrollIntent"

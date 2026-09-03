@@ -439,6 +439,7 @@ onUnmounted(() => {
         ref="tabsRef"
         class="home-schedule__tabs radio-group"
         :class="{ 'is-indicator-ready': indicatorReady }"
+        data-lenis-prevent
         role="tablist"
         aria-label="放送日筛选"
       >
@@ -479,6 +480,7 @@ onUnmounted(() => {
         ref="trackRef"
         class="home-schedule__track"
         :class="{ 'is-marquee': marqueeMode }"
+        data-lenis-prevent
       >
         <div ref="marqueeRef" class="home-schedule__marquee">
           <div class="home-schedule__strip home-schedule__strip--primary">

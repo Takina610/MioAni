@@ -1324,7 +1324,7 @@ watch(
 
 <template>
   <Teleport to="body">
-    <div ref="theaterRef" class="playback-theater" role="dialog" aria-modal="true" aria-label="站内播放">
+    <div ref="theaterRef" class="playback-theater" data-lenis-prevent role="dialog" aria-modal="true" aria-label="站内播放">
       <div class="playback-theater-backdrop" aria-hidden="true" />
 
       <header class="playback-theater-chrome">
@@ -1459,6 +1459,7 @@ watch(
           <div
             v-show="asideTab === 'channels'"
             class="playback-aside-panel playback-aside-panel--channels"
+            data-lenis-prevent
           >
             <section class="playback-theater-aside-section playback-theater-line-section">
               <h2 id="playback-theater-line-heading" class="playback-theater-aside-title">线路</h2>
@@ -1521,6 +1522,7 @@ watch(
                 v-show="danmuListOpen"
                 id="playback-danmu-list"
                 class="playback-danmu-list"
+                data-lenis-prevent
                 role="region"
                 aria-label="弹幕列表"
               >
@@ -1542,6 +1544,7 @@ watch(
               <h2 id="playback-theater-episodes-heading" class="playback-theater-aside-title">选集</h2>
               <nav
                 class="playback-theater-episodes"
+                data-lenis-prevent
                 aria-labelledby="playback-theater-episodes-heading"
               >
                 <button
@@ -1594,6 +1597,7 @@ watch(
             ref="commentsPanelRef"
             v-show="asideTab === 'comments'"
             class="playback-aside-panel playback-aside-panel--comments"
+            data-lenis-prevent
             role="tabpanel"
           >
             <div

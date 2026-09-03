@@ -5,6 +5,7 @@ import { PhChartLineUp, PhCompass, PhHouse, PhBooks, PhCalendarBlank, PhMagnifyi
 import GridTrailBackground from './GridTrailBackground.vue'
 import BackToTop from './BackToTop.vue'
 import { useLiquidGlass } from '../composables/useLiquidGlass'
+import { useLenis } from '../composables/useLenis'
 import brandLogo from '../assets/MioAni2.webp'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
 import { usePersonOverlayStore } from '../stores/personOverlay'
@@ -29,6 +30,7 @@ const mainNavRef = ref<HTMLElement | null>(null)
 const { glassStyle: topbarGlassStyle } = useLiquidGlass(topbarRef)
 const { glassStyle: mainNavGlassStyle } = useLiquidGlass(mainNavRef, { blurAmount: 2.0 })
 const route = useRoute()
+useLenis()
 const detailOverlay = useDetailOverlayStore()
 const personOverlay = usePersonOverlayStore()
 

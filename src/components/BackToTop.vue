@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { PhArrowUp } from '@phosphor-icons/vue'
 import { useLiquidGlass } from '../composables/useLiquidGlass'
+import { getActiveLenis } from '../composables/useLenis'
 
 const props = withDefaults(
   defineProps<{
@@ -52,9 +53,14 @@ function backToTop() {
   const el = props.scrollEl
   if (el) {
     el.scrollTo({ top: 0, behavior: 'smooth' })
-  } else {
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    return
   }
+  const lenis = getActiveLenis()
+  if (lenis) {
+    lenis.scrollTo(0)
+    return
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 watch(
