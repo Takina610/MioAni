@@ -40,5 +40,9 @@
     "vite": "^8.1.1",
     "vitest": "^4.1.10",
     "vue-tsc": "^3.3.5"
+  },
+  "optionalDependencies": {
+    "@emnapi/core": "^2.0.0-alpha.4",
+    "@emnapi/runtime": "^2.0.0-alpha.4"
   }
 }
