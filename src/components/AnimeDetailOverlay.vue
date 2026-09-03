@@ -744,7 +744,7 @@ function playFlyerToTarget(
 ) {
   const el = flyerRef.value
   if (!el) return
-  // Flyer is already parked at origin; invert matrix then play to identity at target.
+  // Park at origin box; animate GPU transform to target visual size/position.
   const sx = target.width / Math.max(origin.width, 0.001)
   const sy = target.height / Math.max(origin.height, 0.001)
   const dx = target.left - origin.left
@@ -760,26 +760,13 @@ function playFlyerToTarget(
   el.style.opacity = '1'
   el.style.visibility = 'visible'
   flush(el)
-  // Next frame: animate to target via transform scale+translate (GPU).
   requestAnimationFrame(() => {
     el.style.transition = [
       `transform ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
       `border-radius ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
-      `width ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
-      `height ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
-      `top ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
-      `left ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
     ].join(', ')
-    el.style.top = `${target.top}px`
-    el.style.left = `${target.left}px`
-    el.style.width = `${target.width}px`
-    el.style.height = `${target.height}px`
     el.style.borderRadius = '14px'
-    el.style.transform = 'none'
-    void sx
-    void sy
-    void dx
-    void dy
+    el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`
   })
 }
 
@@ -790,31 +777,29 @@ function playFlyerToOrigin(
 ) {
   const el = flyerRef.value
   if (!el) return
-  // Start at target (detail poster), animate back to origin (card).
+  // Invert: sit on origin geometry with a transform that matches the detail poster, then ease to identity.
+  const sx = target.width / Math.max(origin.width, 0.001)
+  const sy = target.height / Math.max(origin.height, 0.001)
+  const dx = target.left - origin.left
+  const dy = target.top - origin.top
   el.style.transition = 'none'
-  el.style.top = `${target.top}px`
-  el.style.left = `${target.left}px`
-  el.style.width = `${target.width}px`
-  el.style.height = `${target.height}px`
+  el.style.top = `${origin.top}px`
+  el.style.left = `${origin.left}px`
+  el.style.width = `${origin.width}px`
+  el.style.height = `${origin.height}px`
   el.style.borderRadius = '14px'
   el.style.transformOrigin = 'top left'
-  el.style.transform = 'none'
+  el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`
   el.style.opacity = '1'
   el.style.visibility = 'visible'
   flush(el)
   requestAnimationFrame(() => {
     el.style.transition = [
-      `top ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
-      `left ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
-      `width ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
-      `height ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
+      `transform ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
       `border-radius ${durationMs}ms cubic-bezier(.22,1,.36,1)`,
     ].join(', ')
-    el.style.top = `${origin.top}px`
-    el.style.left = `${origin.left}px`
-    el.style.width = `${origin.width}px`
-    el.style.height = `${origin.height}px`
     el.style.borderRadius = '12px'
+    el.style.transform = 'none'
   })
 }
 

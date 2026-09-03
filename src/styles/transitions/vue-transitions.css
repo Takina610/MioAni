@@ -15,8 +15,9 @@
 .list-leave-to {
   opacity: 0;
 }
+/* Infinite append should not FLIP-move the whole catalog; enter animation still runs for new cards. */
 .list-move {
-  transition: transform .35s var(--ease);
+  transition: none;
 }
 
 /* Library tab switch: fade only, no absolute positioning, no FLIP thrash */

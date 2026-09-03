@@ -8,14 +8,18 @@
     transform .55s var(--ease),
     box-shadow .35s var(--ease);
   transition-delay: var(--enter-delay, 0ms), var(--enter-delay, 0ms), 0s;
-  will-change: opacity, transform;
 }
-.anime-card.is-menu-open {
-  z-index: 12;
+/* Promote only while entering; clear after reveal so long grids don't keep hundreds of layers. */
+.anime-card:not(.is-revealed) {
+  will-change: opacity, transform;
 }
 .anime-card.is-revealed {
   opacity: 1;
   transform: translateY(0) scale(1);
+  will-change: auto;
+}
+.anime-card.is-menu-open {
+  z-index: 12;
 }
 .anime-card.is-revealed:hover {
   transform: none;

@@ -64,7 +64,8 @@ export function useLenis() {
     activeLenis = new Lenis({
       autoRaf: true,
       anchors: true,
-      allowNestedScroll: true,
+      // Nested regions use data-lenis-prevent; skip per-wheel composedPath / getComputedStyle walks.
+      allowNestedScroll: false,
       respectReducedMotion: true,
       stopInertiaOnNavigate: true,
     })

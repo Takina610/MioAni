@@ -107,8 +107,13 @@
   height: 100%;
   object-fit: cover;
   object-position: center center;
+}
+/* Depth Bridge keeps static soft look; Focus Bridge stays sharp — soft→sharp is opacity, not live filter tween. */
+.hero-bridge-img {
   filter: blur(3px) saturate(.95) brightness(.78);
-  will-change: filter;
+}
+.hero-focus-bridge-img {
+  filter: none;
 }
 
 .hero-bg-veil {

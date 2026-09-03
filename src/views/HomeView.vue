@@ -75,6 +75,17 @@ const ambientBRef = ref<HTMLImageElement | null>(null)
 const ambientActive = ref<'a' | 'b'>('a')
 let autoplayTween: gsap.core.Tween | null = null
 let wasPlayingBeforeHidden = false
+/** In-flight Leave timeline; killed when Home is backgrounded. */
+let activeSwitchTl: gsap.core.Timeline | null = null
+let heroLockObserver: MutationObserver | null = null
+
+/** True only when the hero is the visible foreground (not another list / detail / intro / hidden tab). */
+function isHeroActive(): boolean {
+  if (route.name !== 'home' || document.hidden) return false
+  const { classList } = document.body
+  if (classList.contains('detail-scroll-lock') || classList.contains('intro-active')) return false
+  return true
+}
 
 const slides = computed(() => catalog.seasonal.slice(0, 8))
 const feature = computed(() => slides.value[activeIndex.value] || catalog.featured)
@@ -535,7 +546,7 @@ function startAutoplayProgress() {
     slides.value.length < 2
     || isAutoplayPaused.value
     || isAnimating.value
-    || document.hidden
+    || !isHeroActive()
   ) return
 
   const fill = progressFillAt(activeIndex.value)
@@ -547,16 +558,54 @@ function startAutoplayProgress() {
     ease: 'none',
     onComplete: () => {
       autoplayTween = null
-      nextSlide()
+      if (isHeroActive()) nextSlide()
     },
   })
 }
 
+/** Snap mid-switch to the pending (or current) slide without leaving bridge layers up. */
+function snapHeroToPendingOrActive() {
+  const next = pendingIndex.value ?? activeIndex.value
+  pendingIndex.value = null
+  isAnimating.value = false
+  if (activeSwitchTl) {
+    activeSwitchTl.kill()
+    activeSwitchTl = null
+  }
+  activeIndex.value = next
+  copyIndex.value = next
+  hideBridgeLayers()
+  const poster = posterRef.value
+  const fore = foreRef.value
+  if (poster) gsap.set(poster, { clearProps: 'opacity,visibility,transform,transformOrigin' })
+  if (fore) gsap.set(fore, { clearProps: 'opacity,visibility,transform,zIndex' })
+  resetCopyRevealTargets()
+  void nextTick(() => {
+    initAmbient()
+    initNextLayer()
+  })
+}
+
+function suspendHeroMotion() {
+  if (autoplayTween && !autoplayTween.paused()) {
+    wasPlayingBeforeHidden = true
+  }
+  stopAutoplayProgress(true)
+  if (isAnimating.value) snapHeroToPendingOrActive()
+}
+
+function resumeHeroMotionIfNeeded() {
+  if (!isHeroActive() || isAutoplayPaused.value || isAnimating.value) return
+  wasPlayingBeforeHidden = false
+  if (!autoplayTween) startAutoplayProgress()
+}
+
 async function finishHeroTransition() {
   pendingIndex.value = null
+  activeSwitchTl = null
   await nextTick()
   isAnimating.value = false
-  startAutoplayProgress()
+  if (isHeroActive()) startAutoplayProgress()
 }
 
 function toggleAutoplay() {
@@ -567,7 +616,7 @@ function toggleAutoplay() {
   }
 
   if (autoplayTween) {
-    if (!document.hidden) autoplayTween.resume()
+    if (isHeroActive()) autoplayTween.resume()
     return
   }
 
@@ -576,20 +625,15 @@ function toggleAutoplay() {
 
 function handleVisibilityChange() {
   if (document.hidden) {
-    wasPlayingBeforeHidden = Boolean(autoplayTween && !autoplayTween.paused())
-    if (wasPlayingBeforeHidden) autoplayTween?.pause()
+    suspendHeroMotion()
     return
   }
+  resumeHeroMotionIfNeeded()
+}
 
-  const shouldResume = wasPlayingBeforeHidden
-  wasPlayingBeforeHidden = false
-  if (isAutoplayPaused.value) return
-
-  if (shouldResume && autoplayTween) {
-    autoplayTween.resume()
-  } else if (!autoplayTween && !isAnimating.value) {
-    startAutoplayProgress()
-  }
+function syncHeroLockFromBody() {
+  if (!isHeroActive()) suspendHeroMotion()
+  else resumeHeroMotionIfNeeded()
 }
 
 function crossfadeAmbient(url: string, ready: boolean): gsap.core.Timeline {
@@ -684,6 +728,7 @@ async function goTo(index: number) {
     loadImage(ambientUrl),
     upcoming ? loadImage(ambientOf(upcoming)) : Promise.resolve(false),
   ])
+  if (!isAnimating.value || pendingIndex.value !== next) return
   if (!posterReady) {
     await finishHeroTransition()
     return
@@ -731,6 +776,7 @@ async function goTo(index: number) {
     waitImg(bridgeImg, IMAGE_READY_TIMEOUT),
     waitImg(focusBridgeImg, IMAGE_READY_TIMEOUT),
   ])
+  if (!isAnimating.value || pendingIndex.value !== next) return
   if (bridgeImagesReady.some((ready) => !ready)) {
     hideBridgeLayers()
     await finishHeroTransition()
@@ -758,11 +804,11 @@ async function goTo(index: number) {
     autoAlpha: 0,
     zIndex: 5,
   })
+  // Soft look stays on Depth Bridge via CSS; Focus Bridge img is sharp — soft→sharp = opacity handoff (no live filter tween).
   gsap.set([bridgeImg, focusBridgeImg], {
     autoAlpha: 1,
     scale: bridgeImageStartScale,
     transformOrigin: '50% 50%',
-    filter: 'blur(3px) saturate(.95) brightness(.78)',
   })
 
   // 先铺好与后景同几何的 bridge，再藏 next layer，避免“先跳再收束”。
@@ -772,6 +818,7 @@ async function goTo(index: number) {
   const ambientTl = crossfadeAmbient(ambientUrl, ambientReady)
 
   const leave = gsap.timeline({ defaults: { ease: 'power2.inOut' } })
+  activeSwitchTl = leave
 
   leave.to(poster, {
     xPercent: 0,
@@ -812,11 +859,6 @@ async function goTo(index: number) {
     duration: 0.45,
     ease: 'sine.inOut',
   }, 0.55)
-  leave.to(focusBridgeImg, {
-    filter: 'blur(0px) saturate(1) brightness(1)',
-    duration: 0.45,
-    ease: 'sine.inOut',
-  }, 0.55)
 
   if (nextSwapTl) {
     const nextSwapOffset = 0.08
@@ -828,6 +870,7 @@ async function goTo(index: number) {
   const bridgePromise = play(leave)
   const copyPromise = playPersistentCopySwitch(outgoingCopy, next)
   await Promise.all([bridgePromise, copyPromise])
+  if (!isAnimating.value || pendingIndex.value !== next) return
 
   // Handoff 只更新正式海报与轮播语义；持久 Copy 已在同一批节点中完成切换。
   activeIndex.value = next
@@ -838,6 +881,7 @@ async function goTo(index: number) {
     posterImg.src = posterUrl
   }
   await waitImg(posterImg, IMAGE_READY_TIMEOUT)
+  if (!isAnimating.value) return
 
   const newFore = foreRef.value
   const newPoster = posterRef.value
@@ -902,12 +946,17 @@ watch(() => catalog.loaded, (loaded) => {
   if (loaded) void maybeFinishIntro(introGeneration)
 })
 
-// Home stays mounted under detail; only mark body while home route is active.
+// Home stays mounted under detail; gate autoplay/switch when another list or detail is up.
 watch(
   () => route.name,
   (name) => {
     document.body.classList.toggle('home-page-active', name === 'home')
-    if (name !== 'home' && introVisible.value) cancelIntro()
+    if (name !== 'home') {
+      if (introVisible.value) cancelIntro()
+      suspendHeroMotion()
+      return
+    }
+    resumeHeroMotionIfNeeded()
   },
   { immediate: true },
 )
@@ -924,6 +973,11 @@ onMounted(() => {
   }
   hideBridgeLayers()
   document.addEventListener('visibilitychange', handleVisibilityChange)
+  heroLockObserver = new MutationObserver(syncHeroLockFromBody)
+  heroLockObserver.observe(document.body, {
+    attributes: true,
+    attributeFilter: ['class'],
+  })
   // feature 可能尚未加载；watch 会在数据到达后补初始化
   nextTick(() => {
     if (feature.value) {
@@ -937,7 +991,9 @@ onMounted(() => {
 onUnmounted(() => {
   cancelIntro()
   document.body.classList.remove('home-page-active')
-  stopAutoplayProgress(true)
+  suspendHeroMotion()
+  heroLockObserver?.disconnect()
+  heroLockObserver = null
   document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>

@@ -257,6 +257,7 @@ onUnmounted(() => {
           :class="{ 'is-indicator-ready': indicatorReady }"
           role="tablist"
           aria-label="追番分类"
+          data-lenis-prevent
         >
           <button
             v-for="item in tabs"

@@ -16,6 +16,7 @@ const props = withDefaults(
 
 const visible = ref(false)
 const btnRef = ref<HTMLButtonElement | null>(null)
+let scrollRaf = 0
 
 /** iOS 26 风格液态玻璃边缘折射，具体实现见 useLiquidGlass。 */
 const { glassStyle } = useLiquidGlass(btnRef, {
@@ -27,10 +28,17 @@ const { glassStyle } = useLiquidGlass(btnRef, {
   specularBlur: 1,
 })
 
-function onScroll() {
+function readScrollTop() {
   const el = props.scrollEl
-  const top = el ? el.scrollTop : (window.scrollY || document.documentElement.scrollTop || 0)
-  visible.value = top > 240
+  return el ? el.scrollTop : (window.scrollY || document.documentElement.scrollTop || 0)
+}
+
+function onScroll() {
+  if (scrollRaf) return
+  scrollRaf = requestAnimationFrame(() => {
+    scrollRaf = 0
+    visible.value = readScrollTop() > 240
+  })
 }
 
 function bind(el: HTMLElement | null | undefined) {
@@ -78,25 +86,28 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (scrollRaf) cancelAnimationFrame(scrollRaf)
   unbind(props.scrollEl)
 })
 </script>
 
 <template>
   <Teleport to="body">
-    <Transition name="backtop">
-      <button
-        v-if="show && visible"
-        ref="btnRef"
-        type="button"
-        class="back-to-top"
-        :style="glassStyle"
-        aria-label="回到顶部"
-        @click="backToTop"
-      >
-        <PhArrowUp :size="26" weight="bold" />
-      </button>
-    </Transition>
+    <!-- Keep mounted while `show` so liquid-glass maps are not rebuilt on the 240px threshold. -->
+    <button
+      v-if="show"
+      ref="btnRef"
+      type="button"
+      class="back-to-top"
+      :class="{ 'is-visible': visible }"
+      :style="glassStyle"
+      :aria-hidden="visible ? undefined : 'true'"
+      :tabindex="visible ? 0 : -1"
+      aria-label="回到顶部"
+      @click="backToTop"
+    >
+      <PhArrowUp :size="26" weight="bold" />
+    </button>
   </Teleport>
 </template>
 
@@ -121,9 +132,21 @@ onBeforeUnmount(() => {
   color: var(--accent);
   cursor: pointer;
   overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(8px) scale(.9);
   transition:
-    transform .18s var(--ease),
+    opacity .2s ease,
+    transform .24s var(--ease),
+    visibility .2s,
     background-color .2s ease;
+}
+.back-to-top.is-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
 }
 .back-to-top:hover {
   background-color: rgba(255, 255, 255, .13);
@@ -131,20 +154,14 @@ onBeforeUnmount(() => {
 .back-to-top:active {
   transform: scale(.94);
 }
+.back-to-top.is-visible:active {
+  transform: scale(.94);
+}
 .back-to-top svg {
   transition: transform .22s var(--ease);
 }
 .back-to-top:hover svg {
   transform: translateY(-2px);
-}
-.backtop-enter-active,
-.backtop-leave-active {
-  transition: opacity .2s ease, transform .24s var(--ease);
-}
-.backtop-enter-from,
-.backtop-leave-to {
-  opacity: 0;
-  transform: translateY(8px) scale(.9);
 }
 
 @media (max-width: 640px) {

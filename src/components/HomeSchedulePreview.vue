@@ -124,6 +124,9 @@ function measureLoop() {
 }
 
 function canAuto(): boolean {
+  if (route.name !== 'home' || document.hidden) return false
+  const { classList } = document.body
+  if (classList.contains('detail-scroll-lock') || classList.contains('intro-active')) return false
   return (
     marqueeMode.value
     && railInView.value
@@ -397,6 +400,15 @@ watch(
   () => queueMarqueeRefresh(),
 )
 
+watch(
+  () => route.name,
+  () => {
+    syncAuto()
+  },
+)
+
+let scheduleLockObserver: MutationObserver | null = null
+
 onMounted(() => {
   coarseMq = window.matchMedia(COARSE_MQ)
   reduceMq = window.matchMedia(REDUCE_MQ)
@@ -405,6 +417,14 @@ onMounted(() => {
   reduceMq.addEventListener('change', onResize)
   window.addEventListener('resize', onResize, { passive: true })
   gsap.ticker.lagSmoothing(1000, 33)
+  scheduleLockObserver = new MutationObserver(() => {
+    syncAuto()
+  })
+  scheduleLockObserver.observe(document.body, {
+    attributes: true,
+    attributeFilter: ['class'],
+  })
+  document.addEventListener('visibilitychange', syncAuto)
   void nextTick(() => bind())
 })
 
@@ -412,6 +432,9 @@ onUnmounted(() => {
   window.removeEventListener('resize', onResize)
   coarseMq?.removeEventListener('change', onResize)
   reduceMq?.removeEventListener('change', onResize)
+  document.removeEventListener('visibilitychange', syncAuto)
+  scheduleLockObserver?.disconnect()
+  scheduleLockObserver = null
   if (measureRaf) cancelAnimationFrame(measureRaf)
   if (layoutRaf) cancelAnimationFrame(layoutRaf)
   if (indicatorPulseTimer !== null) clearTimeout(indicatorPulseTimer)
