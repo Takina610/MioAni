@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@antv/g2plot": "^2.4.35",
     "@phosphor-icons/vue": "^2.2.1",
     "artplayer": "^5.2.3",
     "artplayer-plugin-auto-thumbnail": "^1.1.0",

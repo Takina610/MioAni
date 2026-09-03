@@ -129,7 +129,13 @@ function mapAniList(media: any, entry?: any): Anime {
     image,
     thumb: thumb || image,
     banner: media.bannerImage || undefined,
-    score: media.averageScore ? media.averageScore / 10 : entry?.score || 0,
+    score: media.averageScore ? media.averageScore / 10 : 0,
+    // AniList list score is usually 0–100 (POINT_100); POINT_10 stays ≤10.
+    userScore: (() => {
+      const raw = Number(entry?.score)
+      if (!Number.isFinite(raw) || raw <= 0) return undefined
+      return raw > 10 ? raw / 10 : raw
+    })(),
     year: media.seasonYear || 0,
     season: media.season || '',
     episodes: resolveAniListEpisodes(media),
