@@ -74,7 +74,6 @@ const ambientARef = ref<HTMLImageElement | null>(null)
 const ambientBRef = ref<HTMLImageElement | null>(null)
 const ambientActive = ref<'a' | 'b'>('a')
 let autoplayTween: gsap.core.Tween | null = null
-let wasPlayingBeforeHidden = false
 /** In-flight Leave timeline; killed when Home is backgrounded. */
 let activeSwitchTl: gsap.core.Timeline | null = null
 let heroLockObserver: MutationObserver | null = null
@@ -587,16 +586,12 @@ function snapHeroToPendingOrActive() {
 }
 
 function suspendHeroMotion() {
-  if (autoplayTween && !autoplayTween.paused()) {
-    wasPlayingBeforeHidden = true
-  }
   stopAutoplayProgress(true)
   if (isAnimating.value) snapHeroToPendingOrActive()
 }
 
 function resumeHeroMotionIfNeeded() {
   if (!isHeroActive() || isAutoplayPaused.value || isAnimating.value) return
-  wasPlayingBeforeHidden = false
   if (!autoplayTween) startAutoplayProgress()
 }
 
