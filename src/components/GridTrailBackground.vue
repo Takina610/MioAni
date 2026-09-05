@@ -17,10 +17,16 @@ const REDUCE_MQ = '(prefers-reduced-motion: reduce)'
 const HOVER_MQ = '(hover: hover) and (pointer: fine)'
 
 type Sample = { x: number; y: number; t: number }
+/** Inclusive cell-index rectangle. */
+type CellBox = { c0: number; c1: number; r0: number; r1: number }
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 
 let ctx: CanvasRenderingContext2D | null = null
+/** Pre-rendered base grid (every cell at BASE_ALPHA); blitted instead of ~2k fillRects a frame. */
+let staticCanvas: HTMLCanvasElement | null = null
+/** Cell-index box that carried trail energy last frame; must be restored to base this frame. */
+let dirty: CellBox | null = null
 let dpr = 1
 let cssW = 0
 let cssH = 0
@@ -73,6 +79,82 @@ function sizeCanvas() {
   const pitch = cell + gap
   cols = Math.ceil(w / pitch) + 1
   rows = Math.ceil(h / pitch) + 1
+  buildStatic(el.width, el.height)
+  dirty = null
+}
+
+function buildStatic(devW: number, devH: number) {
+  if (!staticCanvas) staticCanvas = document.createElement('canvas')
+  staticCanvas.width = devW
+  staticCanvas.height = devH
+  const sctx = staticCanvas.getContext('2d')
+  if (!sctx) {
+    staticCanvas = null
+    return
+  }
+  sctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  sctx.fillStyle = `rgba(${CELL_RGB}, ${BASE_ALPHA})`
+  const pitch = cell + gap
+  for (let r = 0; r < rows; r++) {
+    const y = r * pitch
+    for (let c = 0; c < cols; c++) sctx.fillRect(c * pitch, y, cell, cell)
+  }
+}
+
+/** Cells whose centre can be within the trail radius of any live sample. */
+function affectedCells(t: number): CellBox | null {
+  const pitch = cell + gap
+  const radiusCells = Math.ceil(TRAIL_RADIUS_CELLS) + 1
+  let box: CellBox | null = null
+  for (const s of samples) {
+    const age = t - s.t
+    if (age < 0 || age > SAMPLE_TTL_MS) continue
+    const cc = Math.floor(s.x / pitch)
+    const cr = Math.floor(s.y / pitch)
+    const c0 = Math.max(0, cc - radiusCells)
+    const c1 = Math.min(cols - 1, cc + radiusCells)
+    const r0 = Math.max(0, cr - radiusCells)
+    const r1 = Math.min(rows - 1, cr + radiusCells)
+    if (c1 < c0 || r1 < r0) continue
+    if (!box) box = { c0, c1, r0, r1 }
+    else {
+      box.c0 = Math.min(box.c0, c0)
+      box.c1 = Math.max(box.c1, c1)
+      box.r0 = Math.min(box.r0, r0)
+      box.r1 = Math.max(box.r1, r1)
+    }
+  }
+  return box
+}
+
+function unionBox(a: CellBox | null, b: CellBox | null): CellBox | null {
+  if (!a) return b
+  if (!b) return a
+  return {
+    c0: Math.min(a.c0, b.c0),
+    c1: Math.max(a.c1, b.c1),
+    r0: Math.min(a.r0, b.r0),
+    r1: Math.max(a.r1, b.r1),
+  }
+}
+
+/** Restore a cell-box to the base grid (clear + blit from the static canvas). */
+function restoreBox(box: CellBox) {
+  if (!ctx) return
+  const pitch = cell + gap
+  const x = box.c0 * pitch
+  const y = box.r0 * pitch
+  const w = (box.c1 - box.c0 + 1) * pitch
+  const h = (box.r1 - box.r0 + 1) * pitch
+  ctx.clearRect(x, y, w, h)
+  if (staticCanvas) {
+    ctx.drawImage(staticCanvas, x * dpr, y * dpr, w * dpr, h * dpr, x, y, w, h)
+  } else {
+    ctx.fillStyle = `rgba(${CELL_RGB}, ${BASE_ALPHA})`
+    for (let r = box.r0; r <= box.r1; r++) {
+      for (let c = box.c0; c <= box.c1; c++) ctx.fillRect(c * pitch, r * pitch, cell, cell)
+    }
+  }
 }
 
 function pruneSamples(t: number) {
@@ -102,29 +184,43 @@ function energyAt(cx: number, cy: number, t: number): number {
   return e > 1.35 ? 1.35 : e
 }
 
+/**
+ * Repaint. Only the cells near live pointer samples (plus whatever glowed last
+ * frame) are touched; the rest of the viewport is left as the base grid. Cell
+ * colours are identical to a full repaint: energised cells are cleared and
+ * refilled at their final alpha rather than layered on top of the base.
+ */
 function paint(t: number) {
   if (!ctx || !cssW || !cssH) return
-  ctx.clearRect(0, 0, cssW, cssH)
   const pitch = cell + gap
-  let anyEnergy = false
 
-  for (let r = 0; r < rows; r++) {
+  if (!trailEnabled || !samples.length) {
+    restoreBox({ c0: 0, c1: cols - 1, r0: 0, r1: rows - 1 })
+    dirty = null
+    return false
+  }
+
+  const region = affectedCells(t)
+  const toRestore = unionBox(dirty, region)
+  if (toRestore) restoreBox(toRestore)
+  dirty = null
+  if (!region) return false
+
+  let anyEnergy = false
+  for (let r = region.r0; r <= region.r1; r++) {
     const y = r * pitch
-    for (let c = 0; c < cols; c++) {
+    for (let c = region.c0; c <= region.c1; c++) {
+      const e = energyAt(c, r, t)
+      if (e <= ENERGY_EPS) continue
+      anyEnergy = true
+      const alpha = BASE_ALPHA + Math.min(1, e) * (TRAIL_ALPHA - BASE_ALPHA)
       const x = c * pitch
-      let alpha = BASE_ALPHA
-      if (trailEnabled && samples.length) {
-        const e = energyAt(c, r, t)
-        if (e > ENERGY_EPS) {
-          anyEnergy = true
-          alpha = BASE_ALPHA + Math.min(1, e) * (TRAIL_ALPHA - BASE_ALPHA)
-        }
-      }
+      ctx.clearRect(x, y, cell, cell)
       ctx.fillStyle = `rgba(${CELL_RGB}, ${alpha})`
       ctx.fillRect(x, y, cell, cell)
     }
   }
-
+  if (anyEnergy) dirty = region
   return anyEnergy
 }
 
@@ -249,6 +345,8 @@ onUnmounted(() => {
   ro?.disconnect()
   ro = null
   ctx = null
+  staticCanvas = null
+  dirty = null
   samples = []
 })
 </script>

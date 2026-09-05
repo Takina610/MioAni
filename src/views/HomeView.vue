@@ -893,6 +893,45 @@ function nextSlide() {
   goTo(activeIndex.value + 1)
 }
 
+let slideWarmToken = 0
+
+/**
+ * Warm every other slide's poster + banner during idle time, one image at a
+ * time, so a switch never has to wait on the network. `goTo` still awaits
+ * `loadImage`, which resolves instantly from the HTTP/decode cache.
+ */
+function warmSlideMedia() {
+  const token = ++slideWarmToken
+  const list = slides.value
+  if (list.length < 2) return
+  const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection
+  if (connection?.saveData) return
+
+  const urls: string[] = []
+  for (let step = 1; step < list.length; step++) {
+    const item = list[(activeIndex.value + step) % list.length]
+    if (!item) continue
+    for (const url of [item.image, ambientOf(item)]) {
+      if (url && !urls.includes(url)) urls.push(url)
+    }
+  }
+
+  const idle: (cb: () => void) => void = typeof window.requestIdleCallback === 'function'
+    ? (cb) => window.requestIdleCallback(() => cb(), { timeout: 2500 })
+    : (cb) => window.setTimeout(cb, 250)
+
+  const pump = () => {
+    if (token !== slideWarmToken || !urls.length) return
+    idle(() => {
+      if (token !== slideWarmToken) return
+      const url = urls.shift()
+      const done = url ? loadImage(url, 8000) : Promise.resolve(false)
+      void done.then(pump)
+    })
+  }
+  pump()
+}
+
 function initAmbient() {
   const url = mediaOf(feature.value)
   if (ambientARef.value && url) {
@@ -925,6 +964,7 @@ watch(slides, (list) => {
     initAmbient()
     initNextLayer()
     startAutoplayProgress()
+    warmSlideMedia()
   })
 })
 
@@ -984,6 +1024,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  slideWarmToken += 1
   cancelIntro()
   document.body.classList.remove('home-page-active')
   suspendHeroMotion()

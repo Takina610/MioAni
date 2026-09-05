@@ -164,8 +164,16 @@
   color: var(--ink);
   opacity: 0;
   transform: scale(.8);
+  /*
+   * Hidden (not just transparent) while idle: a transparent element with a
+   * backdrop-filter still costs a GPU readback per card per frame. `visibility`
+   * is in the transition list so it flips to visible instantly on hover and
+   * only to hidden once the fade-out has finished.
+   */
+  visibility: hidden;
   cursor: pointer;
-  transition: .25s var(--ease);
+  transition: opacity .25s var(--ease), transform .25s var(--ease), background .25s var(--ease),
+    border-color .25s var(--ease), color .25s var(--ease), visibility .25s var(--ease);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 }
@@ -177,6 +185,11 @@
 .poster-action:focus-visible {
   opacity: 1;
   transform: scale(1);
+  visibility: visible;
+}
+/* Keep the (still transparent) button tabbable once keyboard focus is inside the card. */
+.anime-card:focus-within .poster-action {
+  visibility: visible;
 }
 .poster-action:hover,
 .anime-card.is-menu-open .poster-action {

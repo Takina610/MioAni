@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PhPlus, PhCheck, PhStar, PhCaretDown, PhTrash } from '@phosphor-icons/vue'
 import type { Anime, WatchStatus } from '../types/anime'
@@ -7,6 +7,7 @@ import { useLibraryStore } from '../stores/library'
 import { getLibraryProgress } from '../services/libraryProgress'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
 import { useLiquidGlass } from '../composables/useLiquidGlass'
+import { observeReveal } from '../composables/useRevealObserver'
 
 const props = withDefaults(defineProps<{
   anime: Anime
@@ -28,15 +29,23 @@ const menuOpen = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
 const posterActionRef = ref<HTMLButtonElement | null>(null)
 const statusMenuRef = ref<HTMLDivElement | null>(null)
+const hovered = ref(false)
+const focusWithin = ref(false)
+/**
+ * The poster action is invisible until the card is hovered / focused / its
+ * menu is open, so the glass filter (an SVG backdrop-filter) is only built and
+ * attached for those cards. Everything else in a long grid pays nothing.
+ */
+const glassActive = computed(() => hovered.value || focusWithin.value || menuOpen.value)
 /** Match detail-back glass strength for the poster action. */
-const { glassStyle: posterActionGlassStyle } = useLiquidGlass(posterActionRef)
+const { glassStyle: posterActionGlassStyle } = useLiquidGlass(posterActionRef, { active: glassActive })
 /** Match main-nav glass strength for the expanded status menu. */
 const { glassStyle: statusMenuGlassStyle } = useLiquidGlass(statusMenuRef, { blurAmount: 2.0 })
 const revealed = ref(props.instant)
 const feedback = ref('')
 const flash = ref(false)
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null
-let revealObserver: IntersectionObserver | null = null
+let stopReveal: (() => void) | null = null
 /**
  * Shared-element source card: hide list poster while its art "lives" in the overlay.
  * - expand / open / related stack: keep hidden (returnCardId is the list origin)
@@ -144,40 +153,42 @@ function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') menuOpen.value = false
 }
 
+// Only the card whose menu is open listens on document, instead of every
+// mounted card running two handlers per click/keypress.
+watch(menuOpen, (open) => {
+  if (open) {
+    document.addEventListener('pointerdown', onDocPointerDown)
+    document.addEventListener('keydown', onKeydown)
+  } else {
+    document.removeEventListener('pointerdown', onDocPointerDown)
+    document.removeEventListener('keydown', onKeydown)
+  }
+})
+
+function onFocusOut(event: FocusEvent) {
+  const next = event.relatedTarget as Node | null
+  if (!next || !rootRef.value?.contains(next)) focusWithin.value = false
+}
+
 onMounted(() => {
-  document.addEventListener('pointerdown', onDocPointerDown)
-  document.addEventListener('keydown', onKeydown)
-
   // Library tabs remount frequently — show immediately, no observer delay.
-  if (props.instant) {
+  if (props.instant || !rootRef.value) {
     revealed.value = true
     return
   }
-
-  // Home/discover: reveal when scrolled into view.
-  if (typeof IntersectionObserver === 'undefined') {
+  // Home/discover: reveal when scrolled into view (shared observer).
+  stopReveal = observeReveal(rootRef.value, () => {
     revealed.value = true
-    return
-  }
-  revealObserver = new IntersectionObserver(
-    (entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        revealed.value = true
-        revealObserver?.disconnect()
-        revealObserver = null
-      }
-    },
-    { rootMargin: '0px 0px -8% 0px', threshold: 0.12 },
-  )
-  if (rootRef.value) revealObserver.observe(rootRef.value)
+    stopReveal = null
+  })
 })
 
 onUnmounted(() => {
   document.removeEventListener('pointerdown', onDocPointerDown)
   document.removeEventListener('keydown', onKeydown)
   if (feedbackTimer) clearTimeout(feedbackTimer)
-  revealObserver?.disconnect()
-  revealObserver = null
+  stopReveal?.()
+  stopReveal = null
 })
 </script>
 
@@ -199,6 +210,10 @@ onUnmounted(() => {
     @click="openDetail"
     @keydown.enter.prevent="openDetail"
     @keydown.space.prevent="openDetail"
+    @pointerenter="hovered = true"
+    @pointerleave="hovered = false"
+    @focusin="focusWithin = true"
+    @focusout="onFocusOut"
   >
     <div class="poster-wrap">
       <div v-if="failed || !anime.image" class="poster-missing">暂无海报</div>

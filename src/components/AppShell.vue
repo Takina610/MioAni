@@ -10,13 +10,63 @@ import brandLogo from '../assets/MioAni2.webp'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
 import { usePersonOverlayStore } from '../stores/personOverlay'
 import HomeView from '../views/HomeView.vue'
-const ImportModal = defineAsyncComponent(() => import('./ImportModal.vue'))
-const AnimeDetailOverlay = defineAsyncComponent(() => import('./AnimeDetailOverlay.vue'))
-const PersonDetailOverlay = defineAsyncComponent(() => import('./PersonDetailOverlay.vue'))
-const DiscoverView = defineAsyncComponent(() => import('../views/DiscoverView.vue'))
-const LibraryView = defineAsyncComponent(() => import('../views/LibraryView.vue'))
-const ScheduleView = defineAsyncComponent(() => import('../views/ScheduleView.vue'))
-const StatsView = defineAsyncComponent(() => import('../views/StatsView.vue'))
+
+// Loaders are shared with the idle prefetch below so each chunk is fetched once.
+const loadImportModal = () => import('./ImportModal.vue')
+const loadAnimeDetailOverlay = () => import('./AnimeDetailOverlay.vue')
+const loadPersonDetailOverlay = () => import('./PersonDetailOverlay.vue')
+const loadDiscoverView = () => import('../views/DiscoverView.vue')
+const loadLibraryView = () => import('../views/LibraryView.vue')
+const loadScheduleView = () => import('../views/ScheduleView.vue')
+const loadStatsView = () => import('../views/StatsView.vue')
+
+const ImportModal = defineAsyncComponent(loadImportModal)
+const AnimeDetailOverlay = defineAsyncComponent(loadAnimeDetailOverlay)
+const PersonDetailOverlay = defineAsyncComponent(loadPersonDetailOverlay)
+const DiscoverView = defineAsyncComponent(loadDiscoverView)
+const LibraryView = defineAsyncComponent(loadLibraryView)
+const ScheduleView = defineAsyncComponent(loadScheduleView)
+const StatsView = defineAsyncComponent(loadStatsView)
+
+/**
+ * Order matters: the detail overlay is the most likely next interaction from
+ * any list page, then the nav targets, then the rarely used ones.
+ */
+const IDLE_PREFETCH: Array<() => Promise<unknown>> = [
+  loadAnimeDetailOverlay,
+  loadDiscoverView,
+  loadScheduleView,
+  loadLibraryView,
+  loadPersonDetailOverlay,
+  loadStatsView,
+  loadImportModal,
+]
+let prefetchCancelled = false
+
+/**
+ * Pull the async chunks in one at a time while the main thread is idle so the
+ * first detail open / page switch doesn't stall on a network round-trip plus
+ * script compile. Skipped on data-saver connections.
+ */
+function scheduleChunkPrefetch() {
+  const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection
+  if (connection?.saveData) return
+  const idle: (cb: () => void) => void = typeof window.requestIdleCallback === 'function'
+    ? (cb) => window.requestIdleCallback(() => cb(), { timeout: 4000 })
+    : (cb) => window.setTimeout(cb, 600)
+  const queue = [...IDLE_PREFETCH]
+  const pump = () => {
+    if (prefetchCancelled || !queue.length) return
+    idle(() => {
+      if (prefetchCancelled) return
+      const load = queue.shift()
+      if (!load) return
+      load().catch(() => undefined).then(pump)
+    })
+  }
+  // Give the intro / first catalog fetch a head start.
+  window.setTimeout(pump, 1500)
+}
 
 type ListKey = 'home' | 'discover' | 'schedule' | 'library' | 'stats'
 
@@ -232,9 +282,11 @@ onMounted(() => {
   }
   syncTopbarCompact()
   window.addEventListener('scroll', onWindowScroll, { passive: true })
+  scheduleChunkPrefetch()
 })
 
 onUnmounted(() => {
+  prefetchCancelled = true
   document.body.classList.remove('detail-scroll-lock')
   document.body.style.top = ''
   if (returnChromeTimer) clearTimeout(returnChromeTimer)

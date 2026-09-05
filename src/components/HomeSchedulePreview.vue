@@ -43,6 +43,11 @@ const railInView = ref(true)
 
 const marqueeX = { value: 0 }
 let loopWidth = 0
+/** Cached in measureLoop / ResizeObserver so the per-frame ticker never forces layout. */
+let trackWidth = 0
+/** Direct transform writer (no per-frame tween allocation like gsap.set). */
+let setX: ((x: number) => void) | null = null
+let setXTarget: HTMLElement | null = null
 let tickerFn: ((t: number, dt: number) => void) | null = null
 let wheelTween: gsap.core.Tween | null = null
 let measureRaf = 0
@@ -107,13 +112,26 @@ function wrapX(x: number): number {
   return n
 }
 
+function writeX(x: number) {
+  const el = marqueeRef.value
+  if (!el) return
+  if (!setX || setXTarget !== el) {
+    // force3D so the marquee stays on its own compositor layer.
+    gsap.set(el, { x, force3D: true })
+    setX = gsap.quickSetter(el, 'x', 'px') as (x: number) => void
+    setXTarget = el
+    return
+  }
+  setX(x)
+}
+
 function setMarqueeX(x: number) {
   marqueeX.value = wrapX(x)
-  const el = marqueeRef.value
-  if (el) gsap.set(el, { x: marqueeX.value, force3D: true })
+  writeX(marqueeX.value)
 }
 
 function measureLoop() {
+  trackWidth = trackRef.value?.clientWidth ?? 0
   const primary = marqueeRef.value?.querySelector<HTMLElement>('.home-schedule__strip--primary')
   if (!primary || !marqueeRef.value) {
     loopWidth = 0
@@ -121,6 +139,10 @@ function measureLoop() {
   }
   const gap = Number.parseFloat(getComputedStyle(marqueeRef.value).gap || '0') || 0
   loopWidth = primary.offsetWidth + gap
+}
+
+function overflows(): boolean {
+  return loopWidth > 0 && loopWidth > trackWidth + 4
 }
 
 function canAuto(): boolean {
@@ -132,8 +154,7 @@ function canAuto(): boolean {
     && railInView.value
     && !railHovered.value
     && !wheelTween
-    && loopWidth > 0
-    && Boolean(trackRef.value && loopWidth > trackRef.value.clientWidth + 4)
+    && overflows()
   )
 }
 
@@ -170,10 +191,12 @@ function refreshMarquee() {
       wheelTween?.kill()
       wheelTween = null
       marqueeX.value = 0
+      setX = null
+      setXTarget = null
       if (marqueeRef.value) gsap.set(marqueeRef.value, { clearProps: 'transform' })
       return
     }
-    if (loopWidth <= 0 || (trackRef.value && loopWidth <= trackRef.value.clientWidth + 4)) {
+    if (!overflows()) {
       stopAuto()
       setMarqueeX(0)
       return
@@ -247,9 +270,8 @@ function onRailLeave() {
 
 function onRailWheel(e: WheelEvent) {
   if (!marqueeMode.value) return
-  const track = trackRef.value
   const el = marqueeRef.value
-  if (!el || !track || loopWidth <= track.clientWidth + 4) return
+  if (!el || !trackRef.value || !overflows()) return
 
   const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX
   if (!delta) return
@@ -274,7 +296,7 @@ function onRailWheel(e: WheelEvent) {
       ease: 'power3.out',
       onUpdate: () => {
         marqueeX.value = wrapX(marqueeX.value)
-        gsap.set(el, { x: marqueeX.value, force3D: true })
+        writeX(marqueeX.value)
       },
       onComplete: () => {
         wheelTween = null
@@ -439,6 +461,8 @@ onUnmounted(() => {
   if (layoutRaf) cancelAnimationFrame(layoutRaf)
   if (indicatorPulseTimer !== null) clearTimeout(indicatorPulseTimer)
   unbind()
+  setX = null
+  setXTarget = null
   if (marqueeRef.value) gsap.killTweensOf(marqueeRef.value)
   gsap.killTweensOf(marqueeX)
 })
