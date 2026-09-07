@@ -22,6 +22,20 @@
   transform: scale(1.03);
   transform-origin: center center;
 }
+/*
+ * Composited layer / filtered image split. The layer that fades (will-change:
+ * opacity) carries no filter of its own, so the filter is baked into the
+ * image raster once instead of being re-run by the GPU on a full-hero render
+ * surface every frame — that per-frame pass is what phones cannot afford.
+ */
+.hero-ambient-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  will-change: opacity;
+}
 .hero-depth-current,
 .hero-ambient {
   position: absolute;
@@ -29,13 +43,11 @@
   display: block;
   width: 100%;
   height: 100%;
-  z-index: 1;
   object-position: center center;
   object-fit: cover;
   opacity: .34;
   transform: scale(1.04);
   filter: saturate(.75) brightness(.4);
-  will-change: opacity;
 }
 .hero-ambient {
   opacity: 1;
@@ -49,7 +61,6 @@
   overflow: hidden;
   border-radius: 0;
   opacity: 1;
-  filter: blur(3px) saturate(.95) brightness(.78);
   box-shadow: none;
   pointer-events: none;
   will-change: opacity;
@@ -62,49 +73,112 @@
   object-position: center center;
   transform: scale(1.03);
   transform-origin: center center;
+  filter: blur(3px) saturate(.95) brightness(.78);
+}
+.hero-depth-next::after {
+  content: '';
+  inset: 0;
 }
 .hero-depth-next::after,
-.hero-bridge::after {
-  content: '';
+.hero-bridge-tint {
   position: absolute;
-  inset: 0;
   pointer-events: none;
   background:
     linear-gradient(90deg, rgba(11,13,12,.18) 0%, rgba(11,13,12,.02) 50%, rgba(11,13,12,.1) 100%),
     linear-gradient(180deg, rgba(11,13,12,.08) 0%, transparent 50%, rgba(11,13,12,.16) 100%);
 }
-/* Depth Bridge 在 Veil 下保持后景质感；Focus Bridge 在 Veil 上渐进接管清晰度。 */
-.hero-bridge {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 2;
-  overflow: hidden;
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
-  will-change: left, top, width, height, opacity, border-radius;
-}
+/*
+ * Depth Bridge 在 Veil 下保持后景质感；Focus Bridge 在 Veil 上渐进接管清晰度。
+ *
+ * The bridge boxes still animate left/top/width/height + border-radius, but the
+ * elements doing so paint nothing themselves (a resized, rounded, overflow
+ * clip is just a property-tree update; a plain circular radius stays on cc's
+ * fast rounded-corner path). Everything with pixels — art, tint, shadow rect —
+ * is a static child layer of fixed size that is only ever *transformed*, so
+ * the ~13MB blurred textures are rasterised once per switch. The old version
+ * re-rasterised both blurred images every frame; phone GPUs could not keep up
+ * and cc drew the frames without them — the strobing seen on Android.
+ */
+.hero-bridge,
 .hero-focus-bridge {
   position: absolute;
   left: 0;
   top: 0;
   width: 100%;
   height: 100%;
-  z-index: 5;
   overflow: hidden;
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
-  will-change: left, top, width, height, opacity, border-radius;
+  will-change: opacity;
 }
+.hero-bridge { z-index: 2; }
+.hero-focus-bridge { z-index: 5; }
+/* Fixed at the from-box size by JS; stretched onto the current box with a transform. */
+.hero-bridge-tint {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+/*
+ * Depth bridge shadow, equivalent to the old `box-shadow: 0 40p 110p rgba(0,0,0,.55p)`
+ * on the morphing box: a solid rounded rect following the bridge geometry (+40p
+ * down), blurred by the compositor with blur(55p) (box-shadow blur radius R is a
+ * Gaussian with σ = R/2) at opacity .55p. The interior sits under the opaque
+ * bridge, exactly like box-shadow's clipped interior.
+ */
+.hero-bridge-shadow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  will-change: filter, opacity;
+}
+.hero-bridge-shadow-clip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.hero-bridge-shadow-rect {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  will-change: transform;
+}
+.hero-bridge-art,
+.hero-focus-bridge-art {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+/* JS sizes the img to the full cover-drawn image (natural aspect) so the shrinking bridge can re-crop it. */
 .hero-bridge-img,
 .hero-focus-bridge-img {
+  position: absolute;
+  left: 0;
+  top: 0;
   display: block;
   width: 100%;
   height: 100%;
+  max-width: none; /* reset.css caps img at 100%; the drawn image is wider than the bridge on phones */
   object-fit: cover;
   object-position: center center;
 }

@@ -66,10 +66,18 @@ const posterImgRef = ref<HTMLImageElement | null>(null)
 const nextLayerRef = ref<HTMLElement | null>(null)
 const nextImgRef = ref<HTMLImageElement | null>(null)
 const bridgeRef = ref<HTMLElement | null>(null)
+const bridgeArtRef = ref<HTMLElement | null>(null)
 const bridgeImgRef = ref<HTMLImageElement | null>(null)
+const bridgeTintRef = ref<HTMLElement | null>(null)
+const bridgeShadowRef = ref<HTMLElement | null>(null)
+const bridgeShadowClipRef = ref<HTMLElement | null>(null)
+const bridgeShadowRectRef = ref<HTMLElement | null>(null)
 const focusBridgeRef = ref<HTMLElement | null>(null)
+const focusBridgeArtRef = ref<HTMLElement | null>(null)
 const focusBridgeImgRef = ref<HTMLImageElement | null>(null)
 const foreCopyRef = ref<HTMLElement | null>(null)
+const ambientALayerRef = ref<HTMLElement | null>(null)
+const ambientBLayerRef = ref<HTMLElement | null>(null)
 const ambientARef = ref<HTMLImageElement | null>(null)
 const ambientBRef = ref<HTMLImageElement | null>(null)
 const ambientActive = ref<'a' | 'b'>('a')
@@ -430,33 +438,55 @@ async function waitImg(el: HTMLImageElement | null | undefined, timeout = 800) {
   return el.complete && el.naturalWidth > 0
 }
 
+/**
+ * object-position of an img as [x, y] fractions (computed style resolves the
+ * keywords to percentages, e.g. `center top` → "50% 0%"). Anything else falls
+ * back to centre.
+ */
+function readObjectPosition(img: HTMLImageElement): [number, number] {
+  const raw = getComputedStyle(img).objectPosition || ''
+  const parts = raw.trim().split(/\s+/)
+  const parse = (value: string | undefined) => {
+    if (!value || !value.endsWith('%')) return 0.5
+    const n = parseFloat(value)
+    return Number.isFinite(n) ? n / 100 : 0.5
+  }
+  return [parse(parts[0]), parse(parts[1])]
+}
+
 function hideBridgeLayers() {
   const layers = [bridgeRef.value, focusBridgeRef.value]
+  const arts = [bridgeArtRef.value, focusBridgeArtRef.value]
   const images = [bridgeImgRef.value, focusBridgeImgRef.value]
+  const shadow = bridgeShadowRef.value
 
   layers.forEach((layer, index) => {
     if (!layer) return
     gsap.set(layer, {
       autoAlpha: 0,
-      left: 0,
-      top: 0,
-      width: '100%',
-      height: '100%',
-      borderRadius: 0,
-      boxShadow: 'none',
       zIndex: index === 0 ? 2 : 5,
-      x: 0,
-      y: 0,
-      scale: 1,
-      clearProps: 'transform,transformOrigin',
+      clearProps: 'left,top,width,height,borderRadius',
     })
+  })
+
+  arts.forEach((art) => {
+    if (!art) return
+    gsap.set(art, { clearProps: 'transform,transformOrigin,width,height' })
   })
 
   images.forEach((image) => {
     if (!image) return
-    gsap.set(image, { clearProps: 'opacity,visibility,filter,transform,transformOrigin' })
+    gsap.set(image, { clearProps: 'opacity,visibility,filter,transform,transformOrigin,left,top,width,height' })
     image.removeAttribute('src')
   })
+
+  const tint = bridgeTintRef.value
+  if (tint) gsap.set(tint, { clearProps: 'transform,transformOrigin,width,height' })
+  if (shadow) gsap.set(shadow, { autoAlpha: 0, clearProps: 'filter' })
+  const shadowClip = bridgeShadowClipRef.value
+  if (shadowClip) gsap.set(shadowClip, { clearProps: 'left,top,width,height,borderRadius' })
+  const shadowRect = bridgeShadowRectRef.value
+  if (shadowRect) gsap.set(shadowRect, { clearProps: 'width,height' })
 }
 
 function collectCopyRevealTargets(copy = foreCopyRef.value) {
@@ -579,7 +609,7 @@ function snapHeroToPendingOrActive() {
   hideBridgeLayers()
   const poster = posterRef.value
   const fore = foreRef.value
-  if (poster) gsap.set(poster, { clearProps: 'opacity,visibility,transform,transformOrigin' })
+  if (poster) gsap.set(poster, { clearProps: 'opacity,visibility,transform,transformOrigin,willChange' })
   if (fore) gsap.set(fore, { clearProps: 'opacity,visibility,transform,zIndex' })
   resetCopyRevealTargets()
   void nextTick(() => {
@@ -660,15 +690,18 @@ watch(heroRef, (hero) => {
 })
 
 function crossfadeAmbient(url: string, ready: boolean): gsap.core.Timeline {
-  const a = ambientARef.value
-  const b = ambientBRef.value
-  if (!a || !b || !url || !ready) return gsap.timeline()
+  const aImg = ambientARef.value
+  const bImg = ambientBRef.value
+  const a = ambientALayerRef.value
+  const b = ambientBLayerRef.value
+  if (!a || !b || !aImg || !bImg || !url || !ready) return gsap.timeline()
 
   const showB = ambientActive.value === 'a'
   const incoming = showB ? b : a
   const outgoing = showB ? a : b
+  const incomingImg = showB ? bImg : aImg
 
-  incoming.src = url
+  incomingImg.src = url
   gsap.set(incoming, { autoAlpha: 0 })
   gsap.set(outgoing, { autoAlpha: (gsap.getProperty(outgoing, 'autoAlpha') as number) || 1 })
 
@@ -724,18 +757,24 @@ async function goTo(index: number) {
   const poster = posterRef.value
   const fore = foreRef.value
   const bridge = bridgeRef.value
+  const bridgeArt = bridgeArtRef.value
   const bridgeImg = bridgeImgRef.value
+  const bridgeShadow = bridgeShadowRef.value
   const focusBridge = focusBridgeRef.value
+  const focusBridgeArt = focusBridgeArtRef.value
   const focusBridgeImg = focusBridgeImgRef.value
   const nextLayer = nextLayerRef.value
   const nextImg = nextImgRef.value
   const outgoingCopy = foreCopyRef.value
-  if (!hero || !poster || !fore || !bridge || !bridgeImg || !focusBridge || !focusBridgeImg || !outgoingCopy) {
+  if (
+    !hero || !poster || !fore || !bridge || !bridgeArt || !bridgeImg
+    || !focusBridge || !focusBridgeArt || !focusBridgeImg || !outgoingCopy
+  ) {
     copyIndex.value = next
     activeIndex.value = next
     await nextTick()
     resetCopyRevealTargets(outgoingCopy)
-    if (poster) gsap.set(poster, { clearProps: 'opacity,visibility,transform,transformOrigin' })
+    if (poster) gsap.set(poster, { clearProps: 'opacity,visibility,transform,transformOrigin,willChange' })
     if (fore) gsap.set(fore, { clearProps: 'opacity,visibility,transform,zIndex' })
     hideBridgeLayers()
     await finishHeroTransition()
@@ -757,7 +796,7 @@ async function goTo(index: number) {
     return
   }
 
-  gsap.set(poster, { clearProps: 'opacity,visibility,transform,transformOrigin' })
+  gsap.set(poster, { clearProps: 'opacity,visibility,transform,transformOrigin,willChange' })
   const heroBox = hero.getBoundingClientRect()
   const posterBox = poster.getBoundingClientRect()
   const copyBox = outgoingCopy.getBoundingClientRect()
@@ -805,34 +844,71 @@ async function goTo(index: number) {
     await finishHeroTransition()
     return
   }
-  const bridgeStart = {
+  // Bridge morph. The bridge / focus bridge / shadow-clip wrappers are plain
+  // rounded overflow clips that paint nothing; they are resized by layout each
+  // frame (a property-tree update, no raster). Everything with pixels — the art
+  // (blurred / sharp image), the tint gradient, the solid shadow rect — is a
+  // fixed-size child layer that is only transformed, so it is rasterised once
+  // per switch instead of on every frame. Geometry reproduces the previous
+  // layout tween exactly: box = from→to, radius 0→12, image = object-fit:
+  // cover for the current box (honouring object-position) zoomed by the
+  // tweened scale about the box centre.
+  const bridgeBoxStart = {
     left: from.left,
     top: from.top,
     width: from.width,
     height: from.height,
     borderRadius: 0,
-    boxShadow: 'none',
     overflow: 'hidden',
+  }
+  gsap.set(bridge, { ...bridgeBoxStart, autoAlpha: 1, zIndex: 2 })
+  gsap.set(focusBridge, { ...bridgeBoxStart, autoAlpha: 0, zIndex: 5 })
+  // Soft look stays on Depth Bridge via CSS; Focus Bridge img is sharp — soft→sharp = opacity handoff (no live filter tween).
+  gsap.set([bridgeArt, focusBridgeArt], {
+    width: from.width,
+    height: from.height,
     x: 0,
     y: 0,
-    scale: 1,
-  }
-  gsap.set(bridge, {
-    ...bridgeStart,
-    autoAlpha: 1,
-    zIndex: 2,
-  })
-  gsap.set(focusBridge, {
-    ...bridgeStart,
-    autoAlpha: 0,
-    zIndex: 5,
-  })
-  // Soft look stays on Depth Bridge via CSS; Focus Bridge img is sharp — soft→sharp = opacity handoff (no live filter tween).
-  gsap.set([bridgeImg, focusBridgeImg], {
-    autoAlpha: 1,
     scale: bridgeImageStartScale,
     transformOrigin: '50% 50%',
   })
+  // object-fit: cover geometry of the image inside a box, honouring the
+  // breakpoint's object-position (center top on phones, center otherwise).
+  const naturalW = bridgeImg.naturalWidth || 1
+  const naturalH = bridgeImg.naturalHeight || 1
+  const [anchorX, anchorY] = readObjectPosition(bridgeImg)
+  const coverScale = (w: number, h: number) => Math.max(w / naturalW, h / naturalH)
+  const coverFrom = coverScale(from.width, from.height)
+  const drawnW = naturalW * coverFrom
+  const drawnH = naturalH * coverFrom
+  const drawnLeft = anchorX * (from.width - drawnW)
+  const drawnTop = anchorY * (from.height - drawnH)
+  // Lay the img out as the whole cover-drawn image (nothing cropped by the img
+  // box itself); at p = 0 this paints exactly like cover inside the from box.
+  gsap.set([bridgeImg, focusBridgeImg], {
+    autoAlpha: 1,
+    left: drawnLeft,
+    top: drawnTop,
+    width: drawnW,
+    height: drawnH,
+    clearProps: 'transform,transformOrigin',
+  })
+  const bridgeTint = bridgeTintRef.value
+  if (bridgeTint) {
+    gsap.set(bridgeTint, { width: from.width, height: from.height, x: 0, y: 0, scaleX: 1, scaleY: 1, transformOrigin: '0 0' })
+  }
+  const bridgeShadowClip = bridgeShadowClipRef.value
+  const bridgeShadowRect = bridgeShadowRectRef.value
+  const shadowEl = bridgeShadow && bridgeShadowClip && bridgeShadowRect ? bridgeShadow : null
+  if (shadowEl && bridgeShadowClip && bridgeShadowRect) {
+    // Shadow starts invisible (box-shadow was `none` → 0 offset / 0 blur / 0 alpha).
+    gsap.set(shadowEl, { autoAlpha: 0, filter: 'blur(0px)' })
+    gsap.set(bridgeShadowClip, bridgeBoxStart)
+    gsap.set(bridgeShadowRect, { width: from.width, height: from.height })
+  }
+  // The exiting poster scales down; without the hint Chromium re-rasters it at
+  // every new scale. Cleared with the other inline props on handoff.
+  gsap.set(poster, { willChange: 'transform, opacity' })
 
   // 先铺好与后景同几何的 bridge，再藏 next layer，避免“先跳再收束”。
   if (nextLayer) gsap.set(nextLayer, { autoAlpha: 0 })
@@ -857,25 +933,58 @@ async function goTo(index: number) {
     ease: 'power2.in',
   }, 0.42)
 
-  const bridgeDestination = {
-    left: to.left,
-    top: to.top,
-    width: to.width,
-    height: to.height,
-    borderRadius: 12,
-    duration: 1.0,
+  type Setter = (vars: Record<string, number | string>) => void
+  const setBridgeArt = gsap.quickSetter(bridgeArt, 'css') as Setter
+  const setFocusArt = gsap.quickSetter(focusBridgeArt, 'css') as Setter
+  const setTint = bridgeTint ? gsap.quickSetter(bridgeTint, 'css') as Setter : null
+  const setShadowAlpha = shadowEl ? gsap.quickSetter(shadowEl, 'css') as Setter : null
+  const boxStyles = [bridge.style, focusBridge.style, bridgeShadowClip?.style ?? null]
+  const morph = { p: 0 }
+  const applyMorph = () => {
+    const p = morph.p
+    const w = from.width + (to.width - from.width) * p
+    const h = from.height + (to.height - from.height) * p
+    const l = from.left + (to.left - from.left) * p
+    const t = from.top + (to.top - from.top) * p
+    const radius = 12 * p
+    const width = `${w}px`
+    const height = `${h}px`
+    const left = `${l}px`
+    const radiusPx = `${radius}px`
+    boxStyles.forEach((style, index) => {
+      if (!style) return
+      style.left = left
+      // Shadow rect is offset 40p downwards (box-shadow's y offset).
+      style.top = index === 2 ? `${t + 40 * p}px` : `${t}px`
+      style.width = width
+      style.height = height
+      style.borderRadius = radiusPx
+    })
+    // Image: cover-fit for the current box, zoomed about the box centre.
+    const zoom = bridgeImageStartScale + (1 - bridgeImageStartScale) * p
+    const coverBox = coverScale(w, h)
+    const artScale = (coverBox * zoom) / coverFrom
+    // Art is a from-sized box at the wrapper origin, scaled about its centre;
+    // translate so the image lands where cover + zoom would put it in this box.
+    const anchorLeft = anchorX * (w - naturalW * coverBox)
+    const anchorTop = anchorY * (h - naturalH * coverBox)
+    const artX = w / 2 - from.width / 2 + zoom * (anchorLeft - w / 2) - artScale * (drawnLeft - from.width / 2)
+    const artY = h / 2 - from.height / 2 + zoom * (anchorTop - h / 2) - artScale * (drawnTop - from.height / 2)
+    setBridgeArt({ x: artX, y: artY, scale: artScale })
+    setFocusArt({ x: artX, y: artY, scale: artScale })
+    // Tint gradient stretches with the box, exactly like the old ::after.
+    setTint?.({ scaleX: w / from.width, scaleY: h / from.height })
+    if (shadowEl && setShadowAlpha) {
+      // box-shadow 0 40p 110p rgba(0,0,0,.55p) → blur σ = 55p, opacity .55p
+      shadowEl.style.filter = `blur(${55 * p}px)`
+      setShadowAlpha({ autoAlpha: 0.55 * p })
+    }
   }
-
-  leave.to(bridge, {
-    ...bridgeDestination,
-    boxShadow: '0 40px 110px rgba(0,0,0,0.55)',
-  }, 0)
-
-  leave.to(focusBridge, bridgeDestination, 0)
-  leave.to([bridgeImg, focusBridgeImg], {
-    scale: 1,
+  leave.to(morph, {
+    p: 1,
     duration: 1.0,
     ease: 'power2.inOut',
+    onUpdate: applyMorph,
   }, 0)
   leave.to(focusBridge, {
     autoAlpha: 1,
@@ -909,7 +1018,7 @@ async function goTo(index: number) {
   const newFore = foreRef.value
   const newPoster = posterRef.value
 
-  if (newPoster) gsap.set(newPoster, { clearProps: 'opacity,visibility,transform,transformOrigin' })
+  if (newPoster) gsap.set(newPoster, { clearProps: 'opacity,visibility,transform,transformOrigin,willChange' })
   if (newFore) gsap.set(newFore, { clearProps: 'opacity,visibility,transform,zIndex' })
   resetCopyRevealTargets()
 
@@ -984,11 +1093,11 @@ function warmSlideMedia() {
 
 function initAmbient() {
   const url = mediaOf(feature.value)
-  if (ambientARef.value && url) {
+  if (ambientARef.value && ambientALayerRef.value && url) {
     ambientARef.value.src = url
-    gsap.set(ambientARef.value, { autoAlpha: 1 })
+    gsap.set(ambientALayerRef.value, { autoAlpha: 1 })
   }
-  if (ambientBRef.value) gsap.set(ambientBRef.value, { autoAlpha: 0 })
+  if (ambientBLayerRef.value) gsap.set(ambientBLayerRef.value, { autoAlpha: 0 })
   ambientActive.value = 'a'
 }
 
@@ -1163,10 +1272,14 @@ onUnmounted(() => {
           then re-rasters once the worker decode lands), which on phones shows up
           as the ambient / poster blinking during every carousel switch.
         -->
-        <!-- 环境底图双缓冲，交叉淡入避免硬切 -->
+        <!-- 环境底图双缓冲，交叉淡入避免硬切（淡入淡出作用在 layer 上，滤镜烘焙在 img 光栅里） -->
         <div class="hero-depth" aria-hidden="true">
-          <img ref="ambientARef" class="hero-depth-current hero-ambient" alt="" aria-hidden="true" decoding="sync" fetchpriority="high" />
-          <img ref="ambientBRef" class="hero-depth-current hero-ambient" alt="" aria-hidden="true" decoding="sync" fetchpriority="low" />
+          <div ref="ambientALayerRef" class="hero-ambient-layer">
+            <img ref="ambientARef" class="hero-depth-current hero-ambient" alt="" aria-hidden="true" decoding="sync" fetchpriority="high" />
+          </div>
+          <div ref="ambientBLayerRef" class="hero-ambient-layer">
+            <img ref="ambientBRef" class="hero-depth-current hero-ambient" alt="" aria-hidden="true" decoding="sync" fetchpriority="low" />
+          </div>
         </div>
 
         <!-- 静态后景：src 由 JS 控制，避免 Vue 绑定硬切 -->
@@ -1179,14 +1292,26 @@ onUnmounted(() => {
           <img ref="nextImgRef" class="hero-depth-next-img" alt="" decoding="sync" />
         </div>
 
+        <!-- Depth Bridge 的投影：独立兄弟元素，随 bridge 几何走（实心圆角矩形 + 合成器模糊） -->
+        <div ref="bridgeShadowRef" class="hero-bridge-shadow" aria-hidden="true">
+          <div ref="bridgeShadowClipRef" class="hero-bridge-shadow-clip">
+            <div ref="bridgeShadowRectRef" class="hero-bridge-shadow-rect"></div>
+          </div>
+        </div>
+
         <!-- Depth Bridge：Veil 下方保持后景质感 -->
         <div ref="bridgeRef" class="hero-bridge" aria-hidden="true">
-          <img ref="bridgeImgRef" class="hero-bridge-img" alt="" decoding="sync" />
+          <div ref="bridgeArtRef" class="hero-bridge-art">
+            <img ref="bridgeImgRef" class="hero-bridge-img" alt="" decoding="sync" />
+          </div>
+          <div ref="bridgeTintRef" class="hero-bridge-tint"></div>
         </div>
 
         <!-- Focus Bridge：Veil 上方在后半程渐入并恢复清晰 -->
         <div ref="focusBridgeRef" class="hero-focus-bridge" aria-hidden="true">
-          <img ref="focusBridgeImgRef" class="hero-focus-bridge-img" alt="" decoding="sync" />
+          <div ref="focusBridgeArtRef" class="hero-focus-bridge-art">
+            <img ref="focusBridgeImgRef" class="hero-focus-bridge-img" alt="" decoding="sync" />
+          </div>
         </div>
 
         <div class="hero-bg-veil" aria-hidden="true"></div>
