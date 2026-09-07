@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="380" viewBox="0 0 1200 380" role="img" aria-labelledby="title desc">
+  <title id="title">MioAni - Follow your season</title>
+  <desc id="desc">Browse seasonal anime, sync Bangumi and AniList watchlists, and manage progress in a local library.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b0d0c"/>
+      <stop offset="55%" stop-color="#101411"/>
+      <stop offset="100%" stop-color="#151a16"/>
+    </linearGradient>
+    <linearGradient id="veil" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0b0d0c" stop-opacity="0.15"/>
+      <stop offset="55%" stop-color="#0b0d0c" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#0b0d0c" stop-opacity="0.92"/>
+    </linearGradient>
+    <linearGradient id="posterA" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2a3528"/>
+      <stop offset="100%" stop-color="#141914"/>
+    </linearGradient>
+    <linearGradient id="posterB" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#243028"/>
+      <stop offset="100%" stop-color="#101510"/>
+    </linearGradient>
+    <clipPath id="round">
+      <rect width="1200" height="380" rx="26"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#round)">
+    <rect width="1200" height="380" fill="url(#bg)"/>
+    <circle cx="980" cy="40" r="220" fill="#b8f05f" opacity="0.05"/>
+    <circle cx="1080" cy="300" r="160" fill="#b8f05f" opacity="0.035"/>
+    <path d="M0 0H1200V380H0Z" fill="none" stroke="rgba(228,237,230,0.08)" stroke-width="1"/>
+    <g transform="translate(56 48)">
+      <rect x="0" y="0" width="148" height="28" rx="8" fill="rgba(184,240,95,0.12)" stroke="rgba(184,240,95,0.35)"/>
+      <text x="16" y="19" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#b8f05f" letter-spacing="1.5">SEASONAL TRACKER</text>
+      <text x="0" y="92" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="72" font-weight="700" fill="#f2f5f1" letter-spacing="-1.5">MioAni</text>
+      <text x="0" y="138" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="28" font-weight="500" fill="#b8f05f">Follow your season.</text>
+      <text x="0" y="188" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="18" fill="#8f9791">浏览季度新番 · 同步 Bangumi / AniList</text>
+      <text x="0" y="216" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="18" fill="#8f9791">本地追番库管理进度 · 可选多源播放</text>
+      <g transform="translate(0 258)">
+        <rect x="0" y="0" width="92" height="28" rx="8" fill="#121513" stroke="rgba(228,237,230,0.14)"/>
+        <text x="14" y="19" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#8f9791">Vue 3</text>
+        <rect x="102" y="0" width="78" height="28" rx="8" fill="#121513" stroke="rgba(228,237,230,0.14)"/>
+        <text x="116" y="19" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#8f9791">GSAP</text>
+        <rect x="190" y="0" width="108" height="28" rx="8" fill="#121513" stroke="rgba(228,237,230,0.14)"/>
+        <text x="204" y="19" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#8f9791">Bangumi</text>
+        <rect x="308" y="0" width="96" height="28" rx="8" fill="#121513" stroke="rgba(228,237,230,0.14)"/>
+        <text x="322" y="19" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#8f9791">AniList</text>
+      </g>
+    </g>
+    <g transform="translate(720 42)">
+      <rect x="36" y="18" width="380" height="280" rx="16" fill="url(#posterB)" stroke="rgba(228,237,230,0.12)"/>
+      <rect x="36" y="18" width="380" height="280" rx="16" fill="url(#veil)"/>
+      <text x="56" y="48" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#b8f05f" letter-spacing="2">NEXT UP</text>
+      <rect x="56" y="72" width="120" height="150" rx="10" fill="#1a2218" stroke="rgba(184,240,95,0.2)"/>
+      <rect x="68" y="92" width="96" height="12" rx="4" fill="rgba(242,245,241,0.18)"/>
+      <rect x="68" y="114" width="72" height="8" rx="3" fill="rgba(143,151,145,0.35)"/>
+      <rect x="68" y="188" width="96" height="8" rx="3" fill="rgba(143,151,145,0.25)"/>
+      <text x="190" y="120" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="16" fill="#8f9791">Upcoming</text>
+      <text x="190" y="146" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="13" fill="rgba(143,151,145,0.75)">waiting behind Featured</text>
+      <g transform="translate(0 36)">
+        <rect x="0" y="0" width="220" height="268" rx="14" fill="url(#posterA)" stroke="rgba(184,240,95,0.45)" stroke-width="1.5"/>
+        <rect x="16" y="18" width="188" height="160" rx="10" fill="#1f2a1c"/>
+        <circle cx="110" cy="88" r="28" fill="rgba(184,240,95,0.15)" stroke="rgba(184,240,95,0.45)"/>
+        <path d="M102 76 L126 88 L102 100 Z" fill="#b8f05f" opacity="0.85"/>
+        <text x="16" y="208" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#b8f05f" letter-spacing="1.5">FEATURED</text>
+        <text x="16" y="234" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="18" font-weight="600" fill="#f2f5f1">Season pick</text>
+        <rect x="16" y="246" width="140" height="6" rx="3" fill="rgba(184,240,95,0.35)"/>
+      </g>
+      <path d="M230 170 C270 150, 300 150, 340 170" fill="none" stroke="#b8f05f" stroke-width="2" stroke-dasharray="4 5" opacity="0.7"/>
+      <circle cx="340" cy="170" r="4" fill="#b8f05f"/>
+      <text x="250" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#b8f05f">HANDOFF</text>
+    </g>
+  </g>
+</svg>

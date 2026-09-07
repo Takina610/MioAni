@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">MioAni architecture</title>
+  <desc id="desc">Vue SPA on Cloudflare aggregates Bangumi and AniList data; optional Express API on Render resolves playback streams.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b0d0c"/>
+      <stop offset="100%" stop-color="#121513"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="360" rx="26" fill="url(#bg)" stroke="rgba(228,237,230,0.08)"/>
+  <text x="56" y="52" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#b8f05f" letter-spacing="2">HOW IT FITS TOGETHER</text>
+  <text x="56" y="88" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="28" font-weight="600" fill="#f2f5f1">目录在浏览器侧聚合 · 播放 API 可选</text>
+  <g transform="translate(56 130)">
+    <rect width="220" height="160" rx="16" fill="#121513" stroke="rgba(228,237,230,0.14)"/>
+    <text x="24" y="40" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#8f9791" letter-spacing="1">SOURCES</text>
+    <rect x="24" y="58" width="172" height="36" rx="10" fill="#1a1e1b" stroke="rgba(184,240,95,0.25)"/>
+    <text x="40" y="81" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="16" fill="#f2f5f1">Bangumi API</text>
+    <rect x="24" y="106" width="172" height="36" rx="10" fill="#1a1e1b" stroke="rgba(184,240,95,0.25)"/>
+    <text x="40" y="129" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="16" fill="#f2f5f1">AniList GraphQL</text>
+  </g>
+  <path d="M292 210 H348" stroke="#b8f05f" stroke-width="2"/>
+  <polygon points="348,204 362,210 348,216" fill="#b8f05f"/>
+  <g transform="translate(372 118)">
+    <rect width="456" height="184" rx="16" fill="#121513" stroke="rgba(184,240,95,0.4)" stroke-width="1.5"/>
+    <text x="24" y="36" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#b8f05f" letter-spacing="1">VUE SPA · CLOUDFLARE</text>
+    <g transform="translate(24 56)">
+      <rect width="96" height="48" rx="10" fill="#1a1e1b" stroke="rgba(228,237,230,0.12)"/>
+      <text x="48" y="30" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="14" fill="#f2f5f1">Home</text>
+      <rect x="108" y="0" width="96" height="48" rx="10" fill="#1a1e1b" stroke="rgba(228,237,230,0.12)"/>
+      <text x="156" y="30" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="14" fill="#f2f5f1">Discover</text>
+      <rect x="216" y="0" width="96" height="48" rx="10" fill="#1a1e1b" stroke="rgba(228,237,230,0.12)"/>
+      <text x="264" y="30" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="14" fill="#f2f5f1">Schedule</text>
+      <rect x="324" y="0" width="96" height="48" rx="10" fill="#1a1e1b" stroke="rgba(228,237,230,0.12)"/>
+      <text x="372" y="30" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="14" fill="#f2f5f1">Library</text>
+    </g>
+    <text x="24" y="142" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="15" fill="#8f9791">localStorage 追番库 · Detail Overlay · Theater</text>
+    <text x="24" y="168" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="rgba(143,151,145,0.85)">Pinia · Vue Router · GSAP · Artplayer</text>
+  </g>
+  <path d="M844 210 H900" stroke="#b8f05f" stroke-width="2" stroke-dasharray="5 5"/>
+  <polygon points="900,204 914,210 900,216" fill="#b8f05f"/>
+  <g transform="translate(924 130)">
+    <rect width="220" height="160" rx="16" fill="#121513" stroke="rgba(228,237,230,0.14)"/>
+    <text x="24" y="40" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#8f9791" letter-spacing="1">OPTIONAL API</text>
+    <text x="24" y="78" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="18" font-weight="600" fill="#f2f5f1">Express</text>
+    <text x="24" y="106" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="14" fill="#8f9791">Playwright · HLS</text>
+    <text x="24" y="132" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#b8f05f">/api/playback/*</text>
+    <text x="24" y="152" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="13" fill="rgba(143,151,145,0.8)">Render · Docker</text>
+  </g>
+</svg>

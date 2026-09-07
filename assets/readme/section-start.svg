@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="140" viewBox="0 0 1200 140" role="img" aria-labelledby="title desc">
+  <title id="title">快速开始</title>
+  <desc id="desc">Node 20+ · npm install · npm run dev</desc>
+  <rect width="1200" height="140" rx="22" fill="#0b0d0c" stroke="rgba(228,237,230,0.08)"/>
+  <rect x="48" y="48" width="6" height="44" rx="3" fill="#b8f05f"/>
+  <text x="72" y="58" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#b8f05f" letter-spacing="2">FIRST SUCCESS</text>
+  <text x="72" y="100" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="36" font-weight="650" fill="#f2f5f1">快速开始</text>
+  <text x="248" y="100" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="20" fill="#8f9791">Node 20+ · npm install · npm run dev</text>
+</svg>

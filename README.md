@@ -1,6 +1,17 @@
 # MioAni
 
+<p align="center">
+  <img src="./assets/readme/hero.svg" width="100%" alt="MioAni — Follow your season. Browse seasonal anime, sync Bangumi and AniList, manage local progress.">
+</p>
+
 **Follow your season.** 浏览季度新番、同步 Bangumi / AniList 追番记录，并在本地库中管理观看进度；可选多源在线播放。
+
+<p align="center">
+  <a href="https://github.com/Takina610/MioAni"><img src="https://img.shields.io/badge/GitHub-Takina610%2FMioAni-b8f05f?style=flat-square&labelColor=0b0d0c" alt="GitHub"></a>
+  <a href="https://gitee.com/takina610/mio-ani"><img src="https://img.shields.io/badge/Gitee-takina610%2Fmio--ani-8f9791?style=flat-square&labelColor=0b0d0c" alt="Gitee"></a>
+  <img src="https://img.shields.io/badge/Vue_3-TypeScript-121513?style=flat-square&labelColor=0b0d0c&color=f2f5f1" alt="Vue 3 TypeScript">
+  <img src="https://img.shields.io/badge/Node-20+-121513?style=flat-square&labelColor=0b0d0c&color=b8f05f" alt="Node 20+">
+</p>
 
 | | |
 | --- | --- |
@@ -12,10 +23,12 @@
 
 ---
 
-## 功能
+<p align="center">
+  <img src="./assets/readme/section-features.svg" width="100%" alt="功能 — 季节浏览、同步、本地进度、可选播放">
+</p>
 
-- **首页 Hero** — 当季精选新番轮播：前景 Featured / 背景 Upcoming，GSAP 交接动画与漫画风 Intro
-- **发现 Discover** — 按季度、标签等浏览目录，打开作品详情 Overlay
+- **首页 Hero** — 当季精选轮播：前景 Featured / 背景 Upcoming，GSAP 交接动画与漫画风 Intro
+- **发现 Discover** — 按季度、标签浏览目录，打开作品详情 Overlay
 - **时间表 Schedule** — 放送日程一览
 - **本地追番库 Library** — 收藏、观看状态与进度；数据存 `localStorage`
 - **导入** — 从 Bangumi / AniList 导入追番列表并合并身份（`linkedIds`）
@@ -23,9 +36,7 @@
 - **在线播放（可选）** — 多源解析 → HLS / 直链；弹幕、进度记忆、线路切换  
   （需自建 API；默认可通过 `VITE_PLAYBACK` 关闭）
 
----
-
-## 页面路由
+### 页面路由
 
 | 路径 | 说明 |
 | --- | --- |
@@ -38,7 +49,19 @@
 
 ---
 
-## 快速开始
+<p align="center">
+  <img src="./assets/readme/workflow.svg" width="100%" alt="MioAni architecture: Bangumi and AniList feed a Vue SPA on Cloudflare; optional Express playback API on Render">
+</p>
+
+- **前端**：静态站点，目录与追番数据主要在浏览器侧聚合；库数据本地持久化。
+- **API**：仅负责播放源解析与流代理，**不**托管番剧版权内容；部署与前端分离。
+- 健康检查：`GET /api/health`
+
+---
+
+<p align="center">
+  <img src="./assets/readme/section-start.svg" width="100%" alt="快速开始 — Node 20+ · npm install · npm run dev">
+</p>
 
 ### 环境要求
 
@@ -87,31 +110,9 @@ npm run dev                        # 同时启动 web (Vite) + api (Express)
 
 ---
 
-## 架构一览
-
-```
-┌─────────────────────────────┐     Bangumi / AniList
-│  Vue SPA (Cloudflare)       │◄────────────────────
-│  Home · Discover · Schedule │
-│  Library · Detail Overlay   │
-│  AnimePlaybackTheater       │
-└──────────────┬──────────────┘
-               │  /api/playback/*
-┌──────────────▼──────────────┐
-│  Express API (Render Docker)│
-│  multi-source resolve       │
-│  Playwright + HLS proxy     │
-└─────────────────────────────┘
-```
-
-- **前端**：静态站点，目录与追番数据主要在浏览器侧聚合；库数据本地持久化。
-- **API**：仅负责播放源解析与流代理，**不**托管番剧版权内容；部署与前端分离。
-
-主要健康检查：`GET /api/health`。
-
----
-
-## 部署
+<p align="center">
+  <img src="./assets/readme/section-deploy.svg" width="100%" alt="部署 — Cloudflare Workers 静态站与 Render Docker API">
+</p>
 
 ### 前端 → Cloudflare Workers（静态资源）
 
