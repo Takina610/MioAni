@@ -1857,7 +1857,7 @@ onUnmounted(() => {
                 :class="{ 'is-landed': settled }"
                 :src="posterSrc"
                 :alt="display.title"
-                decoding="async"
+                decoding="sync"
               />
             </div>
 

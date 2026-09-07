@@ -45,3 +45,38 @@ export function observeReveal(el: Element, onReveal: RevealCallback): () => void
     io.unobserve(el)
   }
 }
+
+type VisibilityCallback = (visible: boolean) => void
+
+let visibilityObserver: IntersectionObserver | null = null
+const visibilityCallbacks = new WeakMap<Element, VisibilityCallback>()
+
+function getVisibilityObserver(): IntersectionObserver | null {
+  if (typeof IntersectionObserver === 'undefined') return null
+  if (visibilityObserver) return visibilityObserver
+  visibilityObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      visibilityCallbacks.get(entry.target)?.(entry.isIntersecting)
+    }
+  }, { rootMargin: '25% 0px 25% 0px' })
+  return visibilityObserver
+}
+
+/**
+ * Continuously report whether the element is in (or just outside) the viewport.
+ * Shared observer; used to keep per-card GPU effects bounded to what is on
+ * screen. Without IntersectionObserver the element is reported as visible.
+ */
+export function observeVisibility(el: Element, onChange: VisibilityCallback): () => void {
+  const io = getVisibilityObserver()
+  if (!io) {
+    onChange(true)
+    return () => {}
+  }
+  visibilityCallbacks.set(el, onChange)
+  io.observe(el)
+  return () => {
+    visibilityCallbacks.delete(el)
+    io.unobserve(el)
+  }
+}

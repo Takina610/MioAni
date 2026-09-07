@@ -279,7 +279,15 @@ function onBlur() {
   paintStatic()
 }
 
-function onResize() {
+let resizeRaf = 0
+
+function applyResize() {
+  resizeRaf = 0
+  const nextDpr = Math.min(window.devicePixelRatio || 1, MAX_DPR)
+  // window resize + the documentElement ResizeObserver both fire for one
+  // change, and mobile browsers fire resize on every URL-bar show/hide while
+  // scrolling. Rebuilding two full-viewport canvases for a no-op is wasted.
+  if (window.innerWidth === cssW && window.innerHeight === cssH && nextDpr === dpr) return
   sizeCanvas()
   if (staticOnly || !trailEnabled) {
     paintStatic()
@@ -287,6 +295,11 @@ function onResize() {
   }
   paint(now())
   if (samples.length) ensureLoop()
+}
+
+function onResize() {
+  if (resizeRaf) return
+  resizeRaf = requestAnimationFrame(applyResize)
 }
 
 function onPolicyChange() {
@@ -335,6 +348,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopLoop()
+  if (resizeRaf) cancelAnimationFrame(resizeRaf)
+  resizeRaf = 0
   window.removeEventListener('pointermove', onPointerMove)
   document.removeEventListener('pointerleave', onPointerLeave)
   window.removeEventListener('blur', onBlur)

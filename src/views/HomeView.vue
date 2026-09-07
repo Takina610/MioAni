@@ -77,10 +77,13 @@ let autoplayTween: gsap.core.Tween | null = null
 /** In-flight Leave timeline; killed when Home is backgrounded. */
 let activeSwitchTl: gsap.core.Timeline | null = null
 let heroLockObserver: MutationObserver | null = null
+let heroViewportObserver: IntersectionObserver | null = null
+/** False once the hero is scrolled fully out of view; autoplay and slide switches pause until it returns. */
+let heroInViewport = true
 
-/** True only when the hero is the visible foreground (not another list / detail / intro / hidden tab). */
+/** True only when the hero is the visible foreground (not another list / detail / intro / hidden tab / scrolled away). */
 function isHeroActive(): boolean {
-  if (route.name !== 'home' || document.hidden) return false
+  if (route.name !== 'home' || document.hidden || !heroInViewport) return false
   const { classList } = document.body
   if (classList.contains('detail-scroll-lock') || classList.contains('intro-active')) return false
   return true
@@ -631,6 +634,31 @@ function syncHeroLockFromBody() {
   else resumeHeroMotionIfNeeded()
 }
 
+/**
+ * While the hero is scrolled off screen its autoplay would otherwise keep
+ * running: a progress tween committing every frame plus a full slide switch
+ * (bridge layers, blurred ambient crossfade) every 6s — all invisible, all
+ * competing with the card grid the user is actually scrolling. Pause it and
+ * resume when the hero comes back.
+ */
+watch(heroRef, (hero) => {
+  heroViewportObserver?.disconnect()
+  heroViewportObserver = null
+  if (!hero || typeof IntersectionObserver === 'undefined') {
+    heroInViewport = true
+    return
+  }
+  heroViewportObserver = new IntersectionObserver((entries) => {
+    const entry = entries[entries.length - 1]
+    if (!entry) return
+    const visible = entry.isIntersecting
+    if (visible === heroInViewport) return
+    heroInViewport = visible
+    syncHeroLockFromBody()
+  })
+  heroViewportObserver.observe(hero)
+})
+
 function crossfadeAmbient(url: string, ready: boolean): gsap.core.Timeline {
   const a = ambientARef.value
   const b = ambientBRef.value
@@ -896,9 +924,31 @@ function nextSlide() {
 let slideWarmToken = 0
 
 /**
+ * Fetch only — no decode. Warming decodes here would churn the compositor's
+ * image cache on phones (evicting the slide currently on screen), so decoding
+ * is left to `goTo`'s `loadImage` right before the image is shown.
+ */
+function warmImage(src: string, timeout: number) {
+  return new Promise<boolean>((resolve) => {
+    const img = new Image()
+    img.fetchPriority = 'low'
+    const timer = window.setTimeout(() => finish(false), timeout)
+    const finish = (ok: boolean) => {
+      window.clearTimeout(timer)
+      img.onload = null
+      img.onerror = null
+      resolve(ok)
+    }
+    img.onload = () => finish(true)
+    img.onerror = () => finish(false)
+    img.src = src
+  })
+}
+
+/**
  * Warm every other slide's poster + banner during idle time, one image at a
  * time, so a switch never has to wait on the network. `goTo` still awaits
- * `loadImage`, which resolves instantly from the HTTP/decode cache.
+ * `loadImage`, which then only has to decode.
  */
 function warmSlideMedia() {
   const token = ++slideWarmToken
@@ -925,7 +975,7 @@ function warmSlideMedia() {
     idle(() => {
       if (token !== slideWarmToken) return
       const url = urls.shift()
-      const done = url ? loadImage(url, 8000) : Promise.resolve(false)
+      const done = url ? warmImage(url, 8000) : Promise.resolve(false)
       void done.then(pump)
     })
   }
@@ -1030,6 +1080,8 @@ onUnmounted(() => {
   suspendHeroMotion()
   heroLockObserver?.disconnect()
   heroLockObserver = null
+  heroViewportObserver?.disconnect()
+  heroViewportObserver = null
   document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
@@ -1104,10 +1156,17 @@ onUnmounted(() => {
         aria-roledescription="carousel"
         :aria-label="`本季推荐轮播，第 ${activeIndex + 1} / ${Math.max(slides.length, 1)} 部`"
       >
+        <!--
+          Hero imagery is decoded via img.decode() before it is shown, so raster
+          never waits on it. decoding="sync" keeps it that way: with "async",
+          Chromium checker-images large images (draws the tile without the image,
+          then re-rasters once the worker decode lands), which on phones shows up
+          as the ambient / poster blinking during every carousel switch.
+        -->
         <!-- 环境底图双缓冲，交叉淡入避免硬切 -->
         <div class="hero-depth" aria-hidden="true">
-          <img ref="ambientARef" class="hero-depth-current hero-ambient" alt="" aria-hidden="true" decoding="async" fetchpriority="high" />
-          <img ref="ambientBRef" class="hero-depth-current hero-ambient" alt="" aria-hidden="true" decoding="async" fetchpriority="low" />
+          <img ref="ambientARef" class="hero-depth-current hero-ambient" alt="" aria-hidden="true" decoding="sync" fetchpriority="high" />
+          <img ref="ambientBRef" class="hero-depth-current hero-ambient" alt="" aria-hidden="true" decoding="sync" fetchpriority="low" />
         </div>
 
         <!-- 静态后景：src 由 JS 控制，避免 Vue 绑定硬切 -->
@@ -1117,17 +1176,17 @@ onUnmounted(() => {
           class="hero-depth-next"
           aria-hidden="true"
         >
-          <img ref="nextImgRef" class="hero-depth-next-img" alt="" />
+          <img ref="nextImgRef" class="hero-depth-next-img" alt="" decoding="sync" />
         </div>
 
         <!-- Depth Bridge：Veil 下方保持后景质感 -->
         <div ref="bridgeRef" class="hero-bridge" aria-hidden="true">
-          <img ref="bridgeImgRef" class="hero-bridge-img" alt="" />
+          <img ref="bridgeImgRef" class="hero-bridge-img" alt="" decoding="sync" />
         </div>
 
         <!-- Focus Bridge：Veil 上方在后半程渐入并恢复清晰 -->
         <div ref="focusBridgeRef" class="hero-focus-bridge" aria-hidden="true">
-          <img ref="focusBridgeImgRef" class="hero-focus-bridge-img" alt="" />
+          <img ref="focusBridgeImgRef" class="hero-focus-bridge-img" alt="" decoding="sync" />
         </div>
 
         <div class="hero-bg-veil" aria-hidden="true"></div>
@@ -1191,7 +1250,7 @@ onUnmounted(() => {
                 width="420"
                 height="630"
                 loading="eager"
-                decoding="async"
+                decoding="sync"
                 fetchpriority="high"
               />
             </div>

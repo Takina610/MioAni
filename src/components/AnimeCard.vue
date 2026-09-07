@@ -7,7 +7,8 @@ import { useLibraryStore } from '../stores/library'
 import { getLibraryProgress } from '../services/libraryProgress'
 import { useDetailOverlayStore } from '../stores/detailOverlay'
 import { useLiquidGlass } from '../composables/useLiquidGlass'
-import { observeReveal } from '../composables/useRevealObserver'
+import { observeReveal, observeVisibility } from '../composables/useRevealObserver'
+import { COMPACT_LAYOUT_QUERY, useMediaQuery } from '../composables/useMediaQuery'
 
 const props = withDefaults(defineProps<{
   anime: Anime
@@ -31,12 +32,21 @@ const posterActionRef = ref<HTMLButtonElement | null>(null)
 const statusMenuRef = ref<HTMLDivElement | null>(null)
 const hovered = ref(false)
 const focusWithin = ref(false)
+const compactLayout = useMediaQuery(COMPACT_LAYOUT_QUERY)
+const nearViewport = ref(false)
 /**
- * The poster action is invisible until the card is hovered / focused / its
- * menu is open, so the glass filter (an SVG backdrop-filter) is only built and
- * attached for those cards. Everything else in a long grid pays nothing.
+ * Desktop: the poster action is invisible until the card is hovered / focused /
+ * its menu is open, so the glass filter (an SVG backdrop-filter) is only built
+ * and attached for those cards. Compact layout shows the action on every card,
+ * so there it stays on for cards in or near the viewport only — off-screen
+ * cards in a long grid pay nothing on a phone GPU.
  */
-const glassActive = computed(() => hovered.value || focusWithin.value || menuOpen.value)
+const glassActive = computed(() =>
+  hovered.value
+  || focusWithin.value
+  || menuOpen.value
+  || (compactLayout.value && nearViewport.value),
+)
 /** Match detail-back glass strength for the poster action. */
 const { glassStyle: posterActionGlassStyle } = useLiquidGlass(posterActionRef, { active: glassActive })
 /** Match main-nav glass strength for the expanded status menu. */
@@ -46,6 +56,7 @@ const feedback = ref('')
 const flash = ref(false)
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null
 let stopReveal: (() => void) | null = null
+let stopVisibility: (() => void) | null = null
 /**
  * Shared-element source card: hide list poster while its art "lives" in the overlay.
  * - expand / open / related stack: keep hidden (returnCardId is the list origin)
@@ -171,13 +182,19 @@ function onFocusOut(event: FocusEvent) {
 }
 
 onMounted(() => {
+  const root = rootRef.value
+  if (root) {
+    stopVisibility = observeVisibility(root, (visible) => {
+      nearViewport.value = visible
+    })
+  }
   // Library tabs remount frequently — show immediately, no observer delay.
-  if (props.instant || !rootRef.value) {
+  if (props.instant || !root) {
     revealed.value = true
     return
   }
   // Home/discover: reveal when scrolled into view (shared observer).
-  stopReveal = observeReveal(rootRef.value, () => {
+  stopReveal = observeReveal(root, () => {
     revealed.value = true
     stopReveal = null
   })
@@ -189,6 +206,8 @@ onUnmounted(() => {
   if (feedbackTimer) clearTimeout(feedbackTimer)
   stopReveal?.()
   stopReveal = null
+  stopVisibility?.()
+  stopVisibility = null
 })
 </script>
 
