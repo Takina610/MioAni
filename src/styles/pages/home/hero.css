@@ -338,11 +338,17 @@
 }
 .hero-actions > a:hover { gap: 18px; }
 
+/*
+ * Permanently composited: the poster is transformed on every switch, and
+ * promoting / demoting it around the switch made Chromium rasterise it from
+ * scratch at the exact frames it appears (blank tiles on phones).
+ */
 .hero-fore-poster {
   position: relative;
   width: 100%;
   aspect-ratio: 2/3;
   justify-self: end;
+  will-change: transform;
 }
 .hero-fore-poster img {
   width: 100%;
@@ -388,6 +394,9 @@
   position: relative;
   width: 36px;
   transition: width .35s var(--ease), opacity .25s ease;
+  /* Keep the layer across the :disabled opacity transition (tiny; avoids
+     promote → first raster → demote churn at both ends of every switch). */
+  will-change: opacity;
 }
 .hero-carousel-indicator.active {
   z-index: 1;

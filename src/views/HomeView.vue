@@ -381,6 +381,24 @@ function play(tl: gsap.core.Timeline) {
   })
 }
 
+// Wait for `count` rendered frames. Used to overlap freshly shown layers with
+// the identical-looking layers they replace: on phones cc may present a frame
+// before a new layer's tiles are rasterised, and with nothing underneath that
+// frame shows a hole (the "flash" at both ends of the hero switch).
+const RASTER_SETTLE_FRAMES = 2
+function nextFrames(count = RASTER_SETTLE_FRAMES) {
+  return new Promise<void>((resolve) => {
+    const step = (left: number) => {
+      if (left <= 0) {
+        resolve()
+        return
+      }
+      requestAnimationFrame(() => step(left - 1))
+    }
+    step(count)
+  })
+}
+
 async function loadImage(src: string, timeout = IMAGE_READY_TIMEOUT) {
   if (!src) return false
   const img = new Image()
@@ -906,11 +924,14 @@ async function goTo(index: number) {
     gsap.set(bridgeShadowClip, bridgeBoxStart)
     gsap.set(bridgeShadowRect, { width: from.width, height: from.height })
   }
-  // The exiting poster scales down; without the hint Chromium re-rasters it at
-  // every new scale. Cleared with the other inline props on handoff.
-  gsap.set(poster, { willChange: 'transform, opacity' })
-
   // 先铺好与后景同几何的 bridge，再藏 next layer，避免“先跳再收束”。
+  // At p = 0 the bridge is pixel-identical to the depth-next layer beneath it
+  // (same image, blur, tint and box), so leave depth-next visible for a couple
+  // of frames while the bridge's fresh layers get rasterised; if cc presents a
+  // frame before the bridge tiles exist, depth-next shows through instead of a
+  // hole. Only then hide depth-next and start moving.
+  await nextFrames()
+  if (!isAnimating.value || pendingIndex.value !== next) return
   if (nextLayer) gsap.set(nextLayer, { autoAlpha: 0 })
 
   const nextSwapTl = prepareNextLayer(upcoming, upcomingReady)
@@ -1022,6 +1043,13 @@ async function goTo(index: number) {
   if (newFore) gsap.set(newFore, { clearProps: 'opacity,visibility,transform,zIndex' })
   resetCopyRevealTargets()
 
+  // The poster now shows a new image, so its layer is re-rasterised. Keep the
+  // focus bridge — at p = 1 it is the same image in the same rounded box — under
+  // it for a couple of frames so a late raster shows the bridge, not a hole.
+  // Only the bridge shadow goes now, otherwise it would stack on the poster's.
+  if (shadowEl) gsap.set(shadowEl, { autoAlpha: 0 })
+  await nextFrames()
+  if (!isAnimating.value) return
   hideBridgeLayers()
   await finishHeroTransition()
 }
